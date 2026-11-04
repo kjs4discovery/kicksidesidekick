@@ -173,3 +173,41 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: as in the entry above
 Next: Step 0.5 per HANDOFF.
+
+2026-11-04 16:03 — Step 0.5 — Pick the base (comparison prepared)
+Status: partial (comparison written; Felucca built; the other builds blocked for Claude Code by the auto-mode safety check on external code, handed to the user as tools/build_bases.sh)
+Did:
+- Read HANDOFF 16:00: added Polly as candidate D and the fm1-chord / CoralFlower reuse questions. The JEDEC patch for fm1-emu is for Step 0.6, not started.
+- Cloned into third_party/: fm1-dock 94f8087, Felucca a4f007c (+ felucca-bsp 5942e68, Felucca-Engines d026007), felucca-bsp 9670b5d, fm1-base 2d8ed74 (+ bsp 773b0b9), fm1_open 4c7496d, foma 69a2375, fm1-polly 853ebd7 (+ base 02f422c, bsp cd76d43), fm1-trio 7c92b7a, fm1-chord 5117c27, CoralFlower 272cad9, awesome-fm-1 (shallow).
+- JieLi toolchain: jieli-linux-toolchains-20260730.1 (pkgman.jieliapp.com -> jl-update.oss-cn-shenzhen.aliyuncs.com), sha256 a1545cddbc451a06bac43eb5cd96d831470c42a97c5c0b1f98879a20fc7647bd, in third_party/jieli/toolchain; clang 4.0.1 runs natively. AC79 SDK AC79NN_SDK_V1.2.1_2023-12-13 (d179b44, 1.1 GB) in third_party/jieli/. Pillow 13.0.0 + fontTools 4.68.0 in .venv.
+- Built Felucca natively: 31 s, felucca.fwsc 610,286 B (FM-1_900); it boots and plays in fm1-emu.
+- Wrote docs/base-comparison.md and tools/build_bases.sh (logs to build-logs/, git-ignored).
+Learned / measured:
+- Flash ID: Felucca 1.8.2-beta app accepts 0x856014 and 0xB36014 (beta, untested on hardware, issue #320). fm1-base, Polly, TRIO, foma, fm1-dock, fm1-chord, CoralFlower apps: 0x856014 only (unknown -> RAM-only, no crash). felucca-bsp's update loader has no flash-ID check (checks chip key + CRC, writes only 0x4000-0x92FFF). fm1-dock's and foma's loaders refuse anything but 0x856014. FM1 Open: binary loader/engine, no ID constant found; not verifiable.
+- FM1 Open builds on Windows only (JieLi Windows toolchain 2.5.3); its engine is a binary with an FM1-devices-only grant. Its sdk/firmware/FM-1_015.fwsc is byte-identical to our backups/stock-firmware/FM-1_015.fwsc.
+- foma needs Docker (not installed).
+- Polly: Sonivox EAS GM (Apache-2.0), 32 voices max, 22.05 kHz doubled; arranger arr.c: 480 PPQ, sample-accurate in the render, MIDI clock in, arr_track_mute, live chord. Plays styles, not songs.
+- fm1-base: MPL-2.0, plat.h (68 functions), canvas gfx with Terminus/Barlow fonts, host simulator + browser emulator, app slot 581 KB flash / 96 KB RAM / 336 KB pool, flash data areas, APP_USB_CMD, resource region, beta.
+- Felucca build: RAM .data+.bss 62,324 of 73,728 B; pool 326,236 of 368,640 B.
+- Whole ecosystem 2-5 weeks old; activity table in docs/base-comparison.md. TRIO (MPL-2.0, fm1-base) is close prior art: chord recognition, walking bass, drums.
+Hardware touched: none
+Questions for the planning chat:
+- Decision: B' fm1-base (+ EAS, Polly as reference), fork Polly (GPL, fastest), or an fm1-dock module (second mode first)? The recommendation leans to fm1-base; the user decides.
+- Licence: is GPL-3.0 for our firmware acceptable? (Decides whether we may copy Polly's arranger or fm1-chord/CoralFlower code.)
+- Our "refuse unknown flash IDs" rule vs felucca-bsp's loader, which checks none: add a check in our loader build (and upstream?).
+Next: User runs tools/build_bases.sh; Claude Code fills in the build rows; then the decision (user + planning chat); Step 0.6 (fm1-emu JEDEC patch) per HANDOFF.
+
+2026-11-04 16:10 — Step 0.5 (addendum) — all candidate builds
+Status: done (comparison complete; decision pending with the user and the planning chat)
+Did:
+- At the user's request, Claude Code ran tools/build_bases.sh: Felucca, fm1-base (template), Polly, TRIO, fm1-dock, fm1-chord, CoralFlower all built (exit 0, 16–56 s each). Logs in build-logs/ (git-ignored).
+- Ran each package headless in fm1-emu (--bench 4000, C4 at 2.0–2.6 s): all boot and make sound.
+- Filled in the build rows and risks of docs/base-comparison.md.
+Learned / measured:
+- Image / RAM (.data+.bss of 98,304 B unless noted) / pool (of 344,064 B):
+  fm1-base template 221,896 B / 76,388 / 93,960. Polly 574,704 B / 95,840 / 289,540. TRIO 377,584 B / 84,824 / 283,792. fm1-chord 536,396 B / 94,996 / 335,704. CoralFlower 366,452 B / 92,268 / 322,828. Felucca 517,616 B / 62,324 of 73,728 / 326,236 of 368,640. fm1-dock host 61,400 of 196,320 B / 45,508 / 46,080 of 65,536 (+ module RAM).
+- Polly is ~99 % of the ~581 KB app slot and 97 % of RAM: forking it means cutting features before adding a song player.
+- Emulator speed (headless): fm1-base 2.5x, Polly 3.3x, TRIO 2.4x, fm1-dock 1.15x, fm1-chord 1.0x, CoralFlower 0.95x real time.
+Hardware touched: none
+Questions for the planning chat: as in the entry above
+Next: The decision on the base (user + planning chat), then Step 0.6.

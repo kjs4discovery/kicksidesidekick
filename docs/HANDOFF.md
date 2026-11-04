@@ -137,3 +137,42 @@ longer applies.
 ### Current step
 - [x] Step 0.3 — done (0x856014, backup OK). Off-laptop copies: pending on the user.
 - [ ] Step 0.4 — Emulator on Mint
+
+---
+
+## 2026-11-04 16:00 — from the planning chat — after Step 0.4
+
+Step 0.4 reviewed: great result (240x240 RGB565, 27 keys F3–G5, 14 buttons,
+7 encoders, 2x pi32v2 @ 240 MHz, scriptable headless runs).
+
+### Answers
+1. **Headless-only on this laptop:** yes. Automated tests run headless (deterministic
+   emulated clock, WAV + panel capture). The live window is a smoke test only.
+   Real listening happens on the unit (after 0.7) or a faster computer.
+2. **JEDEC-ID option:** yes, as a **local patch** to our copy of fm1-emu. Keep it
+   as a patch file (e.g. `tools/patches/fm1-emu-jedec-id.patch`) plus a script that
+   applies it, so third_party/ can be refreshed. Make it an env var or flag
+   (e.g. `--flash-id b36014`). Needed by Step 0.6. Don't open an upstream PR; the
+   user decides that later.
+3. **Polly / fm1-chord / CoralFlower:** yes, study them **in Step 0.5**:
+   - Treat **Polly** (QY70-style arranger) as a possible **4th candidate** next to
+     fm1-dock / Felucca / FM1 Open: could our play-along mode be built on it or
+     borrow its band engine? Report its licence, base, code quality, how it
+     schedules the band, voice usage, and whether it supports 0xB36014.
+   - fm1-chord and CoralFlower: chord voicing/display code worth reusing? Licences?
+   - Same rule as always: read, build, run in the emulator only.
+
+### Next
+- **Step 0.5** (pick the base): the user will paste the prompt. Add the Polly
+  candidate and the reuse questions above to docs/base-comparison.md.
+
+### Current step
+- [x] Step 0.4 — done
+- [ ] Step 0.5 — Pick the base (incl. Polly as candidate D)
+
+---
+
+## 2026-11-04 15:58 — from the planning chat — D015 accepted (no action during Step 0.5)
+
+The user accepted **D015**. When convenient (after 0.5), change the "Restore options"
+heading in docs/device.md from "proposed … pending the user" to "accepted 2026-11-04".

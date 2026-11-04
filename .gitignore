@@ -15,3 +15,6 @@ third_party/*/
 
 # Build output
 target/
+
+# Local build logs (tools/build_bases.sh)
+build-logs/
