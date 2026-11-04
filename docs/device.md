@@ -75,6 +75,19 @@ What the dump contains (tool analysis + offline comparison, 2026-11-04):
   bit-exact way back.
 - 64 KiB blocks with data: 0x00000–0x9FFFF and 0xE0000–0xFFFFF. 638,285 of 1,048,576 bytes are not 0xFF.
 
+## Restore options (D015, proposed by the planning chat 2026-11-04 15:45, pending the user)
+
+1. **Normal return to stock:** install `backups/stock-firmware/FM-1_015.fwsc` through the
+   normal update path (M-VAVE's two-step USB-MIDI update). The update loader handles the
+   per-chip encryption of the firmware region.
+2. **Last resort, bit-exact:** write the full dump
+   `backups/flash/FM-1_015_full-flash_856014_2026-11-04.bin` through ROM boot mode. This
+   also brings back calibration, the Bluetooth address and the settings exactly.
+
+Keep both. Why the dump's firmware region (0x4000–0x92FFF) differs from the package's: most
+likely the firmware is stored encrypted with the chip key (m-flasher decrypts the flash with
+chip key 0x980F); not yet confirmed by decrypting our dump.
+
 ## Stock firmware packages (safekeeping only, never sent anywhere)
 
 These are M-VAVE's own update packages, not backups of this unit. They live in
@@ -88,3 +101,30 @@ These are M-VAVE's own update packages, not backups of this unit. They live in
 Downloaded 2026-11-04. The M-VAVE URL always serves the latest package; it
 switched from V15 to V16 between 2026-10-18 and 2026-10-22 (Wayback CDX).
 There is no V14 package yet; it is only needed if `--info` reports FM-1_014.
+
+## Hardware model (from the fm1-emu emulator)
+
+Source: `third_party/fm1-emu` at 9de1ef0 (v0.4.0, 2026-11-02): `crates/fm1-soc/src/{lib,lcd,spiflash,periph,script}.rs`,
+`crates/fm1-live/src/main.rs`, `docs/recon.md`. These are the emulator's model of the board,
+built from community reverse engineering and Felucca's HAL; not measured on our unit.
+
+- **SoC:** JieLi AC791N (WL82 family), two pi32v2 cores, 240 MHz (`CPU_HZ`).
+- **Display:** ST7789-class, **240 × 240**, **RGB565** (16-bit) framebuffer, on SPI1
+  (PC9 CLK, PC10 DO, PC7 CS, PC8 D/C, backlight PA2). A full frame takes ~77 ms at 12 MHz SPI.
+- **Keys:** **27 note keys**, F3–G5 (MIDI 53–79; matrix ids 14–40, names `C4`, `F#3`, `n0`..`n26`).
+- **Buttons (14, with LEDs):** OCTDN, OCTUP, FX, SCL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP,
+  SEQ, PLAY, REC (matrix ids 0–13).
+- **Encoders (7):** SELECT (0), ALGO (1), K1–K4 (2–5), PRESET (6).
+- **Pot:** MASTER volume (SARADC channel 4, 0–1023).
+- **Velocity / pressure:** the keys report how hard they land (script `ID@VEL`, `ID~VEL`).
+- **Audio:** I2S DAC, **44.1 kHz stereo**, 24-bit samples in 32-bit words (Felucca `audio.c`
+  DAC_TICKS). Speaker plus headphone jack on the same line (the jack mutes the speaker).
+- **MIDI:** TRS MIDI IN on UART1 (MIDI out probably not wired); USB-C (USB-MIDI and USB audio
+  depending on the firmware); BLE unused by most firmwares. In the emulator M-VAVE's firmware
+  listens on MIDI channel 2; Felucca plays its parts on channels 1–4.
+- **Memory map:** XIP flash (code) at `0x02000000`; data RAM at `0x01C00000` (recon: "≥512 KiB";
+  the emulator gives 1 MiB); SRAM banks at `0x01F00000`, 256 KiB (cleared by early init); boot
+  state at `0x01C7FD80`.
+- **Flash:** 1 MiB SPI NOR on SPI0 (CS PD0). The emulator's flash answers JEDEC `85 60 14`
+  (our chip) and has no option to report `B3 60 14` (only the SMK-37 board switches it, to
+  `EB 60 14`). Testing our 0xB36014 path will need a small emulator patch or option.

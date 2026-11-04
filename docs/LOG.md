@@ -139,3 +139,37 @@ Questions for the planning chat:
 - Run the optional M-Flasher cross-check (independent loader; its analysis decrypts the firmware with the chip key and may explain the difference)?
 - Backup copies: repo backups/flash done; another disk and cloud are up to the user (will be noted in device.md when they say so).
 Next: Planning chat reviews Step 0.3. Pending on the user: two off-laptop copies of the backup.
+
+2026-11-04 15:50 — Step 0.4 — Emulator on Mint
+Status: partial (built and verified headless; live window plays but is choppy on this laptop; user's listening check pending)
+Did:
+- Before 0.4 (HANDOFF 15:06 and 15:45): CLAUDE.md compiler-input rule updated to D014 (song folder: song.mid + song.yaml). docs/device.md: added "Restore options" (D015, pending the user). Skipped the optional offline m-flasher analysis of our dump (not started; would need a new crate around m-flasher's internals).
+- Cloned https://github.com/joakimeriksson/fm1-emu into third_party/fm1-emu (9de1ef053a3c4bf56f16f05b5f0de193f4608a1d, v0.4.0, 2026-11-02; submodule fm1-sid not fetched). Read README, recon.md, fm1-live/fm1-emu/fm1-soc sources.
+- Built fm1-live and fm1-emu natively: `cargo build --release -p fm1-live -p fm1-emu`, 2 min 40 s, no extra system packages (libasound2-dev and pkg-config already present). Node/Chromium not installed; web version not needed.
+- Downloaded Felucca 1.7.0 (latest stable; 1.8.2-beta exists) from GitHub releases into third_party/firmwares/ (git-ignored), sha256 bff7c617cfb2c88e66b22aa691cb798dfa0d9cb12ff9a73deab51d404e82817c, identity FM-1_917. Emulator only.
+- Ran stock FM-1_015 and Felucca 1.7.0 headless (--bench 5000 with a scripted C4 key and a MIDI note): both boot, both make sound for key and MIDI input. Ran Felucca in the live window with --midi all and played songs/amazing-grace/song.mid into it via `aplaymidi -p 14:0` (Midi Through).
+- Wrote docs/emulator.md (build, play, measurements, scripting, gaps). Added "Hardware model (from the fm1-emu emulator)" to docs/device.md.
+Learned / measured:
+- Display 240x240 ST7789-class, RGB565. 27 note keys F3–G5 (MIDI 53–79), 14 buttons with LEDs (OCTDN OCTUP FX SCL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC), 7 encoders (SELECT ALGO K1–K4 PRESET), MASTER pot. Audio I2S 44.1 kHz stereo, 24-bit in 32-bit words. CPU 2x pi32v2 at 240 MHz. RAM at 0x01C00000 (recon ">=512 KiB", emulator 1 MiB), SRAM 256 KiB at 0x01F00000, flash 1 MiB XIP at 0x02000000.
+- Emulated flash JEDEC is fixed at 85 60 14; no option for B3 60 14. Testing our 0xB36014 / unknown-ID handling needs a small emulator patch.
+- Headless: stock 0.9–1.0x real time, Felucca 1.3x. Live window: Felucca 0.25–0.5x at 240 MHz, 0.5–0.8x at --mhz 120, many audio underruns (i7-5557U, thermal throttling active).
+- Scripting: fm1-live --bench/--shot with FM1_BENCH_KEYS (keys, velocity, pressure, encoders, pot, raw MIDI), FM1_BENCH_WAV (s16le 44.1 kHz stereo), FM1_BENCH_PANEL (PPM 1280x820), FM1_DUMPRAM, --flash, FM1_FLASH_CUT, --usb + FM1_USB_SEND. Deterministic on the emulated clock. fm1-emu batch runner is a slow interpreter; one attempt with --snap/--wav produced nothing in 3 min 50 s (not investigated).
+- fm1-emu has --raw-flash ("the flash as stored on the chip, app area encrypted; the flash controller decrypts on the fly"): supports the planning chat's per-chip-encryption explanation for our dump.
+- Prior art in the emulator's catalog close to our goal: fm1-chord (chords under the keys), CoralFlower (one key = chord + bass), Polly (QY70-style arranger: "play a chord and a band of eight follows"), CTL-1.
+Hardware touched: none (FM-1 not connected)
+Questions for the planning chat:
+- Live play is choppy on this laptop. Is headless-only acceptable for development and tests (plus live play on the real unit or a faster computer)?
+- Add a JEDEC-ID option to our copy of the emulator (local patch in third_party, or upstream PR), to meet the CLAUDE.md flash-ID test rule?
+- Worth studying Polly / fm1-chord / CoralFlower sources before designing our firmware (licences permitting)?
+Next: User confirms sound and keyboard input in the live window; then Step 0.5 per HANDOFF.
+
+2026-11-04 15:51 — Step 0.4 (addendum) — live check by the user
+Status: done
+Did:
+- User played Felucca 1.7.0 in the fm1-live window (--mhz 120, --midi all) with the computer keyboard (A, S, D).
+Learned / measured:
+- Keyboard input and audio output work in the live window; the sound is choppy, as the speed measurements predicted (0.5–0.8x real time, underruns). Live play on this laptop is usable only as a smoke test.
+- MIDI input in the live window: Amazing Grace was sent via aplaymidi to Midi Through, which fm1-live subscribed to; not separately confirmed by ear. MIDI input is confirmed headless (stock ch 2, Felucca ch 1).
+Hardware touched: none
+Questions for the planning chat: as in the entry above
+Next: Step 0.5 per HANDOFF.

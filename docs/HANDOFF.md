@@ -91,3 +91,49 @@ next to `song.mid`, not in a MIDI "chords" track. A song is a folder:
   CLAUDE.md to: "Compiler input: a song folder with song.mid (tracks drums, bass,
   harmony, melody, optional variants like bass:1, bass:2) and song.yaml (metadata
   and the chord chart; D014). See songs/amazing-grace/." Note it in LOG.
+
+---
+
+## 2026-11-04 15:45 — from the planning chat — after Step 0.3
+
+Step 0.3 reviewed: very good. Flash ID 0x856014 (Puya), chip key 0x980F, full
+backup confirmed by 4 identical reads in 2 sessions. The B36014 stop rule no
+longer applies.
+
+### Answers
+1. **Why the firmware region differs from the V15 package:** almost certainly
+   per-chip encryption, not a problem. m-flasher's docs/safety.md says a package's
+   firmware "must decrypt with this unit's chip key", and its Analysis decrypts
+   flash with CHIP_KEY 0x980F. The on-flash firmware is encrypted with the chip
+   key, so it was never going to match the package bytes. (Planning chat's reading
+   of the source; not yet confirmed by decrypting our dump.)
+2. **Restore plan (proposed as D015, pending the user):**
+   - *Normal return to stock* = install `backups/stock-firmware/FM-1_015.fwsc`
+     through the normal update path. That's what the community and m-flasher do
+     with official .fwsc files; the loader handles the encryption.
+   - *Last resort / bit-exact* = the full dump, written via ROM boot mode
+     (restores calibration, Bluetooth address and settings exactly).
+   Keep both. Update the 15:02 note's "restore target" wording accordingly in
+   docs/device.md (add a short "Restore options" section).
+3. **M-Flasher hardware cross-check:** not needed; skip it. It would mean another
+   ROM boot session for no new information. Optional, offline only (zero hardware):
+   if it's easy, build a tiny program against m-flasher's `boards::Analysis` that
+   reads our dump file and reports what it identifies (board, firmware version,
+   regions). Only if it takes under ~30 minutes; otherwise skip and note it.
+4. **udev rule:** fine as installed (4c4a:8057 only).
+5. **Previews:** committing them is fine.
+
+### Notes to carry into Step 0.7 (first writes)
+- "One loader command per ROM boot session": write it into the 0.7 checklist.
+- The repeated -110 descriptor timeouts and 15–20 s enumeration on USB port 1-2:
+  before any write, test other USB ports (and another data cable) with read-only
+  `lsusb`/`--info` until we find a port that enumerates cleanly. Record it in
+  docs/device.md. Don't do any write on a port that shows -110 errors.
+
+### Next
+- After this: do the CLAUDE.md D014 update (15:06 note), then **Step 0.4** (emulator).
+- During 0.4–0.6 the FM-1 is not needed: the user will unplug it.
+
+### Current step
+- [x] Step 0.3 — done (0x856014, backup OK). Off-laptop copies: pending on the user.
+- [ ] Step 0.4 — Emulator on Mint

@@ -36,9 +36,9 @@ except `backups/SHA256SUMS`). Python tools use the venv in `.venv/`.
 ## Project rules
 
 * Song files are created on the laptop (later: a website), never on the device.
-* Compiler input: multi-track MIDI with tracks drums, bass, harmony, melody,
-  optional variants like bass:1, bass:2, and a "chords" track of chord-symbol
-  text/marker events.
+* Compiler input: a song folder with song.mid (tracks drums, bass, harmony,
+  melody, optional variants like bass:1, bass:2) and song.yaml (metadata and the
+  chord chart; D014). See songs/amazing-grace/.
 
 ## Handoff with the planning chat
 
