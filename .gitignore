@@ -7,5 +7,11 @@ __pycache__/
 backups/*
 !backups/SHA256SUMS
 
+# Downloaded third-party repos (untrusted, fetched locally; see docs/LOG.md for URLs and commits)
+third_party/*/
+
+# Personal Claude Code settings
+.claude/settings.local.json
+
 # Build output
 target/
