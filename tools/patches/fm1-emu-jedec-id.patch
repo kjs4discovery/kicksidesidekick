@@ -1,0 +1,19 @@
+diff --git a/crates/fm1-soc/src/spiflash.rs b/crates/fm1-soc/src/spiflash.rs
+index 40f0bbb..b5fe491 100644
+--- a/crates/fm1-soc/src/spiflash.rs
++++ b/crates/fm1-soc/src/spiflash.rs
+@@ -59,7 +59,13 @@ impl SpiFlash {
+             addr: 0,
+             wel: false,
+             pending_prog: Vec::new(),
+-            jedec: [0x85, 0x60, 0x14],
++            // fm1-accompaniment patch: FM1_FLASH_ID=b36014 (6 hex digits) makes the chip answer that
++            // JEDEC id instead of Puya's 85 60 14 (UC25HQ80 units, or an unknown part for tests)
++            jedec: std::env::var("FM1_FLASH_ID").ok()
++                .and_then(|v| u32::from_str_radix(v.trim().trim_start_matches("0x"), 16).ok())
++                .filter(|&id| id <= 0xFF_FFFF)
++                .map(|id| [(id >> 16) as u8, (id >> 8) as u8, id as u8])
++                .unwrap_or([0x85, 0x60, 0x14]),
+             trace: std::env::var_os("FM1_FLASH_TRACE").is_some(),
+             changed: None,
+             revision: 0,

@@ -18,3 +18,8 @@ target/
 
 # Local build logs (tools/build_bases.sh)
 build-logs/
+
+# Local emulator output (tools/emu.sh) and firmware build output
+/build/
+firmware/app/build/
+firmware/app/web/words/

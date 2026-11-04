@@ -176,3 +176,54 @@ Step 0.4 reviewed: great result (240x240 RGB565, 27 keys F3–G5, 14 buttons,
 
 The user accepted **D015**. When convenient (after 0.5), change the "Restore options"
 heading in docs/device.md from "proposed … pending the user" to "accepted 2026-11-04".
+
+---
+
+## 2026-11-04 16:30 — from the planning chat — base decided; notes for Step 0.6
+
+Step 0.5 reviewed: excellent, thorough comparison. Decisions by the user:
+
+- **D016 — Base: fm1-base (on felucca-bsp) + Sonivox EAS for General MIDI sounds.**
+  Pin fm1-base and felucca-bsp to the commits you evaluated (or newer, if you note
+  why). Polly and TRIO are references only.
+- **D017 — We write our own code.** Reading Polly / TRIO / fm1-chord / CoralFlower /
+  Felucca to understand techniques is fine; **copying GPL code is not**. Allowed as
+  libraries: fm1-base, felucca-bsp (MPL-2.0) and **upstream** Sonivox EAS (Apache-2.0).
+  Our own files: MPL-2.0 header for now.
+- D015 heading in docs/device.md: still to update (15:58 note), if not done yet.
+
+### Before writing code in Step 0.6, check and report in LOG
+1. **EAS provenance:** where Polly got Sonivox EAS (upstream repo + commit), and
+   which of Polly's EAS files are modified. Read their licence headers. If modified
+   files are GPL-3.0 (or unclear), use **upstream** EAS and list what we'd have to
+   re-do ourselves (e.g. sample-accurate note starts within a block). Do not copy
+   Polly's modifications.
+2. **GM sound bank licence:** which wavetable/sound set the ~200 KB GM bank is, where
+   it comes from, and its licence. If it isn't clearly redistributable, stop and
+   report.
+3. **Flash budget:** fm1-base (~222 KB) + EAS code + GM bank vs the ~581 KB app slot,
+   and where song data will live (data area / resource region). Report numbers.
+
+### Step 0.6 scope (the user will paste the prompt)
+- A minimal app on fm1-base: title + version on screen; holding a key plays that
+  note on GM Electric Piano 1 through EAS; key name shown on screen.
+- App accepts 0x856014 and 0xB36014, refuses unknown IDs without crashing (RAM-only).
+- Loader: add the "refuse unknown flash ID" check to our build of the felucca-bsp
+  loader if it's small; if not, report what it would take and don't block on it.
+- fm1-emu JEDEC patch (16:00 note) so both IDs + one unknown ID can be tested.
+- Emulator only. Nothing to the FM-1.
+
+### Current step
+- [x] Step 0.5 — done; base decided (D016, D017)
+- [ ] Step 0.6 — Hello world on fm1-base + EAS (emulator only)
+
+---
+
+## 2026-11-04 16:36 — from the planning chat — correction to the 16:30 note (D017)
+
+The user is deferring the licence decision. Replace "Our own files: MPL-2.0 header
+for now" with:
+- Our own files carry `Licence: TBD (see D017)`, no licence header yet.
+- Keep third-party code (fm1-base, felucca-bsp, EAS) in its own clearly marked
+  folders with its own licence files, never mixed into our files.
+- Write original code whenever possible.

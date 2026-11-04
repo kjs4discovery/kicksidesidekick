@@ -1,0 +1,63 @@
+diff -ru -x .git -x build a/bsp/loader/ldr_core.c b/bsp/loader/ldr_core.c
+--- a/bsp/loader/ldr_core.c	2026-11-04 15:55:54.259059240 -0500
++++ b/bsp/loader/ldr_core.c	2026-11-04 16:39:58.197122055 -0500
+@@ -41,6 +41,7 @@
+ static int ldr_erase(uint32_t off);
+ static int ldr_prog(uint32_t off, const void *p, uint32_t n);
+ static void ldr_record_clear(void);
++static int ldr_flash_known(void);               /* fm1-accompaniment: a flash chip this loader may write */
+ static void ldr_progress(uint32_t done, uint32_t total);
+ 
+ /* SFC cipher: per 32-byte block, key ^ (block offset >> 2) */
+@@ -129,6 +130,8 @@
+     ldr_sfc(sec, 32, 0, key);
+     if (ota_crc16(sec + 2, 30, 0) != ota_rd16(sec))
+         return -6;                                       /* package for another chip key */
++    if (!ldr_flash_known())
++        return -14;                                      /* fm1-accompaniment: unknown flash chip: nothing erased */
+     /* 2b. the whole package first: nothing is erased for a damaged one */
+     if ((rc = ldr_check(fl_off, fl_size, want, sc, sec)) != 0)
+         return rc;
+diff -ru -x .git -x build a/bsp/loader/loader.c b/bsp/loader/loader.c
+--- a/bsp/loader/loader.c	2026-11-04 15:55:54.259059240 -0500
++++ b/bsp/loader/loader.c	2026-11-04 16:39:58.401440719 -0500
+@@ -72,6 +72,12 @@
+ {
+     fm1_updata_parm_clear();                        /* CRC 0: the SPL ignores it on a warm reset */
+ }
++/* fm1-accompaniment: write only to the 1 MiB parts the app knows (0x856014 Puya, 0xB36014 UCUN UC25HQ80) */
++static int ldr_flash_known(void)
++{
++    uint32_t id = fl_jedec_ram();
++    return id == 0x856014u || id == 0xB36014u;
++}
+ #include "ldr_screen.c"
+ static void ldr_progress(uint32_t done, uint32_t total) { ldr_screen_progress(done, total); ldr_poll(); }
+ #include "ldr_core.c"
+diff -ru -x .git -x build a/device/main_fm1.c b/device/main_fm1.c
+--- a/device/main_fm1.c	2026-11-04 15:54:19.467963451 -0500
++++ b/device/main_fm1.c	2026-11-04 16:39:57.837428270 -0500
+@@ -894,7 +894,10 @@
+                                                      * VDDIO 3.2 V, WiFi's regulator automatic (fm1_sys.h) */
+         fm1_clock_read(clock_boot);
+         clock_fix = (int8_t)fm1_clock_stock();      /* the stock 360 MHz, whichever bootloader started us (fm1_clock.h) */
+-        flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;   /* the expected 1 MiB part, else RAM only */
++        {                                           /* fm1-accompaniment: both known 1 MiB parts, else RAM only */
++            uint32_t id = FL_FAR(fl_jedec_ram)();   /* (0x856014 Puya; 0xB36014 UCUN UC25HQ80, units from late 2026) */
++            flash_ok = id == 0x856014u || id == 0xB36014u;
++        }
+ #if FM1B_WIFI || FM1B_BLE
+         if (flash_ok)
+             FL_FAR(fl_uid_ram)(flash_uid);
+Only in a/template: web
+diff -ru -x .git -x build a/tests/ldr_test.c b/tests/ldr_test.c
+--- a/tests/ldr_test.c	2026-11-04 15:54:19.479348650 -0500
++++ b/tests/ldr_test.c	2026-11-04 16:40:06.557622866 -0500
+@@ -96,6 +96,7 @@
+     return 0;
+ }
+ static void ldr_record_clear(void) { record_cleared++; }
++static int ldr_flash_known(void) { return 1; }   /* fm1-accompaniment: the flash-ID check (loader.c); a known chip here */
+ static void ldr_progress(uint32_t done, uint32_t total) { (void)done; (void)total; }
+ #include "../bsp/loader/ldr_core.c"
+ 

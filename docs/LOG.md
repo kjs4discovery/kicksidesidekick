@@ -211,3 +211,42 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: as in the entry above
 Next: The decision on the base (user + planning chat), then Step 0.6.
+
+2026-11-04 16:38 — Step 0.6 — pre-code checks (HANDOFF 16:30)
+Status: done
+Did:
+- Updated the D015 heading in docs/device.md to "accepted 2026-11-04" (15:58 note).
+- Asked the user about a prompt/HANDOFF difference (prompt: a held key plays middle C; HANDOFF: holding a key plays that note). User chose: each key plays its own note (C4 = middle C).
+- Cloned upstream Sonivox EAS https://github.com/EmbeddedSynth/sonivox into third_party/sonivox (HEAD 86bd07341078084cb9f224b9e7d508fbf4751af0, 2026-10-02; tags up to v4.0.2).
+Learned / measured:
+1. EAS provenance: Polly credits https://github.com/EmbeddedSynth/sonivox. Compared file by file with upstream HEAD: 69 of Polly's files identical; 9 modified (eas_chorus.c, eas_filter.c, eas_filter.h, eas_midictrl.h, eas_reverb.c, eas_synth.h, eas_voicemgt.c, eas_wtengine.h, eas_wtsynth.c; changes marked "Polly:"). Headers: 7 keep the Apache-2.0 header; eas_filter.c and eas_filter.h have none (unclear). Polly's own: eas_host_fm1.c (SPDX Apache-2.0), eas_options.h, eas_version.h, eas_visibility.h, cutils/log.h. Polly's LICENSING.md lists the whole folder as Apache-2.0. Per the HANDOFF we use upstream only and copy none of Polly's changes or files.
+   What we redo ourselves: the host layer (memory pool, no file I/O; upstream has host_src/eas_hostmm.c as a reference), the build configuration (voices, features, 22.05 kHz -> 44.1 kHz output), and optionally: sample-accurate note starts within an EAS block (without it a note lands on a block boundary: 128 frames at 22.05 kHz = 5.8 ms), CC74/CC71 filter, effect-send clamping and tails.
+2. GM bank: wt_200k_G.c + wt_200k_samples.c in upstream arm-wt-22k/lib_src/ ("Source: wt_200k_G.dls", "Wavetable sound libary"), Copyright (c) 2009 Sonic Network Inc., Apache-2.0 header in both files; upstream LICENSE-2.0.txt, NOTICE, MODULE_LICENSE_APACHE2. Clearly redistributable under Apache-2.0 (keep the licence and NOTICE).
+3. Flash budget (measured from Polly's -O2 objects): EAS code 28,846 B text + GM bank 227,160 B rodata (wt_200k_G) + ~3 KB other data = ~259 KB. fm1-base template image 221,896 B with Bluetooth (README: 77 KB without). Our firmware without Bluetooth: ~77 + ~259 = ~336 KB of the ~581 KB app slot (~245 KB left for our code). Song data outside the app slot: fm1-base's data area 0x97000-0xDFFFF (292 KiB), XDATA0 0x93000-0x96FFF (16 KiB), XDATA1 0xE5000-0xFBFFF (92 KiB), or a resource region written by the installer (Polly's: 43,032 B).
+Hardware touched: none
+Questions for the planning chat: none (all three checks pass)
+Next: Step 0.6 code.
+
+2026-11-04 16:53 — Step 0.6 — First firmware on fm1-base + EAS (emulator only)
+Status: done
+Did:
+- firmware/vendor/: fm1-base 2d8ed748 + felucca-bsp 773b0b99 (the commits evaluated in 0.5) and upstream Sonivox EAS 86bd0734 (subset: arm-wt-22k lib_src + host_src + licence files), copied with git archive; provenance, licences and patches in firmware/vendor/README.md. Vendored (not submodules) so builds are offline and our patch is visible.
+- Flash id: patched fm1-base (firmware/vendor/patches/fm1-base-flash-id.patch): app accepts 0x856014 and 0xB36014, else RAM-only (no crash); felucca-bsp's update loader now refuses unknown ids (-14) after the chip-key check and before any erase (small: one hook in loader.c, one check in ldr_core.c, a stub in the host test).
+- fm1-emu JEDEC patch (HANDOFF 16:00): FM1_FLASH_ID=<6 hex> in SpiFlash::new; tools/patches/fm1-emu-jedec-id.patch + tools/apply_patches.sh (idempotent, rebuilds).
+- Our app firmware/app/ (Licence: TBD, D017; no licence header): app.c (title, version, flash status, held key's name large, mini keyboard, keys -> GM Electric Piano 1 at velocity 100), synth.c (SPSC queue main loop -> audio interrupt, EAS at 22.05 kHz, x2 linear interpolation to 44.1 kHz, MASTER), eas/ (our eas_options.h, eas_visibility.h, eas_version.h, cutils/log.h, log/log.h, fm1inc/string.h, eas_host_fw.c: 40 KB bump pool, no files, strcmp, no-op reports). Polly's EAS changes not copied.
+- firmware/build.sh, tools/emu.sh, tools/ppm2png.py, Makefile (make firmware / emu / shot / patches). docs/firmware.md (build, run, flash ids, rescue), docs/step-0.6-emulator.png.
+Learned / measured:
+- Build: ~10-16 s. App 340,236 B; RAM .data+.bss 66,604 of 98,304 B; pool 69,384 of 344,064 B; loader 8,371 B; package fm1acc.fwsc 611,527 B, identity FM-1_7100. All fm1-base checks pass (register access, no soft-double, no 64-bit mul beside loads).
+- _16_BIT_SAMPLES made the GM set 440 KB (image 552 KB); _8_BIT_SAMPLES (the set as made, 0x33CBD B) gives 340 KB.
+- Upstream EAS does not build without _REVERB_ENABLED/_CHORUS_ENABLED (eas_public.c uses them unguarded): both on.
+- fm1-emu headless (--bench 4000, C4 2.0-2.6 s): 1.2-1.4x real time; silence before, C4 rms 1271, decay after. FM1_FLASH_ID 856014 and b36014: "FLASH OK" (identical screens); 123456: "FLASH: RAM ONLY", still plays, no crash.
+- Rescue (fm1-base, unchanged): REC at power-on -> ROM update mode; 2 failed starts (first 30 s) -> SAFE MODE (no sound, USB on, PLAY retry, REC update mode); 4 -> ROM update mode; USB soft key; cut-off update resumes; OCT-+OCT+ at power-on = panel set-up. Documented in docs/firmware.md.
+- fm1-base's words.tsv needs a "# url:" line: placeholder https://example.invalid/fm1-accompaniment/words/ until we have a site.
+- Package identity FM-1_71xx chosen; not yet checked against the Firmware Hub's list.
+Hardware touched: none
+Questions for the planning chat:
+- Loader refusal (-14) leaves the unit in update mode on an unknown chip (nothing erased). OK, or should it also drop the update record so the old app boots (needs a flash write on that unknown chip)?
+- Velocity: fixed 100 now; turn on fm1-base's APP_TOUCH (key velocity/pressure) in the next step?
+- Identity FM-1_71xx and a URL for the screen-reader words: what should they be?
+- Not done: sample-accurate note starts inside an EAS block (notes land on 5.8 ms block boundaries), EAS CPU load on the device.
+Next: Planning chat reviews 0.6; Step 0.7 per HANDOFF.

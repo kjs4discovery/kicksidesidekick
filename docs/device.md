@@ -75,7 +75,7 @@ What the dump contains (tool analysis + offline comparison, 2026-11-04):
   bit-exact way back.
 - 64 KiB blocks with data: 0x00000–0x9FFFF and 0xE0000–0xFFFFF. 638,285 of 1,048,576 bytes are not 0xFF.
 
-## Restore options (D015, proposed by the planning chat 2026-11-04 15:45, pending the user)
+## Restore options (D015, accepted 2026-11-04)
 
 1. **Normal return to stock:** install `backups/stock-firmware/FM-1_015.fwsc` through the
    normal update path (M-VAVE's two-step USB-MIDI update). The update loader handles the
