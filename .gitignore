@@ -1,0 +1,11 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Flash backups stay local; only the checksum list is tracked
+backups/*
+!backups/SHA256SUMS
+
+# Build output
+target/
