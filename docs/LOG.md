@@ -91,3 +91,51 @@ Hardware touched: read-only (one identity-query SysEx via fm1_install.py --info;
 Questions for the planning chat:
 - M-VAVE's URL now serves V16 (FM-1_016). Per D012 the unit stays on V15. Confirm nothing in the plan assumes V16.
 Next: Step 0.3 — flash chip ID + full flash backup (Claude only prepares the procedure; the user runs every device command).
+
+2026-11-04 15:11 — Step 0.3 — Flash chip ID + full flash backup (prepare only)
+Status: partial (procedure ready; waiting for the user to run the device steps)
+Did:
+- Read HANDOFF (14:58 and 15:02 notes). Followed the 0xB36014 rule: the checklist stops after the ID read if the chip is 0xB36014.
+- Cloned into third_party/: MvaveFM1Unbricker (9b68a8282615329973cd0e42ea3a258225451648), m-flasher (55da95cc978e45d60d833a10edc3292c2a5918c2), and jl-uboot-tool at the unbricker's pinned commit adb3f18889e88ac512ce0a3c4d8cc3d3cb30696a into MvaveFM1Unbricker/jl-uboot-tool (wl82loader.bin sha256 d41da612…5376 matches the pin). Did not run the unbricker's `setup`.
+- Read fm1_unbrick.py (softkey, find, info, backup, the write gate), jl-uboot-tool jltech/uboot.py (command opcodes), m-flasher src/jl.rs, boards.rs, ops.rs, cli.rs, midi.rs, docs.
+- Installed jl-uboot-tool's requirements into .venv: crcmod 1.7, PyYAML 6.0.3, pycryptodomex 3.24.1, tqdm 4.70.1.
+- Built m-flasher 0.8.2 from source: `cargo build --release` OK in 7 min on Linux Mint 22.3, no extra system packages. Not run against hardware (only --version/--help).
+- Ran fm1_unbrick.py `find` (sysfs scan, no device) and `info`/`backup --dry-run` (tool's mock FM-1, no hardware) to confirm the expected output text.
+- Wrote tools/verify_backup.sh (compares two dumps, sha256, size check, V15 firmware-region check); tested on fake dumps (identical / 1-byte diff / short / missing).
+- Wrote docs/step-0.3-flash-backup.md: what each command sends, B36014 behaviour per tool, one-time prep, 10-step checklist with expected output and what to do when something is unexpected, optional M-Flasher cross-check.
+- Created backups/flash/.
+Learned / measured:
+- Soft key into ROM boot: F0 22 24 35 7D F7 over USB-MIDI (both tools use the same bytes). The unbricker asks the identity first and requires typing UBOOT; m-flasher's download-mode sends it without an identity check.
+- info/backup send only: SCSI INQUIRY, ROM READ_MEMORY 0xFD07, ROM WRITE_MEMORY 0xFB06 + JUMP 0xFB08 (loader into RAM), loader READ_KEY 0xFC09, GET_ONLINE_DEVICE 0xFC0A, GET_USB_BUFF_SIZE 0xFC14, READ_FLASH 0xFD05. Flash erase/write (0xFB00/01/02/04) are only reachable from restore and repair-settings.
+- Not verifiable from source: the firmware's soft-key handler and the RAM loader blobs (wl82loader.bin; m-flasher mflr-loader-a.bin sha256 ae0cdf4965cc2438a362e933ccf11d41159322d67f2dc630a61ab84cc58e04d7).
+- 0xB36014: fm1_unbrick.py accepts it (FLASH_IDS_OK); m-flasher lists it as FM-1 "UCUN UC25HQ80, in units sold from late 2026"; an FM-1 with 0xB36014 did not start after installing m-bootloader (m-flasher warning). The unbricker README says 0xB36014 units get locked into firmwares they can't update out of.
+- This laptop: /dev/sg0 = internal SSD (APPLE SSD SM0512), /dev/sg1 = SD card reader. sg driver is built in. No m-flasher udev rule installed yet.
+Hardware touched: none (no device command run; find only read sysfs)
+Questions for the planning chat:
+- If the ID is 0xB36014: both tools explicitly support reading it. Approve the backup (steps 6–8) for that case?
+- OK to install M-Flasher's udev rule (4c4a:8057 only, uaccess) so no third-party tool runs as root?
+- songs/amazing-grace/ is untracked; will be included in the next commit as asked (previews committed, not ignored, unless you prefer otherwise).
+Next: User runs docs/step-0.3-flash-backup.md steps 1–10 and pastes the output; then record chip key, flash ID and backup sha256 in docs/device.md and backups/SHA256SUMS.
+
+2026-11-04 15:32 — Step 0.3 — Flash chip ID + full flash backup (device steps run by the user)
+Status: done (off-laptop copies of the backup still to be made by the user; optional M-Flasher cross-check not done)
+Did:
+- User installed M-Flasher's udev rule (/etc/udev/rules.d/70-m-flasher.rules, identical to the reviewed file); /dev/sg2 then had an ACL for kjs, so no tool ran as root.
+- Claude Code ran only the read-only checks (fm1_install.py --info, fm1_unbrick.py find, lsusb, sysfs, dmesg) and tools/verify_backup.sh. The user ran softkey (3x), info (1x) and backup (2x) in the FM-1 backup terminal tab, one step at a time.
+- Recorded chip key, flash ID and backup sha256 in docs/device.md; added the dumps to backups/SHA256SUMS (sha256sum -c: all OK). Named copy: backups/flash/FM-1_015_full-flash_856014_2026-11-04.bin.
+- Updated docs/step-0.3-flash-backup.md with what went wrong (below).
+Learned / measured:
+- Chip key 0x980F, flash ID 0x856014 (Puya), device type 0x03, loader USB buffer 32768 bytes. The 0xB36014 stop rule did not apply.
+- Full flash sha256 794d72f01c293dc5d1c69ee4e54e4db956112bfe8734d0449fe4ea36e92f43f4 (1,048,576 B): 4 full reads in 2 separate ROM boot sessions, all identical.
+- Boot head 0x0000–0x3FFF sha256 d9f43191…bd67 = official V15 head.
+- Firmware region 0x4000–0x92FFF sha256 8c1d13a5934eb3c70a5fec644577618a31b2a96c8748a7b692c506a86505dbb1 is NOT the V15 package region (6edf3c37…): 0/143 sectors identical, 92.8 % of bytes differ, no constant XOR pattern. Cause unknown. Writing the package's region would not reproduce this unit's flash; the dump is the bit-exact way back.
+- Running `backup` right after `info` in the same ROM boot session fails: re-uploading the loader gives OSError Errno 19 in mem_write (RAM only); the unit then reset itself and booted V15 normally. One loader command per ROM boot session.
+- On this laptop (USB port 1-2) every connect has a first descriptor read timeout (error -110); the device appears ~15–20 s after plug-in or soft key, sometimes just past softkey's 15 s wait. Data was not affected.
+- ROM boot mode USB descriptor strings read "WL80UBOOT1.00"; SCSI inquiry reads "WL82 UBOOT1.00".
+- Each run also saves 512 B of retained RAM (sha256 cd1e8568…9163 both times, no Melodee crash record).
+Hardware touched: read-only by Claude Code. By the user: soft key into ROM boot (MIDI SysEx F0 22 24 35 7D F7) x3, RAM loader uploads x3 (info x1, backup x2), flash reads only; no flash write or erase. Unit ends on FM-1_015 [running].
+Questions for the planning chat:
+- Why does the on-flash firmware region differ from the V15 package's flash.bin? Does this change the "restore to stock = backups/stock-firmware/FM-1_015.fwsc" plan (HANDOFF 15:02)? Suggest: the full dump becomes the primary restore target.
+- Run the optional M-Flasher cross-check (independent loader; its analysis decrypts the firmware with the chip key and may explain the difference)?
+- Backup copies: repo backups/flash done; another disk and cloud are up to the user (will be noted in device.md when they say so).
+Next: Planning chat reviews Step 0.3. Pending on the user: two off-laptop copies of the backup.
