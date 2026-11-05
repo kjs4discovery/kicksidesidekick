@@ -12,7 +12,7 @@ credits:
 
 rights:
   composition: public domain        # basis: published long before 1931 (US rule of thumb)
-  arrangement_license: TBD          # open question; proposal: CC0-1.0
+  arrangement_license: TBD          # deferred (HANDOFF 2026-11-05 07:00)
   generated: make_amazing_grace.py  # D004: the notes come from a script, not a recording or a score
 
 music:

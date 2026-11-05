@@ -416,3 +416,20 @@ Questions for the planning chat:
 - Flash: 484 KB of ~581 KB used with 5 songs; more songs before step 1.7 would need smaller events (delta coding, deferred) or the data area.
 - I could not listen to anything (no audio here): the previews and the emulator audio are only checked by numbers.
 Next: the planning chat and the user review docs/step-M1-install.md; then the user runs it (steps 1-2), pasting output.
+
+2026-11-05 06:53 — Step M1 install (review received) —
+Status: done (review applied); install waiting for the user
+Did:
+- Read HANDOFF 2026-11-05 07:00: M1 approved; install checklist approved as written; optional step 3 skipped.
+- docs/step-M1-install.md: status set to APPROVED, step 3 marked SKIPPED. No other change.
+- Arrangement licence: all five songs (and make_songs.py) already said `arrangement_license: TBD`; removed the
+  "proposal: CC0-1.0" comment from songs/amazing-grace/song.yaml. Recompiled: byte-identical to
+  build/songs/amazing-grace.fm1s (sha256 a1d7659e…cf901), so the reviewed package is unchanged.
+Learned / measured:
+- Package still build/step-M1/fm1acc-0.2.0-m1.fwsc, sha256 bf8f640f8137efc278fa17f6bcd7c21791eb1adbd68a7b7299c22f851804ff25.
+- Noted for later: step 1.6 keeps the current bar's box bright for held chords; step 1.7 (songs in the data area,
+  fm1song send, delta coding) is next priority after M1 feedback; v1.x option: voicings from harmony:1 (step 1.10).
+Hardware touched: none
+Questions for the planning chat: none
+Next: the user runs step-M1-install.md steps 1–2, pasting each step's output; Claude Code reads (--info, lsusb,
+kernel log) between steps and records.

@@ -1,6 +1,7 @@
 # Milestone M1 — install on the FM-1 (checklist)
 
-**Status: PREPARED, WAITING FOR REVIEW** by the planning chat and the user. Nothing has been installed. Claude Code
+**Status: APPROVED as written** (planning chat, HANDOFF 2026-11-05 07:00): pre-flight P1–P7 accepted, optional
+step 3 **skipped**. The user runs steps 1–2. (Prepared while waiting for review; nothing had been installed.) Claude Code
 ran no device command while preparing it (the FM-1 was unplugged). **The user runs every device command**, one at
 a time, in their own terminal, pasting each step's output to Claude Code before the next.
 
@@ -115,7 +116,7 @@ to the known-good firmware:
 ```
 (`--info` → `FM-1_4600`), and report.
 
-### Step 3 (optional; the planning chat decides) — back to stock V15 from M1, then M1 again
+### Step 3 (optional) — SKIPPED (HANDOFF 2026-11-05 07:00) — back to stock V15 from M1, then M1 again
 
 Not needed to be safe: path A was proven from our firmware in Step 0.7 and the update code is identical (P3). It
 would prove it for this build too, at the cost of two more installs (~3 minutes):

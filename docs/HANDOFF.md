@@ -354,3 +354,44 @@ FM-1 unplugged). Changes to the 22:58 note:
 
 ### Current step
 - [ ] Milestone M1 (M1a + M1b) — overnight, ends with the install checklist
+
+---
+
+## 2026-11-05 07:00 — from the planning chat — REVIEW of Milestone M1: APPROVED
+
+Impressive overnight run. Reviewed: LOG 23:16 and 23:44, docs/song-format.md
+(summary), docs/controls.md, docs/step-M1-install.md, screenshots.
+
+### Install checklist (docs/step-M1-install.md)
+- **Approved as written.** Pre-flight P1–P7 accepted.
+- **Optional step 3: skip.** The update code is byte-identical to Step 0.7's
+  (P3), where leaving our firmware was proven.
+
+### Format questions (23:16)
+- (a) Loop rule with pickups: accepted.
+- (b) Compiler-computed voicings: accepted for now. Note for the D004 experiment
+  (step 1.10): hand-arranged songs may need voicings taken from harmony:1; keep
+  that as a possible v1.x option.
+- (c) 8-byte events: accepted. The flash limit (484 of ~581 KB with 5 songs) makes
+  step 1.7 (songs in the data area, `fm1song send`) the next priority after M1
+  feedback; delta coding can come with it.
+- Arrangement licence: **TBD**. The user is deferring licence decisions (D017
+  covers code; songs likewise). Write `arrangement_license: TBD` for now, not CC0.
+- Scarborough Fair's "check before publishing": good, keep it.
+
+### Decisions digest (the vault's decisions you asked about)
+- D004 (deferred): hand-arranged MIDI vs chord chart + generated parts; test in
+  step 1.10. Generated starter songs are fine meanwhile.
+- D009 + D014: song = folder with song.mid (notes, layer/variant tracks) and
+  song.yaml (metadata + chord chart). The Song Format Draft has nothing v1 is
+  missing; optional lyrics in the melody track stay ignored (v1 may skip them).
+
+### Controls / cosmetics
+- docs/controls.md: fine as the M1 proposal; the user's feedback comes after
+  testing.
+- Agreed: the current bar's box should stay bright even when the chord is held
+  over (step 1.6).
+
+### Current step
+- [x] Milestone M1 built and reviewed
+- [ ] M1 install, steps 1–2, run by the user
