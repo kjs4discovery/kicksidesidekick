@@ -1,9 +1,10 @@
 /* Licence: TBD (see D017) */
-/* The compiled song file (.fm1s, version 1.x; docs/song-format.md section 2): the device's parser.
+/* The compiled song file (.fm1s, versions 1.0 and 1.1; docs/song-format.md section 2): the device's parser.
  * Standalone C (no platform calls), so it is fuzzed on the laptop under ASan/UBSan (tools/song_fuzz.c).
  * song_open checks everything before anything else reads the file: every count, offset, tick and value has a bound,
  * the CRC must match, and the accessors below then never read outside the checked chunks. The file stays where it
- * is (the flash, read in place); struct song only points into it. The checks are the same as tools/fm1song's
+ * is (the flash, read in place); struct song only points into it, and into the caller's decode buffer, where a 1.1
+ * file's delta-coded event streams (EZ chunks) are decoded to the 8-byte records of 1.0. The checks are the same as tools/fm1song's
  * reader's (binformat.py read_compiled); tools/song_fuzz.c --diff compares the two. */
 #pragma once
 #include <stdint.h>
@@ -13,12 +14,15 @@
 #define SONG_MAX_SIZE (256u * 1024u)
 #define SONG_VOICING_NOTES 5u
 #define SONG_NO_CHORD 0xFFu               /* a chord's root for N.C. */
+#define SONG_EZ_EVENTS 8192u              /* 1.1: all EZ streams together, at most (the format's limit) */
+#define SONG_DECODE_BYTES (SONG_EZ_EVENTS * 8u)   /* a decode buffer this big opens any valid file */
 
 enum {
     SONG_OK = 0,
     SONG_E_SHORT = -1, SONG_E_MAGIC = -2, SONG_E_VERSION = -3, SONG_E_SIZE = -4, SONG_E_CRC = -5,
     SONG_E_HEADER = -6, SONG_E_DIR = -7, SONG_E_MISSING = -8, SONG_E_META = -9, SONG_E_SECT = -10,
     SONG_E_CHRD = -11, SONG_E_CEVT = -12, SONG_E_BARS = -13, SONG_E_LAYR = -14, SONG_E_EVENTS = -15,
+    SONG_E_ROOM = -16,                    /* the caller's decode buffer is too small (never for SONG_DECODE_BYTES) */
 };
 
 struct song_stream {
@@ -37,6 +41,7 @@ struct song_layer {
 struct song {
     const uint8_t *data;
     uint32_t size;
+    uint32_t minor;                       /* format version 1.minor */
     uint32_t ppq, beats_per_bar, bar_ticks, tempo_us, end_tick, bar_count, pickup_beats, swing;
     uint32_t start_tick;                  /* where playback starts: after the pickup bar's empty beats */
     uint32_t first_bar_number;            /* the number musicians read for bar index 0: 0 (a pickup) or 1 */
@@ -55,7 +60,9 @@ struct song_event {
 };
 
 int song_peek(struct song *s, const uint8_t *data, uint32_t size);   /* header and META only: for a list */
-int song_open(struct song *s, const uint8_t *data, uint32_t size);   /* everything: SONG_OK or SONG_E_* */
+/* everything: SONG_OK or SONG_E_*. buf (room bytes, 4-aligned) takes a 1.1 file's decoded events; it must stay put
+ * and unchanged while the song is in use. A 1.0 file needs none (buf may be 0) */
+int song_open(struct song *s, const uint8_t *data, uint32_t size, uint8_t *buf, uint32_t room);
 const char *song_error_name(int err);
 
 /* everything below needs a song that song_open accepted; indices are checked by the caller against the counts */

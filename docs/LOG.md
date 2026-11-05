@@ -511,3 +511,54 @@ Questions for the planning chat:
 - Item 11 changes what is written to the unit (songs in the data area): the hardware rules and the install
   checklist for that write need your review as before.
 Next: the user takes this entry to the planning chat; they write the M2 prompt.
+
+2026-11-05 11:10 — Milestone M2, Part 1 (songs outside the firmware; items 11, 18) —
+Status: done (emulator); committed; tested release build kept
+Did:
+- Read HANDOFF 10:10–10:40 and docs/plan-M2.md (one build, parts 1–5, early install point after part 2).
+- Format 1.1: event streams delta-coded in `EZ` chunks (docs/song-format.md 2.2); `fm1song compile` writes 1.1
+  (`--format 1.0` the M1 layout); the Python reader and the device parser (song.c) read both. The five songs: 113 KB
+  -> 45 KB (40 %).
+- The song store, firmware/app/store.c: 0x97000–0xDBFFF (69 sectors), one record per song (32-byte head written
+  last, its own CRC; older copy erased after the new one is whole; FULL refused before anything is erased; every
+  erase / write checked against the area). Laptop test tools/store_test.sh: ASan/UBSan, a simulated NOR flash, a
+  power cut at every operation of add / replace / replace-with-no-room / delete: ALL PASS.
+- firmware/app/library.c: the store on fm1-base's plat_data*, the list (by title), opening a song (record CRC +
+  song_open, events decoded into a 64 KiB RAM buffer, checked at first use, never at boot), and USB commands
+  LIST / SEND / DELETE (fm1-base APP_USB_CMD, the update's framing; the FM-1 pulls the file into RAM, checks CRC and
+  the whole song, then writes). Songs no longer in the image (tools/songs_to_c.py removed).
+- Laptop side: `tools/fm1song.sh list | send | delete` (tools/fm1song/device.py; finding the FM-1 and the framing
+  from fm1-base's vendored tools/fm1_install.py). It talks only to identity FM-1_46...
+- Emulator: tools/patches/fm1-emu-usb-host.patch (FM1_USB_HOST: a program plays the USB host in --bench runs).
+  tools/m1_test.py became tools/m2_test.py: songs are sent over emulated USB first, every run starts from that flash.
+- Screens: empty store -> "NO SONGS YET" + the send command; flash refused -> "NO SONG STORAGE"; a song that fails
+  its full check stays listed as "SONG ERROR <reason> (send it again)".
+Learned / measured:
+- Stock firmware never uses 0x97000–0xDFFFF (our dump: all 0xFF there; its data at 0x93000 and 0xE9000–0xFBFFF), so
+  the song area cannot disturb a return to stock.
+- Image 376,480 B (M1 484 KB); RAM .data+.bss 73,620 of 98,304; pool 215,048 of 344,064.
+- Emulator, release build build/step-M2/part1/fm1acc-0.2.1-m2p1.fwsc (identity FM-1_46000201, sha256
+  6e883b90adbd918358effb6640bf2c577b28e110cceeecffb13b6bd4a11a8a32): 96 checks ALL PASS
+  (build/step-M2/part1/report.md): all 5 songs sent in 2.7 s emulated (203 flash ops), stored byte for byte; list
+  writes nothing; empty store, junk in the area, a damaged stored song (SONG ERROR, the others play), two damaged files
+  sent unchecked (refused, nothing written), a stalled transfer (gave up, nothing written), power cuts at 6 points of
+  a send (the other 4 songs intact every time; sent again: stored); flash ids 856014 / b36014 same; unknown: NO SONG
+  STORAGE, keys sound, a send refused. Playback of every song from the store (v1.1 decoded): lengths within one
+  block, chords on screen 81–99 ms before the sound, at most 14 voices / 14 % CPU.
+- Fuzz (tools/song_fuzz.sh 600, seeds in 1.1 and 1.0): 10 minutes, 3,148,000 mutated files, 125,248 accepted, no ASan/UBSan report
+  (build/fuzz/fuzz-m2-600s.log).
+- Python tests: 65 pass (incl. the C/Python agreement on 3,000 mutated files of both versions).
+Choices (with reasons):
+- One record per song on whole sectors, head written last (not a FAT or a log of small blocks): the simplest layout
+  that survives a cut at any point; 69 sectors hold 28+ songs of our size.
+- The whole file into RAM before any write (64 KiB limit): the device checks the complete song, exactly as it will
+  play it, before touching the flash. Our songs are 6–12 KB.
+- A send stops the song playing and goes to the list: the file being played may be the one replaced.
+- Decoding 1.1 events into RAM at open (not on the fly): the player stays unchanged (binary search, loops, variant
+  switches). 8192 events at most, a format rule both readers check.
+- The test host is a patch to fm1-live (FM1_USB_HOST), kept in tools/patches like the flash-id patch.
+Hardware touched: none
+Questions for the planning chat:
+- `fm1song send` and `delete` write the FM-1's flash (the song area only). Add them to CLAUDE.md's list of commands
+  only the user runs? (I treat them so already: run only against the emulator.)
+Next: Part 2 (practice controls and fixes), then the early install checklist.

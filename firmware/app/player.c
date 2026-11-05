@@ -93,6 +93,7 @@ void player_loop(int mode, uint32_t from, uint32_t to)
 }
 
 int player_state(void) { return pub_state; }
+int player_idle(void) { return song_done == song_req && play_done == play_req; }
 uint32_t player_frames(void) { return frames; }
 uint32_t player_voices(void) { return voices_now; }
 uint32_t player_voices_max(void) { return voices_max; }

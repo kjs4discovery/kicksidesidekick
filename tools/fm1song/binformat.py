@@ -1,5 +1,7 @@
-# fm1song: the compiled song file (.fm1s), version 1.0: writer and checking reader. Licence: TBD (see D017)
+# fm1song: the compiled song file (.fm1s), versions 1.0 and 1.1: writer and checking reader. Licence: TBD (see D017)
 #
+# 1.1 (M2) stores each event stream delta-coded (chunk "EZ" + layer + variant) instead of 8-byte records ("EV..");
+# the device decodes them into RAM when it opens the song. The writer writes 1.1; the reader reads both.
 # Layout and limits: docs/song-format.md, "Compiled format". All numbers little-endian, every chunk 4-byte
 # aligned. The reader checks everything the device parser (firmware/app/song.c) checks, so a file this
 # reader accepts, the device accepts; tests/test_binformat.py keeps the two in step.
@@ -10,7 +12,8 @@ from .errors import Diagnostics
 from .source import LAYERS
 
 MAGIC = b"FM1S"
-VERSION = (1, 0)
+VERSION = (1, 1)                                         # what compile_song writes
+READS = (0, 1)                                           # the minor versions this reader takes
 HEADER = struct.Struct("<4sBBHII HBB I I HBB")          # 32 bytes
 DIRENT = struct.Struct("<4sII")                          # fourcc, offset, size
 MAX_FILE = 256 * 1024
@@ -23,7 +26,8 @@ BARS = struct.Struct("<HBB")                             # 4 bytes
 LAYR = struct.Struct("<BBBBBBH")                         # 8 bytes
 EVNT = struct.Struct("<IBBBB")                           # 8 bytes
 LIMITS = {"bars": 999, "sections": 32, "chords": 64, "chord_events": 2048, "events": 65535,
-          "voicing_notes": 5, "voicing_levels": 2}
+          "voicing_notes": 5, "voicing_levels": 2,
+          "ez_events": 8192}                             # all EZ streams together: 64 KiB decoded on the device
 LAYER_LETTER = "DBHM"                                    # event chunk "EV" + letter + variant digit
 STATUSES = (0x80, 0x90, 0xB0, 0xE0)
 NO_CHORD = 0xFF
@@ -43,8 +47,58 @@ def _pad(n):
     return (-n) % 4
 
 
-def compile_song(song):
-    """Song (from source.load_song) -> bytes. Deterministic: same song, same bytes."""
+def ez_encode(evs):
+    """an event stream, delta-coded (EZ chunk body): u32 count, then per event a first byte (bit 7: more delta
+    bytes follow, bit 6: data2 is 0 and left out, bits 5-4: the status 0x80 0x90 0xB0 0xE0, bits 3-0: the tick
+    delta's low 4 bits), up to 3 more delta bytes (7 bits each, low first, bit 7: another follows), data1, data2"""
+    out, last = bytearray(struct.pack("<I", len(evs))), 0
+    for t, st, a, b in evs:
+        dt, last = t - last, t
+        rest = dt >> 4
+        out.append((0x80 if rest else 0) | (0x40 if b == 0 else 0) | STATUSES.index(st) << 4 | (dt & 15))
+        while rest:
+            out.append((rest & 0x7F) | (0x80 if rest >> 7 else 0))
+            rest >>= 7
+        out.append(a)
+        if b:
+            out.append(b)
+    return bytes(out)
+
+
+def ez_decode(body, bad, where):
+    """an EZ chunk body -> [[tick, status, data1, data2]] (not yet range-checked: read_compiled does that)"""
+    if len(body) < 4:
+        bad("too short", where)
+    n, p, last, evs = struct.unpack_from("<I", body)[0], 4, 0, []
+    if n > LIMITS["events"]:
+        bad(f"{n} events", where)
+    for k in range(n):
+        if p >= len(body):
+            bad(f"event {k}: the chunk ends early", where)
+        first = body[p]
+        p += 1
+        dt, shift, more, extra = first & 15, 4, first & 0x80, 0
+        while more:
+            if p >= len(body) or extra == 3:
+                bad(f"event {k}: its tick delta is cut short or longer than 3 bytes", where)
+            dt |= (body[p] & 0x7F) << shift
+            more = body[p] & 0x80
+            p, shift, extra = p + 1, shift + 7, extra + 1
+        need = 1 if first & 0x40 else 2
+        if p + need > len(body):
+            bad(f"event {k}: the chunk ends early", where)
+        a, b = body[p], 0 if first & 0x40 else body[p + 1]
+        p += need
+        last += dt
+        evs.append([last, STATUSES[first >> 4 & 3], a, b])
+    if p != len(body):
+        bad(f"{len(body) - p} bytes after the last event", where)
+    return evs
+
+
+def compile_song(song, version=VERSION):
+    """Song (from source.load_song) -> bytes. Deterministic: same song, same bytes. version (1, 0): the M1 layout
+    (8-byte event records), for tests and old devices."""
     chunks = []
     chunks.append((b"META", META.pack(song.key_root, song.key_mode, 0, _cstr(song.slug, 24),
                                       _cstr(song.title, 32), _cstr(song.key_name, 16))))
@@ -78,8 +132,12 @@ def compile_song(song):
         ly = song.layers.get(name)
         for var in sorted(ly.variants) if ly else []:
             evs = ly.variants[var]
-            body = struct.pack("<I", len(evs)) + b"".join(EVNT.pack(t, s, a, b, 0) for t, s, a, b in evs)
-            chunks.append((b"EV" + LAYER_LETTER[li].encode() + str(var).encode(), body))
+            tag = LAYER_LETTER[li].encode() + str(var).encode()
+            if version >= (1, 1):
+                chunks.append((b"EZ" + tag, ez_encode(evs)))
+            else:
+                body = struct.pack("<I", len(evs)) + b"".join(EVNT.pack(t, s, a, b, 0) for t, s, a, b in evs)
+                chunks.append((b"EV" + tag, body))
 
     offset = HEADER.size + DIRENT.size * len(chunks)
     directory, payload = b"", b""
@@ -88,7 +146,7 @@ def compile_song(song):
         payload += body + bytes(_pad(len(body)))
     total = offset + len(payload)
     flags = 1 if song.swing else 0
-    head = HEADER.pack(MAGIC, *VERSION, len(chunks), total, 0, song.ppq, song.beats_per_bar, song.beat_unit,
+    head = HEADER.pack(MAGIC, *version, len(chunks), total, 0, song.ppq, song.beats_per_bar, song.beat_unit,
                        song.tempo_us, song.end_tick, song.bar_count, song.pickup_beats, flags)
     blob = head + directory + payload
     crc = zlib.crc32(blob)
@@ -121,8 +179,8 @@ def read_compiled(blob, diag=None):
      flags) = HEADER.unpack_from(blob)
     if magic != MAGIC:
         bad(f"magic {magic!r}, expected {MAGIC!r}", "header")
-    if vmaj != VERSION[0]:
-        bad(f"format version {vmaj}.{vmin}; this reader reads {VERSION[0]}.x", "header")
+    if vmaj != VERSION[0] or vmin not in READS:
+        bad(f"format version {vmaj}.{vmin}; this reader reads {VERSION[0]}.0 and {VERSION[0]}.1", "header")
     if size != len(blob) or size > MAX_FILE:
         bad(f"header says {size} bytes, the file has {len(blob)} (max {MAX_FILE})", "header")
     if crc != zlib.crc32(blob[:12] + bytes(4) + blob[16:]):
@@ -229,6 +287,7 @@ def read_compiled(blob, diag=None):
     if len(layr) != 4 + len(LAYERS) * LAYR.size or layr[0] != len(LAYERS):
         bad("needs exactly 4 layers", "LAYR")
     out["layers"] = {}
+    ez_total = 0
     for li, name in enumerate(LAYERS):
         chan, prog, nvar, vol, pan, lfl, _ = LAYR.unpack_from(layr, 4 + li * LAYR.size)
         if nvar == 0:
@@ -239,16 +298,27 @@ def read_compiled(blob, diag=None):
             bad(f"{name} out of range", "LAYR")
         variants = {}
         for v in range(1, nvar + 1):
-            fourcc = b"EV" + LAYER_LETTER[li].encode() + str(v).encode()
-            evb = chunk(fourcc)
-            if len(evb) < 4:
-                bad("too short", fourcc.decode())
-            n = struct.unpack_from("<I", evb)[0]
-            if n > LIMITS["events"] or len(evb) != 4 + n * EVNT.size:
-                bad(f"{n} events in {len(evb)} bytes", fourcc.decode())
+            tag = LAYER_LETTER[li].encode() + str(v).encode()
+            fourcc, ez = b"EV" + tag, b"EZ" + tag in chunks
+            if ez and (fourcc in chunks or vmin < 1):
+                bad(f"{(b'EZ' + tag).decode()}: needs version 1.1, and no {fourcc.decode()} beside it", "directory")
+            if ez:
+                fourcc = b"EZ" + tag
+                raw = ez_decode(chunk(fourcc), bad, fourcc.decode())
+                ez_total += len(raw)
+                if ez_total > LIMITS["ez_events"]:
+                    bad(f"more than {LIMITS['ez_events']} events in all EZ streams together", fourcc.decode())
+                raw = [(t, st, a, b2, 0) for t, st, a, b2 in raw]
+            else:
+                evb = chunk(fourcc)
+                if len(evb) < 4:
+                    bad("too short", fourcc.decode())
+                n = struct.unpack_from("<I", evb)[0]
+                if n > LIMITS["events"] or len(evb) != 4 + n * EVNT.size:
+                    bad(f"{n} events in {len(evb)} bytes", fourcc.decode())
+                raw = [EVNT.unpack_from(evb, 4 + k * EVNT.size) for k in range(n)]
             evs, last = [], 0
-            for k in range(n):
-                tick, st, a, b2, r = EVNT.unpack_from(evb, 4 + k * EVNT.size)
+            for k, (tick, st, a, b2, r) in enumerate(raw):
                 if tick < last or tick > end_tick or st not in STATUSES or a > 127 or b2 > 127 or r \
                         or st == 0x90 and (b2 == 0 or tick >= end_tick):
                     bad(f"event {k} (tick {tick}, status 0x{st:02x}) out of range or not in order", fourcc.decode())
@@ -260,5 +330,6 @@ def read_compiled(blob, diag=None):
     if not out["layers"]:
         bad("no layers", "LAYR")
     known = {b"META", b"SECT", b"CHRD", b"CEVT", b"BARS", b"LAYR"}
-    out["unknown_chunks"] = sorted(c.decode("latin-1") for c in chunks if c not in known and not c.startswith(b"EV"))
+    out["unknown_chunks"] = sorted(c.decode("latin-1") for c in chunks
+                                   if c not in known and not c.startswith(b"EV") and not c.startswith(b"EZ"))
     return out

@@ -1,0 +1,88 @@
+diff --git a/crates/fm1-live/src/main.rs b/crates/fm1-live/src/main.rs
+index 2e881b3..f60bef7 100644
+--- a/crates/fm1-live/src/main.rs
++++ b/crates/fm1-live/src/main.rs
+@@ -302,12 +302,70 @@ fn high_priority() {
+     }
+ }
+ 
++/// fm1-accompaniment patch: FM1_USB_HOST='COMMAND' (with --usb and --bench): a program on this computer plays the
++/// USB host's part. It gets each MIDI message the device sends as one line of hex on its stdin, and every line of
++/// hex it prints goes to the device over USB. The run ends 300 ms (emulated) after it exits.
++struct UsbHost {
++    child: std::process::Child,
++    stdin: Option<std::process::ChildStdin>,
++    rx: mpsc::Receiver<Vec<u8>>,
++    done_at: Option<u64>,
++}
++
++impl UsbHost {
++    fn start() -> Option<UsbHost> {
++        use std::io::BufRead;
++        let cmd = std::env::var("FM1_USB_HOST").ok()?;
++        let mut child = std::process::Command::new("sh").arg("-c").arg(&cmd)
++            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).spawn()
++            .unwrap_or_else(|e| { eprintln!("FM1_USB_HOST: {e}"); std::process::exit(1) });
++        let out = child.stdout.take().unwrap();
++        let (tx, rx) = mpsc::channel();
++        std::thread::spawn(move || {
++            for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
++                let hex: String = line.chars().filter(|c| c.is_ascii_hexdigit()).collect();
++                let bytes: Vec<u8> = (0..hex.len() / 2).filter_map(|i| u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok()).collect();
++                if !bytes.is_empty() && tx.send(bytes).is_err() {
++                    break;
++                }
++            }
++        });
++        let stdin = child.stdin.take();
++        Some(UsbHost { child, stdin, rx, done_at: None })
++    }
++
++    /// the messages both ways; true once the program has exited and its 300 ms are up
++    fn service(&mut self, m: &mut Machine) -> bool {
++        use std::io::Write;
++        while let Ok(msg) = self.rx.try_recv() {
++            m.soc.usb.midi_send(&msg);
++        }
++        let _ = m.soc.usb.events.drain(..).count();
++        for msg in m.soc.usb.midi_take() {
++            if let Some(w) = self.stdin.as_mut() {
++                if writeln!(w, "{}", msg.iter().map(|b| format!("{b:02x}")).collect::<String>()).and_then(|_| w.flush()).is_err() {
++                    self.stdin = None;
++                }
++            }
++        }
++        let now = m.soc.periph.ms();
++        if self.done_at.is_none() && matches!(self.child.try_wait(), Ok(Some(_))) {
++            self.done_at = Some(now + 300);
++            while let Ok(msg) = self.rx.try_recv() {
++                m.soc.usb.midi_send(&msg);
++            }
++        }
++        self.done_at.is_some_and(|t| now >= t)
++    }
++}
++
+ fn bench(o: &Opts, ms: u64) {
+     let mut m = match Machine::new(o) {
+         Ok(m) => m,
+         Err(e) => { eprintln!("cannot read {}: {e}", o.bin); std::process::exit(1); },
+     };
+     usb_audio_arm(&mut m);
++    let mut usb_host = UsbHost::start();
+     if std::env::var("FM1_BENCH_NOKEYS").is_ok() {
+         m.soc.periph.script.clear();
+     } else if script_keys(&mut m) {
+@@ -352,6 +410,12 @@ fn bench(o: &Opts, ms: u64) {
+             std::process::exit(1);
+         }
+         insns += 100_000;
++        if let Some(h) = usb_host.as_mut() {
++            if h.service(&mut m) {
++                println!("usb host: exited at {} ms", m.soc.periph.ms());
++                break;
++            }
++        }
+         if let Some(c1) = m.cpu1.as_mut() {
+             c1.profile = m.cpu.profile;
+         }

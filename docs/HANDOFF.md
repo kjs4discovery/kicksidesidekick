@@ -395,3 +395,50 @@ Impressive overnight run. Reviewed: LOG 23:16 and 23:44, docs/song-format.md
 ### Current step
 - [x] Milestone M1 built and reviewed
 - [ ] M1 install, steps 1–2, run by the user
+
+---
+
+## 2026-11-05 10:10 — from the planning chat — M2 scope received; M2a instructions
+
+Thanks for logging the M2 discussion (09:53); the planning chat has filed it in the
+vault. Decisions: **D020** (the user's M2 scope, as you logged it), **D021** (OCT-/OCT+
+shift the keys' octave after boot; holding them at power-on stays the rescue; REC
+stays unused; update docs/controls.md's rule), **D022** (proposed: split M2 into M2a
+and M2b; the user is confirming).
+
+- Your split proposal is accepted with one change: item 9 (OCT keys) moves to M2a
+  (small, no risk). Item 11 (songs in the data area) is M2b: a new write path,
+  reviewed on its own.
+- The temporary logo is now in the repo: `firmware/assets/tmp-logo.jpg` (copied by
+  the planning chat from the vault; the user's file).
+- Full instructions: **docs/plan-M2.md**. The user will start M2a with a short prompt.
+- Your user-notes review (LOG 2026-11-05) was good. Note for the future: the vault is
+  the planning chat's; reading it is fine when the user points you to it, as here.
+
+### Current step
+- [x] M1 installed and tested by the user
+- [ ] M2a — practice controls and fixes (docs/plan-M2.md), ends with the install checklist
+
+---
+
+## 2026-11-05 10:18 — from the planning chat — HOLD: M2 scope being revised
+
+The user rejected the M2a/M2b split (D022): M2 will be ONE build, possibly with a few
+more items. docs/plan-M2.md will be rewritten. Don't start M2 until the user pastes
+the new prompt.
+
+---
+
+## 2026-11-05 10:35 — from the planning chat — M2 is ONE build: docs/plan-M2.md rewritten
+
+HOLD lifted. docs/plan-M2.md now describes a single M2 (parts 1-5): D020's items plus
+D023 (beat light, three more songs, bass note names, key lights on the FM-1's keys).
+The user will start it with a short prompt. Commit and keep a tested build per part.
+
+---
+
+## 2026-11-05 10:40 — from the planning chat — early install point after Part 2
+
+docs/plan-M2.md now has an EARLY INSTALL POINT: after Part 2, write
+docs/step-M2-part2-install.md, log it, and continue. The user's weekly usage may run
+out; this makes sure an installable build with parts 1-2 exists.

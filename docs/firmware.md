@@ -1,10 +1,33 @@
 # Our firmware
 
-**On the FM-1 now: the Step 0.7 prototype (v0.1.0-proto, FM-1_4600), installed by the user (docs/device.md).**
-M1's firmware (v0.2.0-m1, below) has run in the emulator only; its install checklist is
-[step-M1-install.md](step-M1-install.md) (waiting for review).
+**On the FM-1 now: M1, v0.2.0-m1 (FM-1_46000200), installed by the user 2026-11-05 (docs/device.md).**
+M2 (below) is being built in parts, emulator only; each part's tested release build is kept in `build/step-M2/`.
 
-## Milestone M1: song list, player, play screen (v0.2.0-m1, identity FM-1_4600)
+## Milestone M2 (v0.3.0-m2; part builds 0.2.1-m2p1 = FM-1_46000201, ...)
+
+Plan: docs/plan-M2.md (D020, D023). Controls: [controls.md](controls.md).
+
+### Part 1: songs outside the firmware (items 11, 18)
+
+| File | What |
+|---|---|
+| `firmware/app/store.c/.h` | the song store in the flash data area, 0x97000–0xDBFFF: records written head last, older copies erased after, every erase / write checked against the area (docs/song-format.md 4). Standalone C: `make store-test` runs it on a simulated flash with a power cut at every operation |
+| `firmware/app/library.c` | the store on fm1-base's `plat_data*`; the song list (by title); opening a song (the full check, its events decoded into a 64 KiB RAM buffer); the USB commands LIST / SEND / DELETE (fm1-base `APP_USB_CMD`, the update's framing and read requests) |
+| `firmware/app/song.c` | reads format 1.1 too: `EZ` chunks (delta-coded events) decoded at open |
+| `tools/fm1song/device.py`, `fm1song send / list / delete` | the laptop side; talks only to our firmware (identity `FM-1_46…`) |
+| `tools/patches/fm1-emu-usb-host.patch` | fm1-live `FM1_USB_HOST='CMD'`: a program plays the USB host in `--bench` runs (the tests' `fm1song send --emu-pipe`) |
+| `tools/m2_test.py` (`make m2-test`), `tools/m2_host.py` | the emulator tests: the store, every song, flash ids |
+
+- **No songs in the image**: 376 KB (M1: 484 KB with 113 KB of songs). The five songs are 45 KB in format 1.1.
+- **RAM**: .data+.bss 73.6 of 96 KB; pool 215 of 336 KB (the receive buffer and the decode buffer, 64 KiB each, and
+  the list's 64 song headers).
+- **Boot never reads a song**: the store is scanned when the list is first drawn; a song is checked in full when
+  opened. Empty store: the list says how to send songs. The platform refused the flash chip: `NO SONG STORAGE`.
+- **A send** (`fm1song send`): the laptop compiles and checks each song first; the FM-1 stops playing, goes to the
+  list, pulls the whole file into RAM (512-byte reads), checks its CRC and runs `song_open` on it, and only then
+  writes it (store.c). Sending a song that is there already replaces it (same slug).
+
+## Milestone M1: song list, player, play screen (v0.2.0-m1, identity FM-1_46000200)
 
 Plays the five starter songs (`songs/`, format `fm1-song/1`, docs/song-format.md) with our own scheduler.
 Controls: [controls.md](controls.md).
@@ -15,8 +38,8 @@ Controls: [controls.md](controls.md).
 | `firmware/app/player.c/.h` | the player (D017: our code): per-block scheduler, mutes, variants, tempo, count-in, loops; stats in RAM for the tests |
 | `firmware/app/ui.c` | song list and play screen (simple; step 1.6 designs the real ones) |
 | `firmware/app/synth.c` | EAS behind a queue; one MIDI stream for the song and the keys; calls `player_block` before each render |
-| `tools/songs_to_c.py` | build step (`fm1.toml gen`): compiles every song folder and writes `build/gen/songs_gen.h` |
-| `tools/m1_test.py` | headless emulator tests (`make m1-test`): [step-M1-emulator-report.md](step-M1-emulator-report.md) |
+| `tools/songs_to_c.py` | build step (`fm1.toml gen`): compiles every song folder and writes `build/gen/songs_gen.h` (removed in M2; in git at 0bc7c88) |
+| `tools/m1_test.py` | headless emulator tests (`make m1-test`): [step-M1-emulator-report.md](step-M1-emulator-report.md) (became tools/m2_test.py) |
 
 How it works:
 - **Songs in the build.** The compiled `.fm1s` files are `const` arrays in the app image (the flash, read in

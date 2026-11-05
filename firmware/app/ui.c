@@ -10,7 +10,9 @@
 #include "synth.h"
 #include "player.h"
 #include "song.h"
-#include "songs_gen.h"
+
+static void ui_busy(const char *a, const char *b);
+#include "library.c"
 
 #define KEY_LOW 53                       /* key 0 is F3 (plat.h) */
 #define VELOCITY 100u
@@ -40,9 +42,6 @@ static const char *const LAYER_NAME[SONG_LAYERS] = {"DRUMS", "BASS", "HARMONY", 
 static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "MELODY"};
 static const char *const LOOP_NAME[] = {"", "LOOP SONG", "LOOP SECT"};
 
-static struct song songs[SONG_FILES_N];
-static int8_t song_ok[SONG_FILES_N];     /* 0 not looked at, 1 peeked (list), 2 opened, < 0 the error */
-
 static struct {
     int screen;                          /* 0 list, 1 play */
     uint32_t sel, top;                   /* the list's cursor and first row */
@@ -54,6 +53,7 @@ static struct {
     uint32_t msg_until;
     uint8_t flash_ok;
     uint8_t redraw;
+    uint32_t lib_seen;                   /* library.c lib_changes when the screen was last set up */
     /* what is on the screen */
     int32_t sh_chord, sh_count, sh_next, sh_left, sh_bar, sh_beat, sh_strip, sh_layers, sh_section;
     int sh_state;
@@ -203,17 +203,14 @@ static void set_loop(int mode)
 /* ------------------------------------------------------------------------ input --- */
 static void open_song(uint32_t i)
 {
-    int r;
-    if (song_ok[i] != 2) {               /* checked at first use, not at boot */
-        r = song_open(&songs[i], SONG_FILES[i].data, SONG_FILES[i].size);
-        song_ok[i] = (int8_t)(r ? r : 2);
-        if (r) {
-            app_say("SONG ERROR", song_error_name(r));
-            ui.sh_list = 0xFFFFFFFFu;
-            return;
-        }
+    const struct song *s;
+    int r = lib_open(i, &s);             /* checked in full at first use, not at boot */
+    if (r) {
+        app_say("SONG ERROR", song_error_name(r));
+        ui.sh_list = 0xFFFFFFFFu;
+        return;
     }
-    ui.s = &songs[i];
+    ui.s = s;
     ui.muted = 0;
     ui.loop = LOOP_OFF;
     player_load(ui.s);
@@ -250,12 +247,12 @@ static void lights(void)
 
 static void input_list(uint32_t down)
 {
-    int32_t d = plat_enc(EN_SELECT);
-    if (d) {
+    int32_t d = plat_enc(EN_SELECT), n = (int32_t)lib_count();
+    if (d && n) {
         int32_t s = (int32_t)ui.sel + d;
-        ui.sel = (uint32_t)clamp(s, 0, (int32_t)SONG_FILES_N - 1);
+        ui.sel = (uint32_t)clamp(s, 0, n - 1);
     }
-    if ((down >> B_PLAY & 1u) || (down >> B_EDIT & 1u))
+    if (((down >> B_PLAY & 1u) || (down >> B_EDIT & 1u)) && ui.sel < (uint32_t)n)
         open_song(ui.sel);
 }
 
@@ -346,27 +343,46 @@ static void draw_list_top(void)
     cv_blit(0, Y_TOP);
 }
 
+/* nothing to list: why, and what to do (no crash, no blank screen) */
+static void draw_list_empty(void)
+{
+    cv_begin(240, 240 - H_TOP, C_BLACK);
+    if (lib_state < 0) {
+        text_in(0, 240, 30, &FONT_B, "NO SONG STORAGE", C_AMB);
+        text_in(0, 240, 60, &FONT_XS, "The flash chip is not usable", C_GRAY);
+        text_in(0, 240, 76, &FONT_XS, "(RAM ONLY): songs cannot be kept.", C_GRAY);
+    } else {
+        text_in(0, 240, 24, &FONT_B, "NO SONGS YET", C_WHITE);
+        text_in(0, 240, 56, &FONT_XS, "Send songs from the computer,", C_GRAY);
+        text_in(0, 240, 72, &FONT_XS, "with this FM-1 on USB:", C_GRAY);
+        text_in(0, 240, 98, &FONT_XS, "tools/fm1song.sh send songs/*", C_HI);
+        text_in(0, 240, 130, &FONT_XS, "They stay here when it is off.", C_DIM);
+    }
+    cv_blit(0, H_TOP);
+}
+
 static void draw_list(void)
 {
-    uint32_t r;
+    uint32_t r, n = lib_count();
     if (ui.sel < ui.top)
         ui.top = ui.sel;
     if (ui.sel >= ui.top + LIST_ROWS)
         ui.top = ui.sel - LIST_ROWS + 1u;
     draw_list_top();
+    if (!n) {
+        draw_list_empty();
+        return;
+    }
     for (r = 0; r < LIST_ROWS; r++) {
         uint32_t i = ui.top + r;
         int sel = i == ui.sel;
         cv_begin(240, LIST_ROW_H, C_BLACK);
-        if (i < SONG_FILES_N) {
-            struct song *s = &songs[i];
-            if (!song_ok[i]) {
-                int e = song_peek(s, SONG_FILES[i].data, SONG_FILES[i].size);
-                song_ok[i] = (int8_t)(e ? e : 1);
-            }
+        if (i < n) {
+            int err;
+            const struct song *s = lib_peek(i, &err);
             if (sel)
                 cv_rect(2, 1, 236, LIST_ROW_H - 2, C_LINE);
-            if (song_ok[i] > 0) {
+            if (s) {
                 char t[40] = "";
                 text_cat(t, s->key);
                 text_cat(t, "   ");
@@ -377,11 +393,15 @@ static void draw_list(void)
                 cv_text(10, 2, &FONT_B, s->title, sel ? C_WHITE : C_GRAY);
                 cv_text(10, 19, &FONT_XS, t, sel ? C_HI : C_DIM);
             } else {
-                char t[32] = "SONG ";
-                num_cat(t, i + 1u);
-                text_cat(t, ": ERROR ");
-                text_cat(t, song_error_name(song_ok[i]));
-                cv_text(10, 12, &FONT_XS, t, C_AMB);
+                char t[48] = "";
+                const struct song *pk = &peeked[order[i]];
+                text_cat(t, peek_err[order[i]] ? "(unreadable song)" : pk->title);
+                cv_text(10, 2, &FONT_B, t, sel ? C_WHITE : C_GRAY);
+                t[0] = 0;
+                text_cat(t, "SONG ERROR: ");
+                text_cat(t, song_error_name(err));
+                text_cat(t, "  (send it again)");
+                cv_text(10, 19, &FONT_XS, t, C_AMB);
             }
         }
         cv_blit(0, H_TOP + (int32_t)r * LIST_ROW_H);
@@ -662,6 +682,19 @@ static void frame_play(uint32_t now)
     ui.sh_state = st;
 }
 
+/* a message over the whole screen, drawn now (the main loop is busy: a song arriving over USB) */
+static void ui_busy(const char *a, const char *b)
+{
+    lcd_fill(0, 0, 240, 240, C_BLACK);
+    cv_begin(240, 80, C_BLACK);
+    text_in(0, 240, 14, &FONT_B, a, C_WHITE);
+    text_in(0, 240, 46, &FONT_XS, b, C_GRAY);
+    cv_blit(0, 80);
+    lcd_done();
+    ui.screen = 0;
+    ui.redraw = 1;
+}
+
 void app_ui_init(void)
 {
     ui.flash_ok = plat_data(PLAT_DATA_LO) != 0;   /* 0: the platform refused the chip (fm1-base main_fm1.c) */
@@ -673,6 +706,12 @@ void app_ui_init(void)
 void app_frame(void)
 {
     uint32_t now = plat_ms();
+    if (ui.lib_seen != lib_changes) {     /* songs sent or deleted: back to the list, from the top */
+        ui.lib_seen = lib_changes;
+        ui.screen = 0;
+        ui.sel = ui.top = 0;
+        ui.redraw = 1;
+    }
     input();
     ann_tick(now);
     if (ui.screen == 0) {

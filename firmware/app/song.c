@@ -64,8 +64,9 @@ static int header(struct song *s, const uint8_t *d, uint32_t n)
         return SONG_E_SHORT;
     if (d[0] != 'F' || d[1] != 'M' || d[2] != '1' || d[3] != 'S')
         return SONG_E_MAGIC;
-    if (d[4] != 1u)
+    if (d[4] != 1u || d[5] > 1u)
         return SONG_E_VERSION;
+    s->minor = d[5];
     s->size = u32(d + 8);
     if (s->size != n || s->size > SONG_MAX_SIZE)
         return SONG_E_SIZE;
@@ -240,15 +241,10 @@ static int bars(struct song *s)
     return SONG_OK;
 }
 
-static int events(const struct song *s, const uint8_t *c, uint32_t len, struct song_stream *st)
+/* a stream's 8-byte records, in the file (1.0) or decoded (1.1): every event in range and in order */
+static int events_ok(const struct song *s, const struct song_stream *st)
 {
     uint32_t i, last = 0;
-    if (!c || len < 4u)
-        return SONG_E_EVENTS;
-    st->count = u32(c);
-    if (st->count > MAX_EVENTS || len != 4u + st->count * EVNT_REC)
-        return SONG_E_EVENTS;
-    st->ev = c + 4;
     for (i = 0; i < st->count; i++) {
         const uint8_t *e = st->ev + i * EVNT_REC;
         uint32_t tick = u32(e), status = e[4];
@@ -261,10 +257,77 @@ static int events(const struct song *s, const uint8_t *c, uint32_t len, struct s
     return SONG_OK;
 }
 
-static int layers(struct song *s)
+static int events(const struct song *s, const uint8_t *c, uint32_t len, struct song_stream *st)
+{
+    if (!c || len < 4u)
+        return SONG_E_EVENTS;
+    st->count = u32(c);
+    if (st->count > MAX_EVENTS || len != 4u + st->count * EVNT_REC)
+        return SONG_E_EVENTS;
+    st->ev = c + 4;
+    return events_ok(s, st);
+}
+
+/* 1.1: an EZ chunk decoded into buf + *used (docs/song-format.md 2.2): per event a first byte (bit 7 more delta
+ * bytes, bit 6 data2 left out, bits 5-4 the status, bits 3-0 the delta's low bits), at most 3 more delta bytes,
+ * data1, data2. The delta never takes the tick past end_tick (so no overflow); the chunk is used up exactly. */
+static int ez_events(const struct song *s, const uint8_t *c, uint32_t len, struct song_stream *st, uint8_t *buf,
+                     uint32_t room, uint32_t *used)
+{
+    static const uint8_t STATUS[4] = {0x80u, 0x90u, 0xB0u, 0xE0u};
+    uint32_t n, p = 4, k, last = 0;
+    uint8_t *o;
+    if (!c || len < 4u)
+        return SONG_E_EVENTS;
+    n = u32(c);
+    if (n > MAX_EVENTS || n > SONG_EZ_EVENTS - *used / EVNT_REC)
+        return SONG_E_EVENTS;
+    if (!buf || n * EVNT_REC > room - *used)
+        return SONG_E_ROOM;
+    o = buf + *used;
+    for (k = 0; k < n; k++) {
+        uint32_t first, dt, more, shift = 4, extra = 0, need;
+        uint8_t *e = o + k * EVNT_REC;
+        if (p >= len)
+            return SONG_E_EVENTS;
+        first = c[p++];
+        dt = first & 15u;
+        more = first & 0x80u;
+        while (more) {
+            if (p >= len || extra == 3u)
+                return SONG_E_EVENTS;
+            dt |= (uint32_t)(c[p] & 0x7Fu) << shift;
+            more = c[p] & 0x80u;
+            p++;
+            shift += 7u;
+            extra++;
+        }
+        need = (first & 0x40u) ? 1u : 2u;
+        if (need > len - p || dt > s->end_tick - last)
+            return SONG_E_EVENTS;
+        last += dt;
+        e[0] = (uint8_t)last;
+        e[1] = (uint8_t)(last >> 8);
+        e[2] = (uint8_t)(last >> 16);
+        e[3] = (uint8_t)(last >> 24);
+        e[4] = STATUS[first >> 4 & 3u];
+        e[5] = c[p];
+        e[6] = need == 2u ? c[p + 1u] : 0;
+        e[7] = 0;
+        p += need;
+    }
+    if (p != len)
+        return SONG_E_EVENTS;
+    st->ev = o;
+    st->count = n;
+    *used += n * EVNT_REC;
+    return events_ok(s, st);
+}
+
+static int layers(struct song *s, uint8_t *buf, uint32_t room)
 {
     static const char LETTER[SONG_LAYERS] = {'D', 'B', 'H', 'M'};
-    uint32_t len, l, v, any = 0;
+    uint32_t len, l, v, any = 0, used = 0;
     const uint8_t *c = chunk(s, fourcc("LAYR"), &len);
     if (!c || len != 4u + SONG_LAYERS * LAYR_REC || c[0] != SONG_LAYERS)
         return SONG_E_LAYR;
@@ -285,10 +348,13 @@ static int layers(struct song *s)
             (ly->program > 127u && ly->program != 0xFFu))
             return SONG_E_LAYR;
         for (v = 0; v < ly->variants; v++) {
-            char id[4] = {'E', 'V', LETTER[l], (char)('1' + v)};
-            uint32_t elen;
-            const uint8_t *e = chunk(s, fourcc(id), &elen);
-            int r2 = events(s, e, elen, &ly->var[v]);
+            char id[4] = {'E', 'V', LETTER[l], (char)('1' + v)}, zid[4] = {'E', 'Z', LETTER[l], (char)('1' + v)};
+            uint32_t elen, zlen;
+            const uint8_t *e = chunk(s, fourcc(id), &elen), *z = chunk(s, fourcc(zid), &zlen);
+            int r2;
+            if (z && (e || s->minor < 1u))
+                return SONG_E_EVENTS;     /* EZ: 1.1 only, and never beside its EV */
+            r2 = z ? ez_events(s, z, zlen, &ly->var[v], buf, room, &used) : events(s, e, elen, &ly->var[v]);
             if (r2)
                 return r2;
         }
@@ -297,7 +363,7 @@ static int layers(struct song *s)
     return any ? SONG_OK : SONG_E_LAYR;
 }
 
-int song_open(struct song *s, const uint8_t *data, uint32_t size)
+int song_open(struct song *s, const uint8_t *data, uint32_t size, uint8_t *buf, uint32_t room)
 {
     int r;
     static const uint8_t zero[4] = {0, 0, 0, 0};
@@ -311,7 +377,7 @@ int song_open(struct song *s, const uint8_t *data, uint32_t size)
     if (!dir_ok(s))
         return SONG_E_DIR;
     if ((r = meta(s)) || (r = sections(s)) || (r = chords(s)) || (r = chord_events(s)) || (r = bars(s)) ||
-        (r = layers(s))) {
+        (r = layers(s, buf, room))) {
         s->opened = 0;
         return r;
     }
@@ -322,8 +388,9 @@ int song_open(struct song *s, const uint8_t *data, uint32_t size)
 const char *song_error_name(int err)
 {
     static const char *const N[] = {"OK", "SHORT", "MAGIC", "VERSION", "SIZE", "CRC", "HEADER", "DIRECTORY",
-                                    "MISSING", "META", "SECTIONS", "CHORDS", "CHANGES", "BARS", "LAYERS", "EVENTS"};
-    return err <= 0 && err >= SONG_E_EVENTS ? N[-err] : "?";
+                                    "MISSING", "META", "SECTIONS", "CHORDS", "CHANGES", "BARS", "LAYERS", "EVENTS",
+                                    "TOO BIG"};
+    return err <= 0 && err >= SONG_E_ROOM ? N[-err] : "?";
 }
 
 /* ------------------------------------------------------------------------ accessors --- */

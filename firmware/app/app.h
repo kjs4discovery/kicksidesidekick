@@ -6,7 +6,7 @@
 #include "plat.h"
 
 #define APP_NAME "FM-1 Accompaniment"
-#define FW_VERSION "0.2.0-m1"            /* ours; APP_VERSION is fm1-base's build tag ("DEV", or a release's) */
+#define FW_VERSION "0.3.0-m2"            /* ours; APP_VERSION is fm1-base's build tag ("DEV", or a release's) */
 #define APP_SPLASH_RGB RGB(64, 160, 220)
 #define APP_BLOCK 256u                   /* frames per audio block: 5.8 ms at 44.1 kHz; one EAS buffer (synth.h) */
 
@@ -22,3 +22,7 @@ void app_ui_init(void);                  /* the first screen, after the splash *
 void app_frame(void);                    /* the UI: input and a redraw, about 60 times a second */
 void app_input_only(void);               /* between frames: input only */
 void app_say(const char *a, const char *b);   /* a short message on the screen and to a screen reader */
+#ifndef PLAT_HOST
+#define APP_USB_CMD                      /* the laptop's song commands (library.c: fm1song send / list / delete) */
+void app_usb_cmd(const uint8_t *d, uint32_t n);
+#endif

@@ -4,7 +4,7 @@
 #   load_song(folder)          -> (Song, Diagnostics)     raises SongError
 #   compile_song(song)         -> bytes (.fm1s)
 #   read_compiled(bytes)       -> dict (checked like the device parser does)
-#   compile_folder(folder)     -> (bytes, Diagnostics)
+#   compile_folder(folder)     -> (bytes, Diagnostics)   (version=(1, 0): the M1 layout)
 # The command line is fm1song.cli (tools/fm1song.sh).
 from .binformat import compile_song, read_compiled
 from .errors import Diagnostic, Diagnostics, SongError
@@ -14,8 +14,8 @@ __all__ = ["compile_song", "read_compiled", "load_song", "song_from_data", "comp
            "Diagnostic", "Diagnostics", "SongError", "FORMAT", "LAYERS"]
 
 
-def compile_folder(folder):
+def compile_folder(folder, version=None):
     song, diag = load_song(folder)
-    blob = compile_song(song)
+    blob = compile_song(song) if version is None else compile_song(song, version)
     read_compiled(blob)                     # never write a file the device would refuse
     return blob, diag

@@ -5,7 +5,8 @@
  *                                      the ones the parser accepts; any out-of-bounds read or UB aborts
  *   song_fuzz --diff FILE...           print "<rc> FILE" per file: tools/fm1song's tests compare it with the
  *                                      Python reader (the two must accept and refuse the same files)
- * Each mutated file is a malloc of exactly its size, so a read one byte past it is caught. */
+ * Each mutated file is a malloc of exactly its size, so a read one byte past it is caught; so is the decode buffer.
+ * Seeds: v1.1 files (delta-coded events) and v1.0 files (8-byte events), so both readers are fuzzed. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,6 +104,7 @@ static uint8_t *mutate(const uint8_t *src, uint32_t n, uint32_t *out_n)
 }
 
 static volatile uint32_t sink;
+static uint8_t *dec;                    /* the decode buffer: exactly SONG_DECODE_BYTES (malloc), so ASan sees overruns */
 
 static void walk(const struct song *s)
 {
@@ -139,13 +141,14 @@ int main(int argc, char **argv)
     struct song s;
     uint8_t *seed[16];
     uint32_t seed_n[16], nseeds = 0, i;
-    unsigned long long runs = 0, accepted = 0, per_err[16] = {0};
+    unsigned long long runs = 0, accepted = 0, per_err[17] = {0};
     time_t until;
+    dec = malloc(SONG_DECODE_BYTES);
     if (argc >= 3 && !strcmp(argv[1], "--diff")) {
         for (i = 2; i < (uint32_t)argc; i++) {
             uint32_t n;
             uint8_t *d = load(argv[i], &n);
-            int r = d ? song_open(&s, d, n) : -99;
+            int r = d ? song_open(&s, d, n, dec, SONG_DECODE_BYTES) : -99;
             if (r == SONG_OK)
                 walk(&s);
             printf("%d %s\n", r, argv[i]);
@@ -159,7 +162,7 @@ int main(int argc, char **argv)
     }
     for (i = 2; i < (uint32_t)argc && nseeds < 16; i++) {
         seed[nseeds] = load(argv[i], &seed_n[nseeds]);
-        if (!seed[nseeds] || song_open(&s, seed[nseeds], seed_n[nseeds]) != SONG_OK) {
+        if (!seed[nseeds] || song_open(&s, seed[nseeds], seed_n[nseeds], dec, SONG_DECODE_BYTES) != SONG_OK) {
             fprintf(stderr, "%s: not a valid seed\n", argv[i]);
             return 2;
         }
@@ -175,22 +178,23 @@ int main(int argc, char **argv)
             int r;
             if (rnd(4))                   /* mostly past the CRC, into the structure checks */
                 fix_crc(d, n);
-            r = song_open(&s, d, n);
+            r = song_open(&s, d, n, dec, SONG_DECODE_BYTES);
             if (r == SONG_OK) {
                 accepted++;
                 walk(&s);
             }
-            per_err[-r < 16 && r <= 0 ? -r : 15]++;
+            per_err[-r <= 16 && r <= 0 ? -r : 16]++;
             runs++;
             free(d);
         }
     }
     printf("song_fuzz: %llu files, %llu accepted, by result:", runs, accepted);
-    for (i = 0; i < 16; i++)
+    for (i = 0; i < 17; i++)
         if (per_err[i])
             printf(" %s %llu", song_error_name(-(int)i), per_err[i]);
     printf("\n");
     for (i = 0; i < nseeds; i++)
         free(seed[i]);
+    free(dec);
     return 0;
 }

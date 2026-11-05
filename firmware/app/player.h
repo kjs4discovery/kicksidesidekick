@@ -27,6 +27,7 @@ void player_tempo(uint32_t pct);          /* PL_TEMPO_MIN..PL_TEMPO_MAX */
 void player_count_in(int on);
 void player_loop(int mode, uint32_t from, uint32_t to);   /* ticks; LOOP_OFF ignores them */
 int player_state(void);
+int player_idle(void);                    /* the audio interrupt has taken every request (load, play) made so far */
 int32_t player_tick(uint32_t lead_ms);    /* the position after the last rendered block, plus lead_ms (negative in
                                            * the count-in), with a loop's jump already applied */
 uint32_t player_frames(void);             /* audio frames rendered since start-up */
