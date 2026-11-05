@@ -469,3 +469,45 @@ Questions for the planning chat:
 - Change key was Phase 2 ("transpose"); the user wants it in M2.
 - Splash logo costs flash (~90 KB as raw RGB565 at ~200x226); with 484/581 KB used it needs compression or step 1.7.
 Next: the planning chat and the user settle the M2 scope; then the M2 prompt.
+
+2026-11-05 09:53 — M2 scope: the user's decisions (for the planning chat) —
+Status: done (decisions recorded); M2 not started, the planning chat and the user write the M2 prompt
+Did:
+- Proposed an M2 list from the user's M1 notes (entry above); the user decided in the Claude Code chat (they took
+  it for the planning chat). Decisions, in the user's words where given:
+Decided by the user — IN M2:
+  1. Tempo in BPM, not %, with a much wider range (proposal: about 30–250 BPM, 1 BPM a detent, faster when
+     turned quickly).
+  2. Tempo starts at the song's own BPM on every song (not kept from the previous song).
+  3. Boot splash visible at least 3 s with the temporary logo (vault tmpLogo-sm.jpg). User: "feel free to really
+     compress the logo image. its just a tmp placeholder." Keep it easy to replace.
+  4. Louder count-in click.
+  5. Section looping that can be found on screen, with a clear way to choose the section; plus start from a section.
+  6. No dimming of held-over chords in the bar strip (confirms the reading of the user's note: the rolling strip is
+     enough). Replaces the 07:00 note's "keep the current box bright".
+  7. Four Chords crackle: check (instrument vs clipping) and fix, e.g. another melody instrument.
+  8. Change key (transpose) live: whole band except drums, chord names re-spelled for the new key, ranges kept
+     comfortable. Moved from Phase 2 into M2.
+  9. OCT− / OCT+ shift the octave of the keys the user plays. The user approves using them after boot; the
+     power-on rescue (holding them at start-up) must keep working. docs/controls.md's "REC, OCT−, OCT+ stay free"
+     rule changes accordingly (REC stays free).
+ 10. Rhythm cue next to the chord: a note symbol showing when / how long to play at the chosen level (e.g. whole
+     note at L1, blinking quarter at L2), shown also when the layer is muted.
+ 11. Songs stored outside the firmware, sent from the laptop (step 1.7). User: if this second song location works,
+     ALL songs move out of the firmware, saving flash.
+ 12. Keyboard view (the current chord's keys) and the optional chart view (step 1.6).
+ 13. Pause / resume (continue from the same place instead of always from the top).
+ 15. Loop any bars (A–B loop), not only sections; designed together with item 5.
+ 18. Smaller song files (delta coding), with item 11.
+Decided by the user — NOT in M2: 14 metronome click during playback; 16 speed trainer (tempo up a little each
+  loop); 17 remember settings on SAVE; 19 HOME asks before stopping.
+Later (not M2): L1 vs L2 drums too alike in most songs: song design, with the D004 experiment (step 1.10).
+Learned / measured:
+- Flash now 484 of ~581 KB; moving all songs out (~113 KB) leaves room for the compressed logo and new code.
+Hardware touched: none
+Questions for the planning chat:
+- Proposal from Claude Code (not decided): split M2 like M1: M2a = items 1–7, 13, 15 + an on-unit test;
+  M2b = items 8–12, 18 + an on-unit test. Twelve-plus items in one run is a lot of new screens and controls.
+- Item 11 changes what is written to the unit (songs in the data area): the hardware rules and the install
+  checklist for that write need your review as before.
+Next: the user takes this entry to the planning chat; they write the M2 prompt.
