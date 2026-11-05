@@ -52,7 +52,8 @@ int player_loop_of(uint32_t *from, uint32_t *to);
 #define PL_STATS_TEMPOS 64u
 struct player_stats {
     uint32_t magic;                       /* PL_STATS_MAGIC */
-    uint32_t version;                     /* 3 (M2: tempo_pct is BPM; the fields after chord_drawn; part 3 the last 9) */
+    uint32_t version;                     /* 4 (M2 3: tempo_pct is BPM, the fields after chord_drawn; M3 4: the fields
+                                           * after view) */
     uint32_t blocks, render_max, budget;  /* blocks while playing; the longest EAS render and one block's time (ticks24) */
     uint32_t starts, start_frames;        /* PLAY presses that started, the frame count at the last */
     uint32_t ends, end_frames;            /* the song reached its end; the frame count then */
@@ -87,6 +88,10 @@ struct player_stats {
     uint32_t note_on_last[SONG_LAYERS];   /* the last note-on sent per layer (the note as sent, transposed) */
     uint32_t lit_keys, dim_keys;          /* the key lights (ui.c): bit k = key k (F3 = 0) */
     uint32_t view;                        /* the play screen's view (ui.c): 0 chord, 1 keyboard, 2 chart */
+    /* version 4 (M3) */
+    uint32_t part;                        /* your part (ui.c): the layer followed, 0xFF: none muted */
+    uint32_t key_flashes;                 /* the key lights' bright flashes (an attack of your part) */
+    uint32_t mid_keys;                    /* the key lights between attacks (ui.c) */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

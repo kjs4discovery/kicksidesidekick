@@ -722,3 +722,46 @@ Questions for the planning chat:
   - In the read-only list: "`tools/fm1song.sh list` (a SysEx question that writes nothing)".
   Until then Claude Code keeps treating all three as user-run.
 Next: Part 2 ("follow your part" for all four layers, blinking in rhythm, the cue on the right).
+
+2026-11-05 18:35 — Milestone M3, Part 2 ("follow your part", blinking in rhythm) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "Part 2"; mock-ups first: tools/mock_m3.py → docs/step-M3/mock-p2-*.png):
+- **Your part** is the muted layer. The top line (`BASS - YOURS`), the layers row (YOURS, double frame), the big name,
+  the next name, the strip, the keyboard and chart views, the rhythm cue and the key lights all follow it:
+  - harmony: chords, as before;
+  - bass: the note with its octave, the next note, the chord; the bars' bass notes;
+  - melody: the same for the melody;
+  - drums: the hit now and next (KICK, SNARE, + HAT); each bar as a small grid (kick, snare, cymbals, others). No
+    keyboard view for drums (EDIT skips it) and no key lights.
+  This fixes Part 1 item 3 (bass muted, the screen showed the harmony).
+- **Several muted:** the one muted last is followed; unmute it and the one muted before takes over. M2's
+  harmony-wins rule is gone. Each part remembers its last view.
+- **Key lights blink in your part's rhythm, at its level:** bright for 140 ms at each attack, middle brightness
+  between (fm1-base plat_lights_mid). The harmony's next chord stays dim in the last bar before it. The keyboard
+  view does the same in colour (bright amber, then darker amber).
+- **Rhythm cue** always shown, right of the big name, half M2's height (note head 11 x 9, stem 24), no level label.
+- Player stats version 4 (part, key_flashes, mid_keys) for the tests.
+Learned / measured:
+- tools/m3_test.py --only part1,part2 on the release build: ALL PASS (13 checks).
+  - Harmony muted: Amazing Grace L1 3 flashes for 3 attacks, L2 7 for 7.
+  - Bass muted (Danny Boy): one key lit, the bass note now.
+  - Melody muted: 8 flashes for 8 notes.
+  - Drums muted: no key lights, EDIT goes to the chart.
+  - Harmony then bass muted: bass followed; bass on again: harmony.
+  - None muted: keys dark, the cue shown.
+- The full per-song run on Amazing Grace and Danny Boy: every chord on screen 81–99 ms before its sound (the new
+  drawing code keeps the timing).
+- Release build build/step-M3/part2/fm1acc-0.3.2-m3p2.fwsc: FM-1_46000302, sha256
+  cdb0c7f09c5333d22fa1810787a1778b64c7dab9abed6fe88f8a1f4b816301f6. Image 398,172 B (+2.7 KB).
+Choices (with reasons):
+- Several muted: the last muted is your part. It needs no new control, it is visible (YOURS), and it is easy to
+  change (mute the one you want last). Recorded for the planning chat.
+- "Darker between attacks" uses fm1-base's middle LED level for the keys. M2's middle level was not visible as a
+  110 ms PLAY flash; held between attacks it may read better. If not, the user can turn blinking off (Part 4
+  setting) for steady keys.
+- Bass notes below C3 are drawn an octave (or more) up in the keyboard view, and it says so. Part 4's zoomed
+  keyboard follows the notes instead.
+Hardware touched: none
+Questions for the planning chat:
+- "Last muted is your part": OK, or do you want an explicit control?
+Next: Part 3 (loops redesigned: bars A–B only, set and confirm, highlighted bars).

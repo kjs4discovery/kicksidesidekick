@@ -51,6 +51,7 @@ RATE = 44100
 BLOCK = 256
 OPEN_MS, PLAY_MS = 3400, 4600                  # after the splash (3 s): open the song, then PLAY
 STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIIIi4I3I")   # PL_STATS_TEMPOS 64
+STATS4 = struct.Struct("<3I")                  # version 4 (M3): part, key_flashes, mid_keys
 FIELDS = ("magic version blocks render_max budget starts start_frames ends end_frames last_tick loops loop_from "
           "loop_to ntempo").split()
 FIELDS2 = ("start_from start_tick pauses pause_frames pause_tick bpm clicks click_peak_vel key_note_last keys_octave "
@@ -141,7 +142,7 @@ def records(path):
 
 def stats(ram):
     i = ram.find(b"PLST")
-    while i >= 0 and struct.unpack_from("<I", ram, i + 4)[0] != 3:
+    while i >= 0 and struct.unpack_from("<I", ram, i + 4)[0] not in (3, 4):
         i = ram.find(b"PLST", i + 1)
     if i < 0:
         return None
@@ -161,6 +162,9 @@ def stats(ram):
     s.update(zip(FIELDS2, v[p:p + len(FIELDS2)]))
     p += len(FIELDS2)
     s["note_on_last"], (s["lit_keys"], s["dim_keys"], s["view"]) = v[p:p + 4], v[p + 4:p + 7]
+    s["part"], s["key_flashes"], s["mid_keys"] = 0xFF, 0, 0
+    if s["version"] >= 4:
+        s["part"], s["key_flashes"], s["mid_keys"] = STATS4.unpack_from(ram, i + STATS.size)
     return s
 
 
@@ -744,7 +748,87 @@ def test_part1(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS = {"part1": test_part1}
+def attacks(c, layer, var, t0, t1):
+    """the layer's attack ticks (note-on ticks, once each) in t0 <= tick < t1"""
+    return sorted({e[0] for e in c["layers"][layer]["variants"][var] if e[1] == 144 and t0 <= e[0] < t1})
+
+
+def last_attack_notes(c, layer, var, tick):
+    """the notes of the layer's last attack at or before tick"""
+    ev = [e for e in c["layers"][layer]["variants"][var] if e[1] == 144 and e[0] <= tick]
+    if not ev:
+        return []
+    a = max(e[0] for e in ev)
+    return [e[2] for e in ev if e[0] == a]
+
+
+def test_part2(all_songs, rep):
+    """M3 part 2: follow your part (all four layers), blinking key lights, the cue always shown"""
+    lines, st, check = checker("Part 2: follow your part")
+    slugs = [c["slug"] for c in all_songs]
+    g, d, sa = slugs.index("amazing-grace"), slugs.index("danny-boy"), slugs.index("saints")
+    cg, cd = all_songs[g], all_songs[d]
+    lead = lambda c, ms: int(ms / 1000 * c["ppq"] * own_bpm(c) / 60)
+    # the harmony muted: the keys blink, bright at each of its attacks (Amazing Grace, L1: held chords; L2: waltz)
+    for lvl in (1, 2):
+        sc = open_song(g) + press(OPEN_MS + 200, "ENV") + ([f"{OPEN_MS + 300}:e4:1"] if lvl == 2 else []) \
+            + press(PLAY_MS, "PLAY")
+        r = run(f"p2-harm-blink{lvl}", PLAY_MS + 9000, sc)
+        s = r["stats"]
+        want = attacks(cg, "harmony", lvl, s["start_from"], s["last_tick"] + lead(cg, 30))
+        check(s["part"] == 2 and abs(s["key_flashes"] - len(want)) <= 1 and (s["lit_keys"] or s["mid_keys"]),
+              f"harmony muted, L{lvl}: your part = harmony; the key lights flashed {s['key_flashes']} times for "
+              f"{len(want)} attacks of the harmony at L{lvl} (bright at each, darker between: lit {s['lit_keys']:#x}, "
+              f"between {s['mid_keys']:#x})")
+    # the bass muted (Danny Boy): the screen, the views and the lights follow the bass
+    base = open_song(d) + press(OPEN_MS + 200, "SCL") + press(OPEN_MS + 300, "ARP")
+    r = run("p2-bass", PLAY_MS + 7000, base + press(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    note = min(last_attack_notes(cd, "bass", 1, s["last_tick"] + lead(cd, 30)) or [0])
+    keys = s["lit_keys"] | s["mid_keys"]
+    check(s["part"] == 1 and keys == key_bits([note]) and s["dim_keys"] == 0,
+          f"bass muted: your part = bass; one key lit, its note now ({note}: bits {keys:#x}); the chord view shows the "
+          f"bass note, its next, the bars' bass notes (p2-bass.png)")
+    run("p2-bass-keys", PLAY_MS + 7000, base + press(OPEN_MS + 500, "EDIT") + press(PLAY_MS, "PLAY"))
+    run("p2-bass-chart", PLAY_MS + 7000, base + press(OPEN_MS + 500, "EDIT") + press(OPEN_MS + 700, "EDIT")
+        + press(PLAY_MS, "PLAY"))
+    # the melody muted (Amazing Grace)
+    base = open_song(g) + press(OPEN_MS + 200, "LFO") + press(OPEN_MS + 300, "ARP")
+    r = run("p2-melody", PLAY_MS + 7000, base + press(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    note = max(last_attack_notes(cg, "melody", 1, s["last_tick"] + lead(cg, 30)) or [0])
+    keys = s["lit_keys"] | s["mid_keys"]
+    want = attacks(cg, "melody", 1, s["start_from"], s["last_tick"] + lead(cg, 30))
+    check(s["part"] == 3 and keys == key_bits([note]) and abs(s["key_flashes"] - len(want)) <= 1,
+          f"melody muted: your part = melody; its note's key lit ({note}), {s['key_flashes']} flashes for "
+          f"{len(want)} melody notes (p2-melody.png)")
+    run("p2-melody-keys", PLAY_MS + 7000, base + press(OPEN_MS + 500, "EDIT") + press(PLAY_MS, "PLAY"))
+    # the drums muted (Saints): no key lights; the drum names and the bars' hits
+    base = open_song(sa) + press(OPEN_MS + 200, "FX") + press(OPEN_MS + 300, "ARP")
+    r = run("p2-drums", PLAY_MS + 5000, base + press(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    r2 = run("p2-drums-chart", PLAY_MS + 5000, base + press(OPEN_MS + 500, "EDIT") + press(PLAY_MS, "PLAY"))
+    check(s["part"] == 0 and not (s["lit_keys"] | s["mid_keys"] | s["dim_keys"]) and r2["stats"]["view"] == 2,
+          "drums muted: your part = drums; no key lights; EDIT skips the keyboard view (to the chart: the bars' hits) "
+          "(p2-drums.png, p2-drums-chart.png)")
+    # several muted: the last one muted; unmuted again: the one before
+    r = run("p2-two", PLAY_MS + 3000, open_song(g) + press(OPEN_MS + 200, "ENV") + press(OPEN_MS + 400, "SCL")
+            + press(PLAY_MS, "PLAY"))
+    r2 = run("p2-two-back", PLAY_MS + 3000, open_song(g) + press(OPEN_MS + 200, "ENV") + press(OPEN_MS + 400, "SCL")
+             + press(OPEN_MS + 600, "SCL") + press(PLAY_MS, "PLAY"))
+    check(r["stats"]["part"] == 1 and r2["stats"]["part"] == 2,
+          "harmony muted, then bass: your part = bass (the last muted; p2-two.png: YOURS on BASS, MUTE on HARM); the "
+          "bass on again: the harmony")
+    # none muted: the cue is shown (harmony's), the keys stay dark
+    r = run("p2-none", PLAY_MS + 5000, open_song(g) + press(OPEN_MS + 300, "ARP") + press(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    check(s["part"] == 0xFF and not (s["lit_keys"] | s["mid_keys"]), "nothing muted: no part of yours, the keys dark; "
+          "the rhythm cue still shown, right of the chord (p2-none.png)")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS = {"part1": test_part1, "part2": test_part2}
 
 
 def main():

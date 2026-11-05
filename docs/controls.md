@@ -126,3 +126,32 @@ That is a proposal (plan-M2 G asked for one): one rule for the rhythm cue and th
   does.
 
 ![count-in over the keyboard view](step-M3/p1-keys-countin.png) ![one A, one B](step-M3/p1-loop-marks.png)
+
+### Part 2: "follow your part" (all four layers), blinking in rhythm
+
+- **Your part** is the muted layer. The top line says so (`BASS - YOURS`), and its box in the layers row says
+  YOURS with a double frame. The screen, the rhythm cue, the key lights and the views (EDIT) follow it:
+  - **harmony:** the chord (as before);
+  - **bass:** the bass note with its octave, the next note, the chord under it; the strip and chart show each bar's
+    bass notes;
+  - **melody:** the melody note, the next one, the chord; the bars' notes;
+  - **drums:** the hit now (KICK, SNARE, ...; another sound of the same hit under the next), the next hit; the strip
+    and chart show each bar as a small grid (kick, snare, cymbals, others). Drums have no keyboard view: EDIT skips
+    it.
+- **Several muted (proposal):** your part is the one muted last. Unmute it and the one muted before takes over. No
+  extra control is needed, and the YOURS box shows which one is followed. The M2 "harmony wins" rule is gone.
+- **Nothing muted:** the harmony is shown as before (with its cue), and the keys stay dark.
+- **Key lights:** your part's keys flash bright at each of its attacks at its level, and stay at the middle
+  brightness between attacks. The harmony's next chord is dim in the last bar before it. Drums: no key lights (the
+  beat light is enough). The keyboard view does the same: bright amber at an attack, darker amber between, the next
+  outlined.
+- **Rhythm cue:** always shown (not only when muted), right of the big name, half its M2 height, no level label (the
+  layers row has the level).
+- Each part remembers its last view (EDIT).
+
+Mock-ups (drawn first): ![harmony](step-M3/mock-p2-harmony.png) ![bass](step-M3/mock-p2-bass.png)
+![melody](step-M3/mock-p2-melody.png) ![drums](step-M3/mock-p2-drums.png) ![keys between attacks](step-M3/mock-p2-keys-blink.png)
+
+Built (emulator): ![bass](step-M3/p2-bass.png) ![bass, keyboard](step-M3/p2-bass-keys.png)
+![bass, chart](step-M3/p2-bass-chart.png) ![melody](step-M3/p2-melody.png) ![drums](step-M3/p2-drums.png)
+![two muted](step-M3/p2-two.png) ![none muted: the cue](step-M3/p2-none.png)
