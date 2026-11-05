@@ -75,6 +75,21 @@ What the dump contains (tool analysis + offline comparison, 2026-11-04):
   bit-exact way back.
 - 64 KiB blocks with data: 0x00000–0x9FFFF and 0xE0000–0xFFFFF. 638,285 of 1,048,576 bytes are not 0xFF.
 
+## USB for writes (Step 0.7 pre-flight P2)
+
+Tested 2026-11-04, read-only (kernel log, `lsusb`, `fm1_install.py --info`), unit on stock FM-1_015, running:
+
+| Port | Cable | Plugged → found | `-110` | `--info` |
+|---|---|---|---|---|
+| 1-2 | old | 327.3 s → 343.2 s | yes, once | FM-1_015 [running] |
+| 1-1 | old | 3769.5 s → 3785.7 s | yes, once | FM-1_015 [running] |
+| 1-2 | new | 4329.1 s → 4345.3 s | yes, once | FM-1_015 [running] |
+
+Every connect: one `device descriptor read/64, error -110`, then the device ~16 s after plugging in, then normal.
+Same on two ports and two cables, and in ROM boot mode (Step 0.3): the unit's own USB start-up, not the port or
+cable. **Accepted by the user 2026-11-04** for writes: port **1-2**, the **new cable**. A second `-110` or more
+than ~25 s to appear = stop.
+
 ## Restore options (D015, accepted 2026-11-04)
 
 1. **Normal return to stock:** install `backups/stock-firmware/FM-1_015.fwsc` through the

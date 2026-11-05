@@ -13,7 +13,7 @@ Prepared 2026-11-04 by Claude Code. Sources for every claim are given inline (fi
 | # | Check | State | Evidence / what is missing |
 |---|---|---|---|
 | P1 | Off-laptop backup copies recorded in `docs/device.md` | ✅ (one copy) | Recorded 2026-11-04: one off-laptop copy on the user's USB thumb drive (kept unplugged), checked by the user; Claude Code did not re-read its sha256. **No cloud copy** (`docs/device.md` asks for three copies: the repo, another disk, cloud). The user chose to go ahead with this one copy; the planning chat may still want the cloud copy before step 1. |
-| P2 | A USB port + cable that enumerates cleanly | ❌ | Read 2026-11-04 (this boot): the FM-1 is on port **1-2** again, and the kernel logged `usb 1-2: device descriptor read/64, error -110`, then the device ~15 s later (`[327.3]` → `[343.2]`). Port 1-2 must not be used for a write. Test below (P2 procedure). |
+| P2 | A USB port + cable that enumerates cleanly | ✅ (accepted by the user) | Not met as written: every try shows one `device descriptor read/64, error -110` and ~16 s to enumerate (port 1-2 old cable, port 1-1 old cable, port 1-2 new cable; `docs/device.md`, "USB for writes"). Same on two ports and two cables, so it is the unit's own USB start-up; it always recovers, and the installer waits 30 s / 40 s for the two re-enumerations (`fm1_install.py:42-44`). **The user accepted this (option a), 2026-11-04.** Use port **1-2** with the **new cable**. A *second* `-110`, or more than 25 s to appear, during any step = stop. |
 | P3 | Restore per D015 ready | ✅ | See "Restore paths". The normal path back to stock needs **no override flag**: the installer we use accepts the unmodified official V15 by its sha256 (`firmware/vendor/fm1-base/bsp/tools/fm1_install.py:36-38,377-381`; ours `db1642b2…` = its `STOCK_V15_SHA256`). Our app's update code stages M-VAVE's V15 package (host test, below). |
 | P4 | Round-trip community firmware accepts 0x856014 (app and loader) | ✅ | **Felucca 1.8.1** (identity FM-1_918). App: `firmware/src/project.c:1195` at tag v1.8.1 (f4df296): `flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u` (else RAM-only). Loader: Felucca's own `firmware/loader/ldr_core.c` (same tag) has **no** flash-ID check: it checks the package (board, chip key 0x980F, CRC16) and writes only the app area 0x4000–0x92FFF (lines 10–22, 113–132). So 0x856014 is accepted by both. |
 | P5 | Our prototype `.fwsc`: commit + sha256 of the build that passed Part A | ✅ | Commit `8bc977e`, `firmware/app/build/fm1acc.fwsc` sha256 `58be4537be314bf463dc828c919b18675c2626d01be5a01724560b3cc760d54f`, identity **FM-1_4600**, v0.1.0-proto. Emulator report: `docs/step-0.7-emulator-report.md` (all PASS). Copy kept as `build/step-0.7/fm1acc-proto-0.1.0.fwsc` (+ `.sha256`). |
@@ -84,7 +84,8 @@ boot area, so the test's stock-only rule does not apply; irrelevant here.)
 ## Rules for every step
 
 - **The user runs every command.** Claude Code only reads (`--info`, `lsusb`, `dmesg`) and records.
-- Use only the port + cable from P2. Laptop on mains power. Do not touch the FM-1 or the cable during a write.
+- Use only the port + cable from P2 (port 1-2, the new cable). Expect one `-110` and ~16 s at each
+  (re)connect; that is this unit. Laptop on mains power. Do not touch the FM-1 or the cable during a write.
 - **One install command per update.** After each, run `--info` before anything else.
 - **One loader command per ROM boot session** (ROM boot = the chip's download mode, USB `4c4a:8057`,
   "WL82 UBOOT1.00"): enter it, run exactly one of `fm1_unbrick.py info | backup | restore` or

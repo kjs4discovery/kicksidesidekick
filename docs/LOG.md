@@ -320,3 +320,13 @@ Hardware touched: read-only
 Questions for the planning chat:
 - P2 asks for no -110. With this unit that seems impossible on this laptop (two ports, two cables, always ~16 s). Options: (a) accept it as this unit's behaviour, since it always recovers and the installer's 30/40 s waits cover it; (b) try a powered USB hub or another computer first. Recommendation: (b) once if a hub is at hand, else (a), recorded in device.md.
 Next: the planning chat decides P2; then the review of docs/step-0.7-first-writes.md; then the user runs steps 1-5.
+
+2026-11-04 20:30 — Step 0.7 (addendum) — P2 decided
+Status: partial (pre-flight complete; checklist WAITING FOR REVIEW by the planning chat and the user; no device write)
+Did:
+- The user chose option (a): accept the single -110 and ~16 s enumeration as this unit's behaviour. Recorded in docs/device.md ("USB for writes") and as P2 ✅ (accepted by the user) in docs/step-0.7-first-writes.md: port 1-2, the new cable; a second -110 or more than ~25 s to appear during a step = stop.
+Learned / measured: none new
+Hardware touched: none
+Questions for the planning chat:
+- Please confirm P2 (a) and P1 (one off-laptop copy, no cloud) in the review, plus the open questions of the 19:59 entry (Felucca 1.8.1 vs 1.7.0, which Felucca setting to test, the 80 ms chord lead).
+Next: the planning chat and the user review docs/step-0.7-first-writes.md; then the user runs steps 1-5.
