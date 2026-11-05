@@ -1,7 +1,8 @@
-# Step 0.7 — First writes to the FM-1 (checklist, prepared only)
+# Step 0.7 — First writes to the FM-1 (checklist)
 
-**Status: WAITING FOR REVIEW.** Nothing in this file has been run on the FM-1. The planning chat and the
-user review it together first; then **the user runs every device command**, one at a time, in this order.
+**Status: APPROVED** by the planning chat with the user (HANDOFF 2026-11-04 20:40), with the rules it added
+below. **The user runs every device command**, one at a time, in this order, pasting each step's output to
+Claude Code before starting the next.
 Claude Code ran only read-only commands (`lsusb`, kernel log) while preparing it.
 
 Prepared 2026-11-04 by Claude Code. Sources for every claim are given inline (file:line at a pinned commit).
@@ -19,7 +20,7 @@ Prepared 2026-11-04 by Claude Code. Sources for every claim are given inline (fi
 | P5 | Our prototype `.fwsc`: commit + sha256 of the build that passed Part A | ✅ | Commit `8bc977e`, `firmware/app/build/fm1acc.fwsc` sha256 `58be4537be314bf463dc828c919b18675c2626d01be5a01724560b3cc760d54f`, identity **FM-1_4600**, v0.1.0-proto. Emulator report: `docs/step-0.7-emulator-report.md` (all PASS). Copy kept as `build/step-0.7/fm1acc-proto-0.1.0.fwsc` (+ `.sha256`). |
 | P6 | Unit state before step 1 | (check) | `--info` must print `FM-1_015 [running]` (below, "Read-only checks"). |
 
-### P2 procedure: find a clean USB port and cable (read-only, the user plugs, anyone may read)
+### P2 procedure (HISTORICAL: P2 was decided 2026-11-04, see P2 above and `docs/device.md`, "USB for writes")
 
 For each candidate port (not 1-2) and, if needed, another **data** USB-C cable:
 
@@ -83,7 +84,14 @@ boot area, so the test's stock-only rule does not apply; irrelevant here.)
 
 ## Rules for every step
 
-- **The user runs every command.** Claude Code only reads (`--info`, `lsusb`, `dmesg`) and records.
+- **The user runs every command, in their own terminal tab.** Claude Code only reads (`--info`, `lsusb`,
+  kernel log) between steps and records.
+- Before starting: **disable the laptop's automatic suspend / sleep** for the session; do not close the lid.
+- Before starting: **close fm1-live / the emulator, `aplaymidi` and any other MIDI apps** (fm1-live with
+  `--midi all` subscribes to ports).
+- The FM-1 stays on USB power the whole time; **never switch it off during a write** (only where a step
+  says to power-cycle, after the install has finished).
+- Stop and report on any unexpected output.
 - Use only the port + cable from P2 (port 1-2, the new cable). Expect one `-110` and ~16 s at each
   (re)connect; that is this unit. Laptop on mains power. Do not touch the FM-1 or the cable during a write.
 - **One install command per update.** After each, run `--info` before anything else.
@@ -123,10 +131,9 @@ If `--info` finds more than one MIDI port that could be the FM-1, add `--port NA
    while writing).
 3. `--info` → expect `FM-1_918  [running]`.
 4. **Boots:** Felucca's screen; a key plays a sound (speaker).
-5. **A setting survives a power cycle:** change one setting that Felucca keeps (for example the screen colour
-   palette in its preferences; see Felucca's manual in its wiki for where it is and whether it saves by itself),
-   note the old and new value, wait 5 s, switch the FM-1 off, wait 10 s, switch it on. Expect the new value.
-   Then set it back the same way (optional).
+5. **A setting survives a power cycle** (non-blocking): save something with Felucca's **SAVE** button (or change
+   the palette preference), note what and its old/new value, wait 5 s, switch the FM-1 off, wait 10 s, switch
+   it on. Expect the new value. Record what was tried.
 
 If it fails:
 - **The installer stops before "loader"** (refused, timeout, port lost): nothing was written (step 1 writes only

@@ -288,3 +288,36 @@ for review, pre-flight ✅/❌).
   firmware, (5) our prototype again, **left installed**. Hello world = fallback
   diagnostic only.
 - Full prompt: the user will paste it (vault build plan, Step 0.7).
+
+---
+
+## 2026-11-04 20:40 — from the planning chat — REVIEW of docs/step-0.7-first-writes.md: APPROVED with additions
+
+Reviewed with the user. Excellent checklist. Answers and additions:
+
+1. **Felucca 1.8.1:** approved (tag f4df296, blob = GitHub's, emulator boot, loader read).
+2. **"A setting survives a power cycle":** non-blocking, as written. Suggest the user
+   saves something with Felucca's SAVE button (or the palette preference) and checks
+   it after the power cycle; record what was tried.
+3. **P1 (thumb drive + repo, no cloud):** accepted for this step. The writes only touch
+   the app area; the dump matters only for path B2. Cloud copy recommended later.
+4. **P2 (the unit's single -110, ~16 s):** accepted; your stop rule (a second -110 or
+   >25 s) stands.
+5. **80 ms chord lead:** fine; the user judges by eye in step 3.
+6. **Add to "Rules for every step"** before the user starts:
+   - Disable the laptop's automatic suspend / sleep for the session (and no lid closing).
+   - Close fm1-live / the emulator, aplaymidi and any other MIDI apps (fm1-live with
+     `--midi all` subscribes to ports).
+   - The FM-1 stays on USB power the whole time; don't switch it off during a write.
+   - The user runs the commands in their own terminal tab; Claude Code only reads
+     (`--info`, `lsusb`, kernel log) between steps and records.
+7. The "P2 procedure" section is now historical (P2 decided); mark it so.
+
+**Go:** after adding items 6–7, the user runs steps 1–5 one at a time, pasting each
+step's output to you before starting the next. Stop and report on any unexpected
+output.
+
+### Current step
+- [x] Step 0.7 Part A — done
+- [x] Step 0.7 checklist — reviewed and approved (20:40)
+- [ ] Step 0.7 Part B — user runs steps 1–5
