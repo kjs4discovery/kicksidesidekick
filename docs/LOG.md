@@ -447,3 +447,25 @@ Learned / measured:
 Hardware touched: WRITE (M1 package to the app area via our update loader, run by the user); then read-only by Claude Code
 Questions for the planning chat: none
 Next: step 2, the on-unit checks (no command), user reports observations; Claude Code records them.
+
+2026-11-05 — Step M1 install, step 2 (user's on-unit test) — review of the user's notes
+Status: done (review); M2 list proposed, not started
+Did:
+- Read the user's M1 test notes (vault Inbox.md, read only; nothing written to the vault).
+Learned / measured (user's results on the unit):
+- Works: boot, song list, mutes, levels (K1–K4), loop song, CPU fine, sound fine.
+- Crackle in Four Chords, which the user puts down to the melody's instrument.
+- Not found: how to loop a section (SEQ twice → LOOP SECT is not discoverable).
+- L1 vs L2 drums sound too alike in most songs: song design, later (D004 / step 1.10).
+- Wants: tempo in BPM with a much wider range; tempo reset to the song's own on each song; 3 s splash with a temp
+  logo (vault tmpLogo-sm.jpg, 400x453); louder count-in; no dimming of held chords in the bar strip (the note's
+  sentence is cut off; read as "drop the dimming, the rolling strip is enough"); change key; OCT−/OCT+ shift the
+  keys' octave; a rhythm cue next to the chord showing when to play at the chosen level.
+Hardware touched: none (the user ran the unit)
+Questions for the planning chat:
+- OCT−/OCT+ for the keys: the rule "REC, OCT−, OCT+ stay free" (fm1-base's rescues) is about holding them at
+  power-on. Using them after boot looks compatible, but changes the rule in docs/controls.md: please decide.
+- Held-chord dimming: the user now wants it removed rather than "current box bright" (07:00 note). Confirm.
+- Change key was Phase 2 ("transpose"); the user wants it in M2.
+- Splash logo costs flash (~90 KB as raw RGB565 at ~200x226); with 484/581 KB used it needs compression or step 1.7.
+Next: the planning chat and the user settle the M2 scope; then the M2 prompt.
