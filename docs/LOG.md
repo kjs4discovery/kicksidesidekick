@@ -562,3 +562,109 @@ Questions for the planning chat:
 - `fm1song send` and `delete` write the FM-1's flash (the song area only). Add them to CLAUDE.md's list of commands
   only the user runs? (I treat them so already: run only against the emulator.)
 Next: Part 2 (practice controls and fixes), then the early install checklist.
+
+2026-11-05 12:00 — Milestone M2, Part 2 (practice controls and fixes; items 1–7, 9, 13, 15, B) —
+Status: done (emulator); code committed (d13122a); tested release build kept; early install checklist ready
+Did:
+- docs/controls.md rewritten for M2 with mock-ups first (tools/mock_screens.py, docs/step-M2/mock-*.png), then built:
+  - tempo in BPM, 30–250 (1 a click, 5 when turned quickly), amber when not the song's own; each song at its own;
+  - start point by section (PRESETS) or bar (ALGORITHM); loops SECTION / BARS A–B / SONG (SEQ); a loop moved while
+    playing (or one the music is outside of) is jumped to at the next bar line; pickup rules kept (song-format 3.3);
+  - PLAY pauses / goes on (count-in on: a bar of clicks, then the paused bar from beat 1; off: from right there);
+    HOME stops (back to the start point), HOME again: the list;
+  - splash with the user's placeholder logo for >= 3 s (tools/logo_to_c.py: 150x170, 8 colours, run-length, 4.4 KB;
+    the one file to replace: firmware/assets/tmp-logo.jpg);
+  - count-in louder (127 on beat 1, 104 others, percussion channel at full volume during it);
+  - beat light: PLAY's green LED flashes each beat (bright on beat 1, mid level otherwise), count-in too;
+  - OCT- / OCT+ shift the keys' octave (-3..+3, lit when shifted; a held key is released at its own note) (D021);
+  - GLO: the help screen (every control and what it does here; CPU / voices moved there); a legend on every screen;
+  - no dimming of held-over chords in the bar strip.
+- Item 7 (Four Chords crackle) measured: not clipping. Every song at L2, MASTER 100 %: peaks 41–59 % of full scale, 0
+  samples at full scale (before and after). The melody alone on 8 GM instruments (tools/melody_check.py, emulator):
+  GM 81 "Lead 1 (square)" put 3.80 % of its energy above 8 kHz and 1.40 % above 11 kHz (aliasing: EAS synthesises at
+  22.05 kHz, our 2x upsampling is linear); flute 74, clarinet 72, oboe 69: 0.00 %; alto sax 66: 0.17 %; vibes 12:
+  1.98 %. Fix: Four Chords' melody is now the clarinet (72). After: Four Chords peak 44 % (was 51 %).
+- Player: position in units of 1/2,646,000 tick (a frame adds ppq x BPM: exact); player_start(tick, count-in),
+  player_pause(); stats version 2/3 (start point, pauses, BPM, clicks, keys' octave, screen, beat-light flashes).
+- Tests (tools/m2_test.py): boot (splash, the list at 3.3 s, PLAY ignored during the splash; OCT- + OCT+ held at
+  power-on: fm1-base's panel set-up, our screens never start; REC held: the update mode), practice (start points,
+  loop bars, a moved section loop, pause / go on both ways, HOME twice, own BPM per song, OCT up / down / clamp, beat
+  light count, count-in vs M1), levels (every song), and every song at 30 and 250 BPM (no block hit the 128-events
+  cap; CPU at most 15 %; position exact within 0.5 tick after 45 tempo changes).
+- Early install point: docs/step-M2-part2-install.md (install over M1, the first song send explained: the area,
+  a cut-off, how to undo; on-unit checks for parts 1–2; fallback M1).
+Learned / measured:
+- Image 386,144 B; RAM .data+.bss 74,100 of 98,304; pool 215,048 of 344,064.
+- Release build build/step-M2/part2/fm1acc-0.2.2-m2p2.fwsc (identity FM-1_46000202, from d13122a, sha256
+  b7d44547a463433a85fabfcd2faec3690bf12d781147461be0810ef5f1bd4683): 117 checks ALL PASS (build/step-M2/part2/report.md),
+  run in its own folder (an earlier run was spoiled by a parallel dev run sharing the work folder: m2_test --out since).
+- The splash's 3 s are counted from fm1-base's clock (starts after boot): the list appears at 3.0–3.2 s emulated.
+- Count-in peak 2.1x M1's (362 vs 175, Amazing Grace, MASTER 100 %).
+- Pausing or stopping mid-song leaves up to 2 EAS voices in their release for ~2 s (silent: rms < 30 after 0.5 s,
+  0 after 3 s); no hanging notes. At the song's end: 0 voices after 1 s, as in M1.
+Choices (with reasons):
+- PLAY = pause, HOME = stop (then the list): one press each; "stop and back to the top" stays one press.
+- PRESETS (left) = start / A, ALGORITHM (right) = bar / B: the two knobs side by side, left = start.
+- Loop BARS starts 4 bars long at the start point; A..B have no pickup (a section's does).
+- Resume with count-in from the paused bar's beat 1 (musicians re-enter at a bar line); without, exactly where it was.
+- The help is GLO, a press (any button closes it): reachable from every screen.
+- Part builds carry their own version string (0.2.N-m2pN): the splash and the list show what is installed.
+Hardware touched: none
+Questions for the planning chat:
+- The early checklist (docs/step-M2-part2-install.md) is ready for review; the user may install it before parts 3–5.
+- `fm1song list` sends a SysEx question (writes nothing). CLAUDE.md forbids Claude Code sending SysEx, so the
+  checklist has the user run it too. Allow it as read-only, like `--info`?
+Next: Part 3 (key, views, rhythm cue, bass names, key lights).
+
+2026-11-05 12:30 — Milestone M2, Parts 3 and 4 (views and guidance: items 8, 10, 12, F, G; three songs: E) —
+Status: done (emulator); committed; tested release build kept
+Did (part 3; docs/controls.md "Part 3", mock-ups first):
+- Key (item 8): SAVE starts the KEY mode, SELECT changes the key through all twelve, the music moving the nearest way
+  (-5..+6); the player transposes every layer but the percussion channel's as each note is sent, and a change while
+  playing releases exactly the sounding notes. Chord names, the key name and bass names are spelled for the new key's
+  signature (its mode's parent major: flats for F Bb Eb Ab Db, sharps otherwise, C mixed). Each song opens in its key.
+- Views (item 12, EDIT): chord view; keyboard view (the harmony level's voicing on C3–B5, the next chord outlined in
+  the last bar before it, the bass note amber when the bass is muted); chart view (the section's bars, the bar now
+  framed). The chord is still drawn ahead of its sound in every view.
+- Rhythm cue (item 10): a note symbol left of the big chord, from the part's own events at the chosen level (how long
+  its attack is held: whole .. sixteenth), bright at each attack.
+- Bass names (F): the bass muted, the status line says `BASS C3  then G2`.
+- Key lights (G): the FM-1's keys light for the part played (harmony: the chord's voicing, the next chord dim in the
+  last bar before it; bass: its note), folded into F3–G5 and following OCT-/OCT+; pressed keys light as ever.
+  PROPOSAL: both harmony and bass muted -> harmony wins (one rule for the cue and the lights, nothing to set); the
+  bass stays named on the status line.
+Did (part 4): songs/make_songs.py: Greensleeves (A minor 3/4, 88 BPM), Londonderry Air (Danny Boy) (C, 66 BPM, slash
+  chords C/E C/G D7/F# G/F), Oh! Susanna (D, 150 BPM); our own simplified melodies of public-domain tunes, no lyrics,
+  marked "check before publishing" (typed from memory); previews; songs/README.md. Their drums: level 1 just the
+  pulse, level 2 a full groove (drum hits per bar x2.2–3.6, 7 sounds instead of 3; the M1 songs: x1.5–1.8).
+Learned / measured: Release build build/step-M2/part3/fm1acc-0.2.3-m2p3.fwsc (FM-1_46000203, from 6d7893d + songs c6b121d, sha256
+  bf504efb543cfb8ae5cfd38fb3e19c829476dc556edea3f844dbc742da495324): 175 checks with all 8 songs; one test-side failure
+  fixed (Danny Boy's 6.4 s count-in: the sound check now listens after it), then ALL PASS. Image 395,232 B; RAM
+  74,276 B; pool unchanged. The new songs: 10.4 / 8.6 / 13.8 KB; at most 13 voices, 13 % CPU.
+Hardware touched: none
+Questions for the planning chat:
+- Both harmony and bass muted: harmony wins (proposal above). Or a control to choose?
+- The three new melodies are from memory: worth a check against a public-domain score before anything is published.
+Next: Part 5 (tests of everything, budget, 0.3.0-m2, docs/step-M2-install.md, STOP).
+
+2026-11-05 12:40 — Milestone M2, Part 5 (tests, budget, install checklist) —
+Status: done; STOPPED for review (nothing installed, nothing sent; the FM-1 was not touched)
+Did:
+- Version 0.3.0-m2, release build build/step-M2/final/fm1acc-0.3.0-m2.fwsc (identity FM-1_46000300, from commit
+  2e470ed, sha256 0294089be99c6e07aeaecba8aedc749097642aa8522b48ff597ff1c6177ac52d).
+- tools/m2_test.py on that exact package: 175 checks, ALL PASS (build/step-M2/final/report.md): every item and all
+  8 songs, flash ids 856014 / b36014 / unknown, a corrupt stored song, damaged files sent, an empty store, junk in
+  the area, a stalled transfer, power cuts during a send. tools/store_test.sh: ALL PASS. pytest: 71 pass.
+- docs/step-M2-emulator-report.md: results per item and per song, the budget (image 395,232 B of ~581 KB; RAM 74,276
+  of 98,304; pool 215,048 of 344,064; the 8 songs 77,888 B in 22 of the store's 69 sectors; CPU <= 15 %, 14 voices),
+  screens in docs/step-M2/.
+- docs/step-M2-install.md: install M2 over M1 (or over 0.2.2-m2p2 if the early checklist was run), the first send of
+  all 8 songs (the new kind of write, explained: area, cut-off, undo), on-unit checks for every item, fallback M1.
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M2-install.md (and the early docs/step-M2-part2-install.md: one of the two is enough).
+- Both harmony and bass muted: harmony wins for the cue and key lights (proposal), or a control?
+- fm1song send / delete (write the song area) and list (a SysEx question): add to CLAUDE.md's rules (user-run /
+  read-only)?
+- The three new melodies are from memory: check them against public-domain scores before publishing.
+Next: STOP. The user and the planning chat review; then the user runs the checklist.
