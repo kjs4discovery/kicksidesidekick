@@ -216,3 +216,44 @@ Mock-ups: ![layout and legend](step-M3/mock-p4-layout.png) ![zoomed keyboard](st
 Built: ![chord view, L2](step-M3/p4-inv-l2.png) ![zoomed keyboard](step-M3/p4-keys.png)
 ![bass on the keyboard](step-M3/p4-keys-bass.png) ![settings](step-M3/p4-settings-screen.png)
 ![count-in in the chart view](step-M3/p4-count-chart.png)
+
+### Part 5: Happy Birthday
+
+Nothing new on the screen: the song is in the list (p5-list.png) and plays from its two-note pickup.
+
+### Part 6: instrument views (guitar chord boxes, bass tab)
+
+EDIT now goes through **each part's own list of views** (the main view first):
+
+| your part | views (EDIT) |
+|---|---|
+| harmony | chord, keyboard, chart, **guitar** |
+| bass | bass note, keyboard, chart, **bass tab** |
+| melody | melody note, keyboard, chart |
+| drums | the hits, chart |
+
+- **Guitar (harmony):**
+  - A chord box for the chord now: 6 strings (low E on the left), 4 frets, the dots with finger numbers, o (open)
+    and x (not played) above the nut, a barre drawn as a bar. Up the neck, "3fr" marks the first fret. The next
+    chord is a small box on the right.
+  - Our own table (firmware/app/guitar.h): 53 standard open shapes, slash chords among them (C/E, D/F#, G/B ...),
+    and barre shapes for any root from E-form and A-form templates (major, m, 7, m7, maj7, sus4), the lower fret
+    of the two.
+  - It follows key changes, matching by pitch class, so C# and Db are the same shape. A slash chord with no shape
+    of its own shows the plain chord's shape and "the bass plays E".
+  - A chord with no shape says "no shape in our table" and lists its notes.
+  - tools/guitar_check.py checks every shape's notes against its chord. All the songs' chords, in all 12 keys, find
+    a shape (216: 98 open, 82 barre, 36 without their slash bass).
+- **Bass tab (bass):**
+  - 4 strings (G at the top), the bass part at its level, scrolling to an amber now line. The tab uses the shared
+    scrolling engine (Part 7 adds its views to it).
+  - Each note is a fret number on the string it is played on (the highest string it is on, the lowest fret), with a
+    line for how long it lasts and its name under the tab. Played notes are dim, the sounding one white, coming ones
+    amber.
+  - About 1.5 bars are on the screen, with bar numbers. Redrawn for every pixel the song moves; the audio is not
+    disturbed (the Blues at 250 BPM in this view: on time, no deferred block, CPU at most 14 %).
+
+Mock-ups: ![guitar](step-M3/mock-p6-guitar.png) ![bass tab](step-M3/mock-p6-tab.png)
+
+Built: ![guitar, open shapes](step-M3/p6-guitar.png) ![guitar in A](step-M3/p6-guitar-key.png)
+![bass tab](step-M3/p6-tab.png)

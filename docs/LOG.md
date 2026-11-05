@@ -876,3 +876,34 @@ Hardware touched: none
 Questions for the planning chat:
 - Review docs/step-M3-early-install.md. It is optional: the final M3 checklist follows at the end of Part 9.
 Next: Part 6 (guitar chord diagrams, bass tab); work on Parts 6–8 is already under way in the tree.
+
+2026-11-05 18:59 — Milestone M3, Part 6 (guitar chord diagrams, bass tab) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "Part 6"; mock-ups first: docs/step-M3/mock-p6-*.png):
+- Each part has its own list of views (EDIT). The guitar view (harmony) and the bass tab (bass) are new.
+- firmware/app/guitar.h, our own table: 53 open shapes (with slash chords) and E/A-form barre templates for 6
+  qualities.
+  - The lookup goes by pitch class, so it follows key changes.
+  - A slash chord with no shape of its own uses the plain chord's shape and names the bass; with no shape at all the
+    view says so and lists the chord's notes.
+- The bass tab is the first view on the shared scrolling engine: about 1.5 bars, a now line, bar numbers.
+- tools/guitar_check.py checks the table on the laptop.
+Learned / measured:
+- guitar_check: all 53 shapes and 12 templates match their chords (notes and lowest note). All 18 of the songs'
+  chords in all 12 keys find a shape: 98 open, 82 barre, 36 without their slash bass.
+- Release build build/step-M3/part6/fm1acc-0.3.6-m3p6.fwsc: FM-1_46000306, sha256
+  555906d9b969a669983c3f79071b3f4d209f32ee8544be70d9f8a861c641915a. Image 407,856 B.
+  - Checks part6 and part2 on it: ALL PASS. Tab view: no deferred block, CPU at most 9 %; the Blues at 250 BPM in
+    the tab view to the end on time, CPU at most 14 %.
+  - It was built and tested in a git worktree holding exactly this commit's files, because Parts 7–8 were already
+    in progress in the main tree.
+- The CPU has no 64-bit division (__divdi3 missing at link): the scroll maths is 32-bit, which is enough for a
+  999-bar song.
+Choices (with reasons):
+- Tab fingering: each note on the highest string it can be played on (the lowest fret). This is simple and
+  predictable for a learner. Notes below the low E are shown an octave up.
+- A barre is drawn when finger 1 covers several strings at the lowest fret of a barre shape.
+Hardware touched: none
+Questions for the planning chat:
+- The guitar table is ours and was checked by script, not by a guitarist. Worth a look by one before beta.
+Next: Part 7 (melody roll, notation, drum grid on the same scrolling engine).

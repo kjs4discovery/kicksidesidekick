@@ -260,7 +260,76 @@ def mock_settings(path):
     s.save(path)
 
 
-MOCKS = {"p4-layout": mock_layout, "p4-keys-zoom": mock_keys_zoom, "p4-settings": mock_settings, "p3-loop-set-a": mock_loop_set_a, "p3-loop-set-b": mock_loop_set_b, "p3-loop-on": mock_loop_on, "p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
+def chord_box(s, x, y, frets, fingers, base=1, scale=1.0, c=HI):
+    """a guitar chord box: 6 strings (low E left), 4 frets; dots with finger numbers; o / x above the nut"""
+    sw, fh = 16 * scale, 22 * scale
+    w, h = sw * 5, fh * 4
+    for i in range(6):
+        s.rect(int(x + i * sw), int(y), 1, int(h), GRAY)
+    for j in range(5):
+        s.rect(int(x), int(y + j * fh), int(w) + 1, 3 if j == 0 and base == 1 else 1, GRAY)
+    if base > 1:
+        s.text(x - 26 * scale, y + 4, f"{base}fr", XS, GRAY)
+    for i, (f, g) in enumerate(zip(frets, fingers)):
+        cx = x + i * sw
+        if f == "x":
+            s.text(cx - 4, y - 18 * scale, "x", XS, DIM)
+        elif f == "0":
+            s.d.ellipse([(cx - 4) * S, (y - 14 * scale) * S, (cx + 4) * S, (y - 6 * scale) * S], outline=GRAY,
+                        width=S)
+        else:
+            fy = y + (int(f) - base + 0.5) * fh
+            r = 7 * scale
+            s.d.ellipse([(cx - r) * S, (fy - r) * S, (cx + r) * S, (fy + r) * S], fill=c)
+            if scale >= 1 and g != "0":
+                s.text(cx - 3, fy - 8, g, XS, BLACK)
+
+
+def mock_guitar(path):
+    s = Screen()
+    top(s, "Danny Boy", "66 BPM  C", "2:3", "HARMONY - YOURS")
+    s.text(6, 32, "C/E", L, HI)
+    s.text(6, 66, "x: not played", XS, DIM)
+    s.text(6, 80, "o: open string", XS, DIM)
+    chord_box(s, 92, 58, "032010", "032010")
+    s.rect(182, 38, 1, 120, LINE)
+    s.text(190, 36, "NEXT", XS, DIM)
+    s.text(190, 52, "F", M, AMB)
+    chord_box(s, 196, 98, "133211", "134211", scale=0.5, c=AMB)
+    s.text(6, 160, "guitar: C/E, 1st inversion", XS, GRAY)
+    layers(s, 180, ["L1", "L1", "MUTE", "L1"])
+    legend2(s, [("PLAY", "pause"), ("EDIT", "view"), ("SAVE", "key"), ("GLO", "help")])
+    s.save(path)
+
+
+def mock_tab(path):
+    s = Screen()
+    top(s, "Danny Boy", "66 BPM  C", "2:1", "BASS - YOURS")
+    names = ["G", "D", "A", "E"]
+    y0 = 52
+    for k, n in enumerate(names):
+        s.text(4, y0 + k * 20 - 8, n, XS, DIM)
+        s.rect(16, y0 + k * 20, 224, 1, GRAY)
+    s.rect(48, 40, 2, 76, AMB)                          # the now line
+    for xb in (40, 160):
+        s.rect(xb, y0, 1, 61, DIM)
+    s.text(42, 32, "2", XS, DIM)
+    s.text(162, 32, "3", XS, DIM)
+    notes = [(52, 3, "0", "E"), (112, 2, "3", "C"), (164, 3, "1", "F"), (224, 2, "0", "A")]
+    for x, string, fret, name in notes:
+        yy = y0 + string * 20
+        s.rect(x - 1, yy - 8, 16, 16, BLACK)
+        s.text(x + 1, yy - 9, fret, B, WHITE if x < 60 else AMB)
+        s.text(x + 1, y0 + 66, name, XS, GRAY)
+    s.rect(64, y0 + 60, 40, 3, DARK_AMB)
+    s.text(6, 140, "E2 now, next C3: fret numbers on the 4 strings", XS, DIM)
+    s.text(6, 160, "bass L1   1.5 bars on screen", XS, GRAY)
+    layers(s, 180, ["L1", "MUTE", "L1", "L1"])
+    legend2(s, [("PLAY", "pause"), ("EDIT", "view"), ("SAVE", "key"), ("GLO", "help")])
+    s.save(path)
+
+
+MOCKS = {"p6-guitar": mock_guitar, "p6-tab": mock_tab, "p4-layout": mock_layout, "p4-keys-zoom": mock_keys_zoom, "p4-settings": mock_settings, "p3-loop-set-a": mock_loop_set_a, "p3-loop-set-b": mock_loop_set_b, "p3-loop-on": mock_loop_on, "p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
          "p2-keys-blink": mock_keys_blink}
 
 if __name__ == "__main__":

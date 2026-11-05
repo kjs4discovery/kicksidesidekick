@@ -989,7 +989,48 @@ def test_part5(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3, "part4": test_part4, "part5": test_part5}
+def test_part6(all_songs, rep):
+    """M3 part 6: the guitar view (harmony) and the bass tab (a scrolling view)"""
+    lines, st, check = checker("Part 6: guitar chord boxes, bass tab")
+    r = subprocess.run([sys.executable, "-I", str(ROOT / "tools/guitar_check.py")], capture_output=True, text=True)
+    check(r.returncode == 0, "tools/guitar_check.py: " + " / ".join(r.stdout.strip().splitlines()))
+    slugs = [c["slug"] for c in all_songs]
+    d, b = slugs.index("danny-boy"), slugs.index("twelve-bar-blues")
+    cd = all_songs[d]
+    harm = open_song(d) + press(OPEN_MS + 200, "ENV") + [x for k in range(3) for x in press(OPEN_MS + 400 + 250 * k,
+                                                                                         "EDIT")]
+    r1 = run("p6-guitar", PLAY_MS + 9000, harm + press(PLAY_MS, "PLAY"))
+    r2 = run("p6-guitar-key", PLAY_MS + 9000, harm + press(OPEN_MS + 1300, "SAVE") + [f"{OPEN_MS + 1500}:e0:-3"]
+             + press(OPEN_MS + 1900, "SAVE") + press(PLAY_MS, "PLAY"))
+    check(r1["stats"]["view"] == 3 and r2["stats"]["view"] == 3 and r2["stats"]["transpose"] == -3,
+          "harmony muted, EDIT x3: the guitar view (p6-guitar.png: C/E in Danny Boy, open shapes); in A (-3), barre "
+          "shapes follow the key (p6-guitar-key.png)")
+    bass = open_song(d) + press(OPEN_MS + 200, "SCL") + [x for k in range(3) for x in press(OPEN_MS + 400 + 250 * k,
+                                                                                        "EDIT")]
+    r3 = run("p6-tab", PLAY_MS + 9000, bass + press(PLAY_MS, "PLAY"))
+    run("p6-tab-stopped", OPEN_MS + 2000, bass)
+    s3 = r3["stats"]
+    check(s3["view"] == 4 and s3["deferred"] == 0 and max(s3["cpu"][:8]) <= 30,
+          f"bass muted, EDIT x3: the bass tab, scrolling (p6-tab.png); the audio is not disturbed by redrawing it "
+          f"each frame (no deferred block, CPU at most {max(s3['cpu'][:8])} %)")
+    # a whole song in the tab view at 250 BPM (the busiest redraw): played to the end, on time
+    cb = all_songs[b]
+    bass_b = open_song(b) + press(OPEN_MS + 100, "ARP") + [f"{OPEN_MS + 200}:e0:200"] + press(OPEN_MS + 500, "SCL") \
+        + [x for k in range(3) for x in press(OPEN_MS + 700 + 250 * k, "EDIT")]
+    ms = song_ms(cb, count_in=False, bpm=250)
+    r4 = run("p6-tab-250", int(PLAY_MS + ms + 2000), bass_b + press(PLAY_MS, "PLAY"))
+    s4 = r4["stats"]
+    want = ticks_to_frames(cb, cb["end_tick"], 250)
+    got = s4["end_frames"] - s4["start_frames"]
+    check(s4["ends"] == 1 and abs(got - want) <= BLOCK and s4["deferred"] == 0 and s4["view"] == 4,
+          f"the Blues at 250 BPM in the tab view: to the end on time ({got} frames, predicted {want:.0f}), no "
+          f"deferred block, CPU at most {max(s4['cpu'][:cb['bar_count']])} %")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3, "part4": test_part4, "part5": test_part5,
+              "part6": test_part6}
 
 
 def main():
