@@ -307,3 +307,16 @@ Learned / measured:
 Hardware touched: read-only
 Questions for the planning chat: none yet
 Next: the user tries another data cable (on 1-1, then 1-2); Claude Code reads the same three checks.
+
+2026-11-04 20:25 — Step 0.7 (addendum) — P2 USB test 2 (another cable)
+Status: blocked (P2 cannot pass as written; decision for the planning chat)
+Did:
+- Read-only, by Claude Code: kernel log, lsusb, fm1_install.py --info, after the user swapped to another data cable (the FM-1 came up on port 1-2).
+Learned / measured:
+- New cable, port 1-2: `new full-speed USB device` at 4329.08 s, `device descriptor read/64, error -110` at 4345.10 s, found at 4345.33 s. --info `FM-1_015 [running]`.
+- All three tries so far (1-2 old cable 327->343 s, 1-1 old cable 3769->3785 s, 1-2 new cable 4329->4345 s): the same -110 and the same ~16 s, every time. Two ports, two cables: the FM-1's own USB start-up (stock V15; Step 0.3 saw it in ROM boot mode too) is the likely cause, not the port or cable. After the -110 the device always enumerates and answers normally; Step 0.3's 4 full flash reads were identical.
+- During an install the FM-1 re-enumerates twice (into the update loader, back into the new firmware). The vendored installer waits up to 30 s for the loader and 40 s for the restart (fm1_install.py:42-44), more than the ~16 s seen.
+Hardware touched: read-only
+Questions for the planning chat:
+- P2 asks for no -110. With this unit that seems impossible on this laptop (two ports, two cables, always ~16 s). Options: (a) accept it as this unit's behaviour, since it always recovers and the installer's 30/40 s waits cover it; (b) try a powered USB hub or another computer first. Recommendation: (b) once if a hub is at hand, else (a), recorded in device.md.
+Next: the planning chat decides P2; then the review of docs/step-0.7-first-writes.md; then the user runs steps 1-5.
