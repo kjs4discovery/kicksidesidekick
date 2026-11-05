@@ -190,7 +190,77 @@ def mock_loop_on(path):
     s.save(path)
 
 
-MOCKS = {"p3-loop-set-a": mock_loop_set_a, "p3-loop-set-b": mock_loop_set_b, "p3-loop-on": mock_loop_on, "p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
+def legend2(s, pairs, y=214):
+    """M3 legend: button names amber, actions gray, a divider between pairs"""
+    s.rect(0, y + 1, 240, 1, LINE)
+    widths = [s.d.textlength(n + " " + a, font=XS) / S for n, a in pairs]
+    gap = 9
+    x = (240 - sum(widths) - gap * (len(pairs) - 1)) / 2
+    for k, (n, a) in enumerate(pairs):
+        if k:
+            s.rect(int(x - gap / 2), y + 7, 1, 14, DIM)
+        s.text(x, y + 7, n, XS, HI)
+        s.text(x + s.d.textlength(n + " ", font=XS) / S, y + 7, a, XS, GRAY)
+        x += widths[k] + gap
+
+
+def layers2(s, states, y=180):
+    layers(s, y, states)
+
+
+def mock_layout(path):
+    s = Screen()
+    top(s, "Danny Boy", "66 BPM  C", "2:3", "HARMONY - YOURS")
+    big_band(s, "C/E", "F", None, "half", count="IN 2")
+    strip(s, 108, [(2, "C/E"), (3, "F"), (4, "C/G"), (5, "C")], 0)
+    s.text(6, 160, "C/E, 1st inversion", XS, GRAY)
+    s.text(0, 160, "L2", XS, DIM, right=234)
+    layers2(s, ["L1", "L1", "MUTE", "L1"])
+    legend2(s, [("PLAY", "pause"), ("EDIT", "view"), ("SAVE", "key"), ("GLO", "help")])
+    s.save(path)
+
+
+def mock_keys_zoom(path):
+    s = Screen()
+    top(s, "Danny Boy", "66 BPM  C", "2:3", "HARMONY - YOURS")
+    s.text(6, 32, "C/E", L, HI)
+    s.text(0, 38, "next F  IN 2", B, AMB, right=234)
+    lo, w = 52, 21                                     # E3.. : 11 white keys
+    whites = [n for n in range(lo, lo + 19) if n % 12 in (0, 2, 4, 5, 7, 9, 11)][:11]
+    lit = (52, 55, 60)
+    for i, n in enumerate(whites):
+        s.rect(4 + i * w, 70, w - 1, 86, HI if n in lit else (220, 220, 225))
+        if n in (53, 57, 60) and n not in lit:
+            s.rect(4 + i * w + 4, 136, w - 9, 14, AMB, fill=False)
+        if n % 12 == 0:
+            s.text(4 + i * w + 3, 140, f"C{n // 12 - 1}", XS, BLACK if n in lit else DIM)
+    for i, n in enumerate(whites):
+        if n % 12 in (0, 2, 5, 7, 9):
+            s.rect(4 + i * w + 14, 70, 13, 52, (40, 40, 46))
+    s.text(6, 160, "C/E, 1st inversion  (harmony L2)", XS, GRAY)
+    layers2(s, ["L1", "L1", "MUTE", "L1"])
+    legend2(s, [("PLAY", "pause"), ("EDIT", "view"), ("SAVE", "key"), ("GLO", "help")])
+    s.save(path)
+
+
+def mock_settings(path):
+    s = Screen()
+    s.text(6, 4, "SETTINGS", B, WHITE)
+    s.text(0, 6, "saved when you leave", XS, DIM, right=234)
+    s.rect(0, 31, 240, 1, LINE)
+    rows = [("Key lights blink", "ON"), ("Count-in length", "1 BAR"), ("Count-in volume", "HIGH"),
+            ("Note names (notation)", "ON"), ("Guide volume (your part)", "OFF")]
+    for i, (name, val) in enumerate(rows):
+        y = 38 + i * 32
+        if i == 1:
+            s.rect(2, y - 2, 236, 28, LINE)
+        s.text(10, y + 3, name, B, WHITE if i == 1 else GRAY)
+        s.text(0, y + 3, val, B, HI if i == 1 else AMB, right=230)
+    legend2(s, [("SELECT", "row"), ("ALGO", "change"), ("GLO", "back")])
+    s.save(path)
+
+
+MOCKS = {"p4-layout": mock_layout, "p4-keys-zoom": mock_keys_zoom, "p4-settings": mock_settings, "p3-loop-set-a": mock_loop_set_a, "p3-loop-set-b": mock_loop_set_b, "p3-loop-on": mock_loop_on, "p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
          "p2-keys-blink": mock_keys_blink}
 
 if __name__ == "__main__":

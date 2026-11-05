@@ -41,17 +41,18 @@ static void ui_busy(const char *a, const char *b);
 #define H_STRIP 48                       /* the boxes (44) and the loop's line under them */
 #define Y_CURSOR 154
 #define H_CURSOR 6
-#define Y_LAYERS 160
+#define Y_INV 160                        /* M3: the inversion's line (the section's row is gone: the user's note) */
+#define H_INV 16
+#define H_VIEW 144                       /* the views' area, Y_CHORD.. (the canvas holds 144 rows) */
+#define Y_LAYERS 180
 #define H_LAYERS 32
-#define Y_STATUS 192
-#define H_STATUS 22
 #define Y_LEGEND 214
 #define H_LEGEND 26
 #define BOX_W 56
 #define BOX_H 44
 #define BOX_STEP 60
 
-enum { V_LIST, V_PLAY, V_HELP };
+enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS };
 enum { PV_CHORD, PV_KEYS, PV_CHART, PV_N };   /* the play screen's views (EDIT); PV_CHORD: the part's main view */
 #define L_DRUMS 0u
 #define L_BASS 1u
@@ -65,8 +66,26 @@ static const uint8_t LAYER_ENC[SONG_LAYERS] = {EN_K1, EN_K2, EN_K3, EN_K4};
 static const char *const LAYER_NAME[SONG_LAYERS] = {"DRUMS", "BASS", "HARMONY", "MELODY"};
 static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "MELODY"};
 
+/* the settings (M3 part 4): kept in fm1-base's settings store (plat_store, OBJ_SETTINGS: 0xFC000 / 0xFD000, two
+ * copies, the newer valid one wins; the stock firmware never uses these sectors) */
+#define SET_MAGIC 0x31534D46u            /* "FMS1" */
+enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_N };
+struct settings {
+    uint32_t magic, version;
+    uint8_t v[8];                        /* S_* values (the rest 0) */
+};
+static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
+                                          "Note names (notation)"};
+static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2};   /* how many values each has */
+static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
+                                            {"OFF", "ON", ""}};
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 2, 1};
+static const uint8_t COUNT_VOL[3] = {64, 96, 127};   /* the beep's channel volume */
+
 static struct {
     int view, back;                      /* V_*; back: the view the help returns to */
+    struct settings set;
+    uint32_t set_row, set_dirty;
     uint32_t sel, top;                   /* the list's cursor and first row */
     const struct song *s;
     uint32_t keys, buttons;
@@ -84,6 +103,7 @@ static struct {
     int pview;                           /* PV_*: the view now; pv_of[l]: the last one used for each part */
     uint8_t pv_of[SONG_LAYERS];
     uint32_t mute_seq[SONG_LAYERS], seq;  /* when each layer was last muted: your part is the latest still muted */
+    uint32_t kb_lo;                      /* the keyboard view's lowest key (it follows the notes) */
     uint32_t lit_keys, mid_keys, dim_keys;   /* the key lights for your part (frame_play sets them): at an attack,
                                               * between attacks, the next chord */
     char msg[2][24];
@@ -95,6 +115,40 @@ static struct {
     int sh_state;
     uint32_t sh_top_key, sh_stats_ms, sh_list, sh_status, sh_legend, sh_cue, sh_view, sh_part;
 } ui;
+
+/* ------------------------------------------------------------------------ settings --- */
+static void settings_apply(void)
+{
+    ui.blink = ui.set.v[S_BLINK] != 0;
+    player_count_in_bars(ui.set.v[S_COUNT_BARS] ? 2u : 1u);
+    player_count_in_volume(COUNT_VOL[ui.set.v[S_COUNT_VOL] % 3u]);
+    player_stats.settings = ui.set.v[0] | (uint32_t)ui.set.v[1] << 4 | (uint32_t)ui.set.v[2] << 8 |
+                            (uint32_t)ui.set.v[3] << 12 | (uint32_t)ui.set.v[4] << 16;
+}
+
+static void settings_load(void)
+{
+    uint32_t i;
+    if (plat_store_load(OBJ_SETTINGS, &ui.set, sizeof ui.set) != (int)sizeof ui.set || ui.set.magic != SET_MAGIC) {
+        ui.set.magic = SET_MAGIC;        /* none yet (or not ours): the defaults */
+        ui.set.version = 1;
+        for (i = 0; i < 8u; i++)
+            ui.set.v[i] = i < S_N ? SET_DEFAULT[i] : 0;
+    }
+    for (i = 0; i < S_N; i++)            /* (a value out of range: the default) */
+        if (ui.set.v[i] >= SET_COUNT[i])
+            ui.set.v[i] = SET_DEFAULT[i];
+    settings_apply();
+}
+
+static void settings_save(void)
+{
+    if (!ui.set_dirty)
+        return;
+    ui.set_dirty = 0;
+    if (ui.flash_ok && plat_store_save(OBJ_SETTINGS, &ui.set, sizeof ui.set) == 0)
+        player_stats.settings_saves++;
+}
 
 /* -------------------------------------------------------------- the platform's calls --- */
 void app_init(void)
@@ -302,6 +356,7 @@ static const char *spell(const char *sym)
 }
 
 static const char *chord_name(uint32_t k) { return spell(song_cevt_symbol(ui.s, k)); }
+static void inversion_cat(char *d, uint32_t k);
 
 /* a note's name with its octave (C4 = 60), in the key now's spelling (n: as sounded) */
 static void note_cat(char *d, uint32_t n)
@@ -575,6 +630,7 @@ static void open_song(uint32_t i)
         player_variant((uint32_t)r, 1);
     player_tempo(player_song_bpm(s));    /* every song opens at its own tempo, in its own key */
     ui.key = 0;
+    ui.kb_lo = 0;
     ui.keymode_until = 0;
     player_transpose(0);
     set_from_bar(first_bar());
@@ -858,8 +914,34 @@ static void input(void)
         snum_cat(t, ui.oct);
         app_say("KEYS", ui.oct ? t : "OCTAVE 0");
     }
-    if (ui.view == V_HELP) {             /* any button closes the help */
-        if (down & ~(1u << B_OCTDN | 1u << B_OCTUP)) {
+    if (ui.view == V_HELP) {             /* GLO again: the settings; any other button closes the help */
+        if (down >> B_GLO & 1u) {
+            ui.view = V_SETTINGS;
+            ui.redraw = 1;
+        } else if (down & ~(1u << B_OCTDN | 1u << B_OCTUP)) {
+            ui.view = ui.back;
+            ui.redraw = 1;
+        }
+        lights();
+        return;
+    }
+    if (ui.view == V_SETTINGS) {         /* SELECT the row; ALGORITHM, PLAY or EDIT its value; GLO or HOME: back */
+        int32_t d = plat_enc(EN_SELECT), v = plat_enc(EN_ALGO);
+        if (d) {
+            ui.set_row = (uint32_t)clamp((int32_t)ui.set_row + d, 0, (int32_t)S_N - 1);
+            ui.redraw = 1;
+        }
+        if (down & (1u << B_PLAY | 1u << B_EDIT))
+            v = 1;
+        if (v) {
+            uint32_t r = ui.set_row, n = SET_COUNT[r];
+            ui.set.v[r] = (uint8_t)(((int32_t)ui.set.v[r] + v % (int32_t)n + (int32_t)n) % (int32_t)n);
+            ui.set_dirty = 1;
+            settings_apply();
+            ui.redraw = 1;
+        }
+        if (down & (1u << B_GLO | 1u << B_HOME)) {
+            settings_save();
             ui.view = ui.back;
             ui.redraw = 1;
         }
@@ -883,11 +965,45 @@ static void input(void)
 void app_input_only(void) { input(); }
 
 /* ------------------------------------------------------------------------ legend --- */
+/* the legend: "NAME action|NAME action|..."; M3: the button names amber, the actions gray, a divider between pairs
+ * (the user's note); centred; too wide: the smaller font */
 static void draw_legend(int32_t y, const char *t)
 {
+    const felucca_font_t *f = &FONT_XS;
+    char seg[8][40];
+    uint32_t n = 0, i, k;
+    int32_t w = 0, x, gap = 9;
+    const char *p = t;
+    while (*p && n < 8u) {               /* split at '|' */
+        for (k = 0; *p && *p != '|' && k < 39u; p++)
+            seg[n][k++] = *p;
+        seg[n++][k] = 0;
+        if (*p == '|')
+            p++;
+    }
+    for (i = 0; i < n; i++)
+        w += text_w(f, seg[i]) + (i ? gap : 0);
+    if (w > 236) {
+        f = &FONT_T;
+        gap = 7;
+        for (i = 0, w = 0; i < n; i++)
+            w += text_w(f, seg[i]) + (i ? gap : 0);
+    }
     cv_begin(240, H_LEGEND, C_BLACK);
     cv_rect(0, 1, 240, 1, C_LINE);
-    text_in(0, 240, 7, &FONT_XS, t, C_DIM);
+    x = (240 - w) / 2;
+    for (i = 0; i < n; i++) {
+        char name[16];
+        for (k = 0; seg[i][k] && seg[i][k] != ' ' && k < 15u; k++)
+            name[k] = seg[i][k];
+        name[k] = 0;
+        if (i)
+            cv_rect(x - gap / 2 - 1, 7, 1, 14, C_DIM);
+        cv_text(x, 7, f, name, C_HI);
+        if (seg[i][k])
+            cv_text(x + text_w(f, name), 7, f, seg[i] + k, C_GRAY);
+        x += text_w(f, seg[i]) + gap;
+    }
     cv_blit(0, (uint32_t)y);
 }
 
@@ -926,7 +1042,7 @@ static void draw_list_empty(void)
         text_in(0, 240, 130, &FONT_XS, "They stay here when it is off.", C_DIM);
     }
     cv_blit(0, H_TOP);
-    draw_legend(Y_LEGEND, "GLO: CONTROLS   KEYS: PLAY ALONG");
+    draw_legend(Y_LEGEND, "GLO help|keys play along");
 }
 
 static void draw_list(void)
@@ -974,7 +1090,7 @@ static void draw_list(void)
         }
         cv_blit(0, H_TOP + (int32_t)r * LIST_ROW_H);
     }
-    draw_legend(Y_LEGEND, "SELECT: CHOOSE   PLAY: OPEN   GLO: ?");
+    draw_legend(Y_LEGEND, "SELECT choose|PLAY open|GLO help");
 }
 
 /* -------------------------------------------------------------------------- help --- */
@@ -1004,7 +1120,8 @@ static void draw_help(void)
         cv_band(0, 120);
         if (!band) {
             cv_text(6, 2, &FONT_B, "CONTROLS", C_WHITE);
-            cv_text(234 - text_w(&FONT_XS, "any button: back"), 6, &FONT_XS, "any button: back", C_DIM);
+            cv_text(234 - text_w(&FONT_XS, "GLO: settings, other: back"), 6, &FONT_XS, "GLO: settings, other: back",
+                    C_DIM);
             cv_rect(0, 24, 240, 1, C_LINE);
         }
         for (r = 0; r < 5u; r++) {       /* the encoders, 2 lines each */
@@ -1018,7 +1135,7 @@ static void draw_help(void)
             cv_text(152, y, &FONT_XS, b[r][1], C_HI);
         }
         cv_text(116, 184 - y0, &FONT_XS, "GLO", C_GRAY);
-        cv_text(152, 184 - y0, &FONT_XS, "this help", C_HI);
+        cv_text(152, 184 - y0, &FONT_XS, "again: settings", C_HI);
         if (band) {
             cv_rect(0, 200 - y0, 240, 1, C_LINE);
             num_cat(t, plat_cpu_pct());
@@ -1032,6 +1149,29 @@ static void draw_help(void)
         }
         cv_blit(0, (uint32_t)y0);
     }
+}
+
+/* ---------------------------------------------------------------------- settings --- */
+static void draw_settings(void)
+{
+    uint32_t i;
+    cv_begin(240, 32, C_BLACK);
+    cv_text(6, 4, &FONT_B, "SETTINGS", C_WHITE);
+    cv_text(234 - text_w(&FONT_XS, ui.flash_ok ? "saved when you leave" : "RAM ONLY: not kept"), 6, &FONT_XS,
+            ui.flash_ok ? "saved when you leave" : "RAM ONLY: not kept", ui.flash_ok ? C_DIM : C_AMB);
+    cv_rect(0, 31, 240, 1, C_LINE);
+    cv_blit(0, 0);
+    for (i = 0; i < S_N; i++) {
+        int sel = i == ui.set_row;
+        cv_begin(240, 32, C_BLACK);
+        if (sel)
+            cv_rect(2, 2, 236, 28, C_LINE);
+        cv_text(10, 7, &FONT_B, SET_NAME[i], sel ? C_WHITE : C_GRAY);
+        cv_text(230 - text_w(&FONT_B, SET_VAL[i][ui.set.v[i]]), 7, &FONT_B, SET_VAL[i][ui.set.v[i]], sel ? C_HI : C_AMB);
+        cv_blit(0, 32 + i * 32);
+    }
+    lcd_fill(0, 32 + S_N * 32, 240, 214 - (32 + S_N * 32), C_BLACK);
+    draw_legend(Y_LEGEND, "SELECT row|ALGO change|GLO back");
 }
 
 /* ------------------------------------------------------------------------ play --- */
@@ -1065,6 +1205,10 @@ static void draw_top(int32_t bar, int32_t beat, int st)
         }
         if (player_count_in_of())
             text_cat(t, "  CNT");
+        if (!ui.loop && ui.from_bar != first_bar()) {   /* (M3: the start point, here now the bottom row is gone) */
+            text_cat(t, "  FROM ");
+            num_cat(t, ui.from_bar + s->first_bar_number);
+        }
         if (ui.loop) {
             text_cat(t, "  LOOP ");
             num_cat(t, ui.a_bar + s->first_bar_number);
@@ -1361,29 +1505,58 @@ static int is_black(uint32_t n)
     return pc == 1u || pc == 3u || pc == 6u || pc == 8u || pc == 10u;
 }
 
-/* the keyboard view: your part's name and keys (harmony: the level's voicing; bass, melody: the note) on a drawn
- * keyboard C3..B5, in the key now; at an attack bright, between attacks darker (M3: in your part's rhythm); the next
- * outlined. Notes below C3 are shown an octave (or more) up, and it says so */
-static void draw_keys_view(int st, const struct pinfo *pi, int32_t left, int bright)
+/* the keyboard view (M3: zoomed in, the user's note): KB_WHITES white keys, 21 px each, following your part's notes;
+ * its name and keys (harmony: the level's voicing; bass, melody: the note), in the key now; at an attack bright,
+ * between attacks darker (in your part's rhythm); the next outlined; under it the inversion (harmony) */
+#define KB_WHITES 11u
+#define KB_W 21
+
+/* the window's lowest key (a white key): moved only when a note would fall outside it, then with a key to spare */
+static void kb_follow(const struct pinfo *pi)
 {
-    uint32_t n, i, wi = 0, up = 0;
-    int32_t x0 = 4, y0 = 32, wk = 11;
-    uint8_t now[SONG_VOICING_NOTES], nx[SONG_VOICING_NOTES];
-    uint16_t on = bright ? C_HI : DARK_AMB;
-    char t[48] = "";
-    for (i = 0; i < pi->nnow; i++) {     /* into C3..B5 by octaves */
-        for (now[i] = pi->now[i]; now[i] < 48u; now[i] += 12u)
-            up = 1;
-        while (now[i] > 83u)
-            now[i] -= 12u;
+    uint32_t i, lo = 127, hi = 0, top, n;
+    for (i = 0; i < pi->nnow; i++) {
+        lo = pi->now[i] < lo ? pi->now[i] : lo;
+        hi = pi->now[i] > hi ? pi->now[i] : hi;
     }
     for (i = 0; i < pi->nnx; i++) {
-        for (nx[i] = pi->nx[i]; nx[i] < 48u; nx[i] += 12u)
-            ;
-        while (nx[i] > 83u)
-            nx[i] -= 12u;
+        lo = pi->nx[i] < lo ? pi->nx[i] : lo;
+        hi = pi->nx[i] > hi ? pi->nx[i] : hi;
     }
-    cv_begin(240, Y_LAYERS - Y_CHORD, C_BLACK);
+    if (lo > hi)
+        return;                          /* nothing to show: stay */
+    for (top = ui.kb_lo, n = 1; n < KB_WHITES; top++)   /* the window's highest key */
+        if (!is_black(top + 1u))
+            n++;
+    if (ui.kb_lo && lo >= ui.kb_lo && hi <= top)
+        return;
+    ui.kb_lo = lo > 1u ? lo - 1u : lo;   /* a key below the lowest, if it is white */
+    while (is_black(ui.kb_lo))
+        ui.kb_lo--;
+    for (top = ui.kb_lo, n = 1; n < KB_WHITES; top++)
+        if (!is_black(top + 1u))
+            n++;
+    while (hi > top && ui.kb_lo < lo) {  /* too wide: up a white key at a time while the lowest still fits */
+        do
+            ui.kb_lo++;
+        while (is_black(ui.kb_lo));
+        do
+            top++;
+        while (is_black(top));
+    }
+}
+
+static void draw_keys_view(int st, const struct pinfo *pi, int32_t left, int bright, int32_t k)
+{
+    uint32_t n, i, wi = 0, last;
+    int32_t x0 = 4, y0 = 34;
+    uint16_t on = bright ? C_HI : DARK_AMB;
+    char t[48] = "";
+    kb_follow(pi);
+    for (last = ui.kb_lo, n = 1; n < KB_WHITES; last++)
+        if (!is_black(last + 1u))
+            n++;
+    cv_begin(240, H_VIEW, C_BLACK);
     if (pi->big[0])
         cv_text(6, 0, &FONT_L, pi->big, C_HI);
     if (pi->next[0]) {
@@ -1395,45 +1568,51 @@ static void draw_keys_view(int st, const struct pinfo *pi, int32_t left, int bri
         }
         cv_text(234 - text_w(&FONT_B, t), 6, &FONT_B, t, C_AMB);
     }
-    for (n = 48; n < 84u; n++) {         /* white keys first, then the black keys over them */
+    for (n = ui.kb_lo; n <= last; n++) { /* white keys first, then the black keys over them */
         uint32_t lit = 0, dim = 0;
         if (is_black(n))
             continue;
         for (i = 0; i < pi->nnow; i++)
-            lit |= now[i] == n;
+            lit |= pi->now[i] == n;
         for (i = 0; i < pi->nnx; i++)
-            dim |= nx[i] == n;
-        cv_rect(x0 + (int32_t)wi * wk, y0, wk - 1, 76, lit ? on : RGB(220, 220, 225));
+            dim |= pi->nx[i] == n;
+        cv_rect(x0 + (int32_t)wi * KB_W, y0, KB_W - 1, 88, lit ? on : RGB(220, 220, 225));
         if (dim && !lit)
-            frame_rect(x0 + (int32_t)wi * wk + 2, y0 + 56, wk - 5, 16, C_AMB);
+            frame_rect(x0 + (int32_t)wi * KB_W + 4, y0 + 64, KB_W - 9, 16, C_AMB);
         if (n % 12u == 0u) {
             char o[4] = "C";
             num_cat(o, n / 12u - 1u);
-            cv_text(x0 + (int32_t)wi * wk + 1, y0 + 62, &FONT_T, o, lit ? C_BLACK : C_DIM);
+            cv_text(x0 + (int32_t)wi * KB_W + 3, y0 + 70, &FONT_XS, o, lit ? C_BLACK : C_DIM);
         }
         wi++;
     }
-    for (n = 48, wi = 0; n < 84u; n++) {
+    for (n = ui.kb_lo, wi = 0; n <= last + 1u; n++) {
         uint32_t lit = 0, dim = 0;
         if (!is_black(n)) {
             wi++;
             continue;
         }
+        if (!wi)
+            continue;                    /* (the window starts on a white key) */
         for (i = 0; i < pi->nnow; i++)
-            lit |= now[i] == n;
+            lit |= pi->now[i] == n;
         for (i = 0; i < pi->nnx; i++)
-            dim |= nx[i] == n;
-        cv_rect(x0 + (int32_t)wi * wk - 4, y0, 7, 46, lit ? on : RGB(40, 40, 46));
+            dim |= pi->nx[i] == n;
+        cv_rect(x0 + (int32_t)wi * KB_W - 7, y0, 13, 54, lit ? on : RGB(40, 40, 46));
         if (dim && !lit)
-            frame_rect(x0 + (int32_t)wi * wk - 3, y0 + 30, 5, 12, C_AMB);
+            frame_rect(x0 + (int32_t)wi * KB_W - 5, y0 + 36, 9, 14, C_AMB);
     }
     t[0] = 0;
-    text_cat(t, LAYER_NAME[pi->part]);
-    text_cat(t, " L");
-    num_cat(t, player_variant_of(pi->part));
-    text_cat(t, pi->part == L_HARM ? (player_variant_of(L_HARM) >= 2u ? ": these keys (inversions)" : ": these keys") :
-                up ? ": this key (shown an octave up)" : ": this key");
-    cv_text(6, y0 + 78, &FONT_XS, t, C_DIM);
+    if (pi->part == L_HARM && k >= 0) {
+        inversion_cat(t, (uint32_t)k);
+        text_cat(t, player_variant_of(L_HARM) >= 2u ? "  (L2)" : "  (L1)");
+    } else {
+        text_cat(t, LAYER_NAME[pi->part]);
+        text_cat(t, " L");
+        num_cat(t, player_variant_of(pi->part));
+        text_cat(t, ": this key");
+    }
+    cv_text(6, y0 + 92, &FONT_XS, t, C_GRAY);
     cv_blit(0, Y_CHORD);
 }
 
@@ -1442,7 +1621,7 @@ static void draw_keys_view(int st, const struct pinfo *pi, int32_t left, int bri
 static void draw_count_view(int32_t count, const struct pinfo *pi)
 {
     char t[32] = "";
-    cv_begin(240, Y_LAYERS - Y_CHORD, C_BLACK);
+    cv_begin(240, H_VIEW, C_BLACK);
     num_cat(t, (uint32_t)count);
     text_in(0, 240, 4, &FONT_XS, "COUNT-IN", C_DIM);
     text2x((240 - 2 * text_w(&FONT_L, t)) / 2, 20, &FONT_L, t, C_AMB);
@@ -1464,7 +1643,7 @@ static void draw_chart_view(int32_t bar, int32_t section, uint32_t l)
     uint32_t page = (uint32_t)bar >= first ? ((uint32_t)bar - first) / 16u : 0, la, lb;
     int shown = loop_shown(&la, &lb);
     char t[48] = "";
-    cv_begin(240, Y_LAYERS - Y_CHORD, C_BLACK);
+    cv_begin(240, H_VIEW, C_BLACK);
     text_cat(t, song_section_name(s, (uint32_t)section));
     text_cat(t, "  (bars ");
     num_cat(t, first + s->first_bar_number);
@@ -1544,45 +1723,74 @@ static void draw_layers(void)
     cv_blit(0, Y_LAYERS);
 }
 
-static void draw_status(int32_t section)
+/* the inversion of chord event k's voicing at the harmony's level (M3): "C/E, 1st inversion", "G7, root position".
+ * The voicing's lowest note against the chord's root: a third above it 1st, a fifth 2nd, a seventh (or sixth) 3rd */
+static void inversion_cat(char *d, uint32_t k)
 {
-    char t[40] = "";
-    cv_begin(240, H_STATUS, C_BLACK);
-    if (section >= 0)
-        cv_text(6, 4, &FONT_XS, song_section_name(ui.s, (uint32_t)section), C_GRAY);
-    if (ui.loop_step) {
-        text_cat(t, ui.loop_step == 1 ? "SET A: BAR " : "SET B: BAR ");
-        num_cat(t, (ui.loop_step == 1 ? ui.a_bar : ui.b_bar) + ui.s->first_bar_number);
-    } else if (ui.loop == LOOP_BARS) {
-        text_cat(t, "LOOP ");
-        num_cat(t, ui.a_bar + ui.s->first_bar_number);
-        text_cat(t, "-");
-        num_cat(t, ui.b_bar + ui.s->first_bar_number);
-    } else if (ui.from_bar != first_bar()) {
-        text_cat(t, "START BAR ");
-        num_cat(t, ui.from_bar + ui.s->first_bar_number);
+    uint8_t v[SONG_VOICING_NOTES];
+    uint32_t n = voicing(k, v), i, low, root = song_cevt_root(ui.s, k), iv;
+    const char *sym = chord_name(k), *q;
+    if (!n || root == SONG_NO_CHORD) {
+        text_cat(d, sym);
+        return;
     }
-    cv_text(234 - text_w(&FONT_XS, t), 4, &FONT_XS, t, C_HI);
-    cv_blit(0, Y_STATUS);
+    for (low = v[0], i = 1; i < n; i++)
+        if (v[i] < low)
+            low = v[i];
+    root = (root + 12u + (uint32_t)ui.key) % 12u;
+    iv = (low + 12u - root) % 12u;
+    text_cat(d, sym);
+    for (q = sym; *q && *q != '/'; q++)
+        ;
+    if (iv && !*q) {                     /* not a slash chord already: the voicing's bass after a slash */
+        text_cat(d, "/");
+        text_cat(d, names()[low % 12u]);
+    }
+    text_cat(d, iv == 0u ? ", root position" : iv == 3u || iv == 4u ? ", 1st inversion" :
+                iv >= 6u && iv <= 8u ? ", 2nd inversion" : iv >= 9u ? ", 3rd inversion" : ", other note in the bass");
+}
+
+static void draw_inv(const struct pinfo *pi, int32_t k)
+{
+    char t[48] = "", u[16] = "L";
+    cv_begin(240, H_INV, C_BLACK);
+    if (k >= 0 && pi->part == L_HARM) {
+        inversion_cat(t, (uint32_t)k);
+        num_cat(u, player_variant_of(L_HARM));
+        text_cat(u, player_variant_of(L_HARM) >= 2u ? " inversions" : " root pos.");
+    } else if (k >= 0) {
+        text_cat(t, "chord ");
+        text_cat(t, chord_name((uint32_t)k));
+        text_cat(t, "   ");
+        text_cat(t, LAYER_NAME[pi->part]);
+        text_cat(t, " L");
+        num_cat(t, player_variant_of(pi->part));
+        u[0] = 0;
+    } else {
+        u[0] = 0;
+    }
+    cv_text(6, 0, &FONT_XS, t, C_GRAY);
+    cv_text(234 - text_w(&FONT_XS, u), 0, &FONT_XS, u, C_DIM);
+    cv_blit(0, Y_INV);
 }
 
 static const char *legend_play(int st)
 {
     if (ui.keymode_until)
-        return "SELECT: KEY    SAVE: DONE";
+        return "SELECT key|SAVE done";
     if (ui.loop_step == 1)
-        return "ALGO: A  PRESETS: SECTION  SEQ: SET  HOME: X";
+        return "ALGO bar A|PRESETS section|SEQ set|HOME cancel";
     if (ui.loop_step == 2)
-        return "ALGO: B  PRESETS: SECTION  SEQ: SET  HOME: BACK";
+        return "ALGO bar B|PRESETS section|SEQ set|HOME back";
     if (st == PL_PLAYING || st == PL_COUNT_IN)
-        return ui.loop ? "PLAY: PAUSE  SEQ: LOOP OFF  EDIT: VIEW" : "PLAY: PAUSE  EDIT: VIEW  SEQ: LOOP  GLO: ?";
+        return ui.loop ? "PLAY pause|SEQ loop off|EDIT view|GLO help" : "PLAY pause|EDIT view|SEQ loop|GLO help";
     if (ui.loop == LOOP_BARS && st == PL_STOPPED)
-        return "PLAY: FROM A   SEQ: LOOP OFF   GLO: ?";
+        return "PLAY from A|SEQ loop off|EDIT view|GLO help";
     if (st == PL_STOPPED)
-        return "PLAY  PRESETS/ALGO: START  SEQ: LOOP  GLO: ?";
+        return "PLAY|PRESETS/ALGO start|SEQ loop|GLO help";
     if (st == PL_PAUSED)
-        return "PLAY: GO ON   HOME: STOP   GLO: ?";
-    return "PLAY: PAUSE   HOME: STOP   SEQ: LOOP   GLO: ?";
+        return "PLAY go on|HOME stop|GLO help";
+    return "PLAY pause|HOME stop|SEQ loop|GLO help";
 }
 
 static uint32_t hash(const char *t, uint32_t h)
@@ -1710,7 +1918,7 @@ static void frame_play(uint32_t now)
         uint32_t keys = 0;
         for (i = 0; i < pi.nnow; i++)
             keys |= key_bit(pi.now[i]);
-        if (bright || st != PL_PLAYING)
+        if (bright || st != PL_PLAYING || !ui.blink)
             ui.lit_keys = keys;
         else
             ui.mid_keys = keys;
@@ -1736,7 +1944,7 @@ static void frame_play(uint32_t now)
             if (st == PL_COUNT_IN && count > 0)
                 draw_count_view(count, &pi);
             else if (ui.pview == PV_KEYS)
-                draw_keys_view(st, &pi, left, bright || st != PL_PLAYING);
+                draw_keys_view(st, &pi, left, bright || st != PL_PLAYING || !ui.blink, st == PL_STOPPED ? next : k);
             else
                 draw_chart_view(bar, section, pi.part);
             lcd_done();
@@ -1769,7 +1977,7 @@ static void frame_play(uint32_t now)
     top_key = (uint32_t)(bar * 16 + beat) ^ player_tempo_of() << 16 ^ (uint32_t)ui.loop << 25 ^
               (uint32_t)player_count_in_of() << 27 ^ (uint32_t)st << 28 ^ (uint32_t)(ui.key + 8) << 10 ^
               (ui.keymode_until ? 1u << 31 : 0u) ^ (playing_yours() ? pi.part + 1u : 0u) << 6 ^
-              (uint32_t)ui.loop_step << 29 ^ ui.a_bar * 7u ^ ui.b_bar * 131u;
+              (uint32_t)ui.loop_step << 29 ^ ui.a_bar * 7u ^ ui.b_bar * 131u ^ ui.from_bar * 8191u;
     if (ui.redraw || top_key != ui.sh_top_key) {
         draw_top(bar, beat, st);
         ui.sh_top_key = top_key;
@@ -1791,10 +1999,10 @@ static void frame_play(uint32_t now)
         ui.sh_layers = (int32_t)(ui.muted | player_variant_of(0) << 4 | player_variant_of(1) << 6 |
                                  player_variant_of(2) << 8 | player_variant_of(3) << 10 | yours() << 12);
     }
-    status_key = (uint32_t)section ^ (uint32_t)ui.loop << 8 ^ ui.from_bar << 10 ^ ui.a_bar << 20 ^ ui.b_bar << 26 ^
-                 (uint32_t)ui.loop_step << 6;
-    if (ui.redraw || status_key != ui.sh_status) {
-        draw_status(section);
+    status_key = (uint32_t)(k + 1) ^ (uint32_t)(next + 1) << 4 ^ pi.part << 12 ^ player_variant_of(pi.part) << 16 ^ (uint32_t)(ui.key + 8) << 20 ^
+                 (uint32_t)ui.pview << 26;
+    if (ui.pview == PV_CHORD && (ui.redraw || status_key != ui.sh_status)) {
+        draw_inv(&pi, st == PL_STOPPED ? next : k);
         ui.sh_status = status_key;
     }
     leg = legend_play(st);
@@ -1821,6 +2029,7 @@ static void ui_busy(const char *a, const char *b)
 void app_ui_init(void)
 {
     ui.flash_ok = plat_data(PLAT_DATA_LO) != 0;   /* 0: the platform refused the chip (fm1-base main_fm1.c) */
+    settings_load();
     ui.splash = plat_ms() < SPLASH_MS;   /* (after a restore or a resource install: no splash, straight back) */
     if (!ui.splash)
         lcd_fill(0, 0, 240, 240, C_BLACK);
@@ -1848,6 +2057,12 @@ void app_frame(void)
     player_stats.ui_view = (uint32_t)ui.view + (ui.splash ? 16u : 0u);
     if (ui.splash)
         return;
+    if (ui.view == V_SETTINGS) {
+        if (ui.redraw)
+            draw_settings();
+        ui.redraw = 0;
+        return;
+    }
     if (ui.view == V_HELP) {
         if (ui.redraw || now - ui.sh_stats_ms >= 500u) {
             draw_help();

@@ -431,6 +431,17 @@ uint32_t song_chord_at(const struct song *s, uint32_t tick)
     return lo;
 }
 
+uint32_t song_cevt_root(const struct song *s, uint32_t i)
+{
+    return s->chrd[s->cevt[i * CEVT_REC + 4] * CHRD_REC + 8];
+}
+
+uint32_t song_cevt_mask(const struct song *s, uint32_t i)
+{
+    const uint8_t *r = s->chrd + s->cevt[i * CEVT_REC + 4] * CHRD_REC;
+    return r[10] | (uint32_t)r[11] << 8;
+}
+
 const char *song_cevt_symbol(const struct song *s, uint32_t i)
 {
     return (const char *)(s->chrd + s->cevt[i * CEVT_REC + 4] * CHRD_REC);

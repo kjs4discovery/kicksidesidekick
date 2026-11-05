@@ -29,6 +29,8 @@ void player_variant(uint32_t layer, uint32_t v);   /* 1..variants; takes effect 
 void player_tempo(uint32_t bpm);          /* PL_BPM_MIN..PL_BPM_MAX */
 uint32_t player_song_bpm(const struct song *s);   /* its own tempo, whole BPM */
 void player_count_in(int on);
+void player_count_in_bars(uint32_t bars); /* M3: the count-in's length, 1 or 2 bars */
+void player_count_in_volume(uint32_t cc7);/* M3: the count-in beep's channel volume, 0..127 */
 void player_transpose(int32_t semitones); /* every layer but the percussion channel's, -11..+11; at once (sounding notes
                                            * released) */
 int32_t player_transpose_of(void);
@@ -93,6 +95,8 @@ struct player_stats {
     uint32_t key_flashes;                 /* the key lights' bright flashes (an attack of your part) */
     uint32_t mid_keys;                    /* the key lights between attacks (ui.c) */
     uint32_t loop_step;                   /* setting the loop (ui.c): 1 moving A, 2 moving B, 0 not */
+    uint32_t settings;                    /* the settings in use (ui.c): 4 bits each, S_* order */
+    uint32_t settings_saves;              /* settings saved to the flash since start-up */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

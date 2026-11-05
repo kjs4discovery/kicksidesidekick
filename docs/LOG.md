@@ -795,3 +795,45 @@ Choices (with reasons):
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 4 (legend colours, no section row, zoomed keyboard, count-in in every view, beep, inversion label, settings).
+
+2026-11-05 19:55 — Milestone M3, Part 4 (screen polish, count-in, inversion label, settings) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "Part 4"; mock-ups first: docs/step-M3/mock-p4-*.png):
+- Legend on every screen: names amber, actions gray, dividers.
+- The section row is removed: the views get 144 rows. The start point and the loop are on the top line.
+- Inversion line, e.g. "C/E, 1st inversion" (chord view; also under the keyboard view).
+- Zoomed keyboard view: 11 white keys that follow your part's notes.
+- Count-in in every view: chord, keyboard and chart.
+- Count-in beep: square lead on a free channel, C6 / G5, 70 ms.
+- Count-in length of 1 or 2 bars; BIAS_BARS is now 3.
+- Settings screen (GLO, GLO): blink, count-in length, count-in volume, note names. Saved in fm1-base's settings
+  store, only when changed.
+- Parser: song_cevt_root / song_cevt_mask (CHRD record's root and pitch classes).
+- The per-song test's loop is now the A–B loop set while playing (the section loop is gone).
+Learned / measured:
+- tools/m3_test.py --only part1..part4 on the release build: Parts 1–4 all pass (the 41 PASS lines include the
+  Amazing Grace run's). Amazing Grace and the Blues full runs: ALL PASS, including the new loop.
+  - Beep peak 7725 against M2's clicks at 362, 21x, at MASTER 100 %; about a quarter of full scale, below the
+    music's 41–58 % peaks.
+  - Volume LOW: rms 312 against HIGH 1215.
+  - Settings saved once and still in use after a restart from that flash.
+  - 2 bars: the count-in starts two bars before the start bar.
+  - Blink off: steady keys, no middle level.
+  - Amazing Grace L2: 19 of 29 chords in an inversion (L1: all root position).
+- Stock never uses 0xFC000–0xFDFFF (all 0xFF in backups/flash/FM-1_015_full-flash_856014_2026-11-04.bin, read only).
+  This is the second kind of write our firmware makes; the install checklist must explain it.
+- Release build build/step-M3/part4/fm1acc-0.3.4-m3p4.fwsc: FM-1_46000304, sha256
+  508aa1fd6f119b829958bc5df9f8c4912f5de20a12bb104d819ae2c26fa580e1. Image 402,544 B.
+- fm1-live runs the app inside the --flash file, not --fwsc. Comparing with M2 needs M2's own flash image
+  (build/step-M2/final/emu/flash/songs.bin).
+Choices (with reasons):
+- Settings open with GLO pressed twice (help, then settings). Every free button already has a job on the play
+  screen, and GLO works everywhere.
+- The beep uses a free channel, so the drums' channel volume is never touched (M2 turned it up for the clicks).
+  Square lead because it cuts through; 70 ms is short enough not to alias audibly.
+- Count-in volume LOW / MEDIUM / HIGH = channel volume 64 / 96 / 127, default HIGH (the user asked for much louder).
+Hardware touched: none
+Questions for the planning chat:
+- The settings are a second kind of flash write by our firmware (2 sectors at 0xFC000, fm1-base's store, A/B
+  copies). It will be explained in the install checklist like the song store; OK?
+Next: Part 5 (Happy Birthday), then the early install point.

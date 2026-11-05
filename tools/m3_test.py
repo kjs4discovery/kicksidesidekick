@@ -51,13 +51,14 @@ RATE = 44100
 BLOCK = 256
 OPEN_MS, PLAY_MS = 3400, 4600                  # after the splash (3 s): open the song, then PLAY
 STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIIIi4I3I")   # PL_STATS_TEMPOS 64
-STATS4 = struct.Struct("<4I")                  # version 4 (M3): part, key_flashes, mid_keys, loop_step
+STATS4 = struct.Struct("<6I")                  # version 4 (M3): part key_flashes mid_keys loop_step settings saves
 FIELDS = ("magic version blocks render_max budget starts start_frames ends end_frames last_tick loops loop_from "
           "loop_to ntempo").split()
 FIELDS2 = ("start_from start_tick pauses pause_frames pause_tick bpm clicks click_peak_vel key_note_last keys_octave "
            "ui_view flash_bars flash_beats transpose").split()
 M1_PKG = ROOT / "build/step-M1/fm1acc-0.2.0-m1.fwsc"   # for before / after numbers (its songs are built in)
 M2_PKG = ROOT / "build/step-M2/final/fm1acc-0.3.0-m2.fwsc"
+M2_FLASH = ROOT / "build/step-M2/final/emu/flash/songs.bin"   # M2's app and its songs (fm1-live runs the flash's app)
 
 
 def songs():
@@ -162,9 +163,10 @@ def stats(ram):
     s.update(zip(FIELDS2, v[p:p + len(FIELDS2)]))
     p += len(FIELDS2)
     s["note_on_last"], (s["lit_keys"], s["dim_keys"], s["view"]) = v[p:p + 4], v[p + 4:p + 7]
-    s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"] = 0xFF, 0, 0, 0
+    s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"], s["settings"], s["settings_saves"] = 0xFF, 0, 0, 0, 0, 0
     if s["version"] >= 4:
-        s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"] = STATS4.unpack_from(ram, i + STATS.size)
+        (s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"], s["settings"],
+         s["settings_saves"]) = STATS4.unpack_from(ram, i + STATS.size)
     return s
 
 
@@ -278,15 +280,24 @@ def test_song(i, c, rep):
     check(t["deferred"] == 0 and t["ends"] == 0, f"30 and 250 BPM: no block deferred events (the 128 a block cap), "
                                                f"not at the end yet; CPU at most {max(t['cpu'][:min(c['bar_count'], 64)])} %")
 
-    # ---- loop
-    a, b = section_region(c, 0)
-    sec_ms = ticks_to_frames(c, b - a) / RATE * 1000
-    script = open_song(i) + press(OPEN_MS + 300, "ARP") + press(PLAY_MS, "PLAY") + press(PLAY_MS + 3000, "SEQ")
-    lr = run(f"{slug}-loop", int(PLAY_MS + 3000 + 1.4 * sec_ms), script)
+    # ---- loop (M3: bars A-B, set while playing: SEQ takes the bar playing as A, SEQ, PRESETS +1 moves B to its
+    # section's last bar, SEQ: on)
+    bt = bpb * c["ppq"]
+    t_set = PLAY_MS + 3000
+    tick = start_tick + (3000 + 30) / 1000 * c["ppq"] * own_bpm(c) / 60   # (ARP: the count-in off)
+    a_bar = max(int(tick // bt), c["sections"][0]["first_bar"])
+    sec_of = lambda bar: next(x for x in c["sections"] if x["first_bar"] <= bar < x["first_bar"] + x["bars"])
+    sb = sec_of(min(a_bar + 3, c["bar_count"] - 1))
+    b_bar = sb["first_bar"] + sb["bars"] - 1
+    a, b = a_bar * bt, (b_bar + 1) * bt
+    run_ms = t_set + ticks_to_frames(c, b - tick + 0.4 * (b - a)) / RATE * 1000
+    script = open_song(i) + press(OPEN_MS + 300, "ARP") + press(PLAY_MS, "PLAY") + press(t_set, "SEQ") \
+        + press(t_set + 150, "SEQ") + [f"{t_set + 300}:e6:1"] + press(t_set + 700, "SEQ")
+    lr = run(f"{slug}-loop", int(run_ms), script)
     lo = lr["stats"]
     check(lo["loops"] >= 1 and lo["loop_from"] == a and lo["loop_to"] == b and lo["ends"] == 0,
-          f"section loop: {lo['loops']} jump(s) from tick {lo['loop_to']} to {lo['loop_from']} (expected {b} -> {a}: "
-          f"section '{c['sections'][0]['name']}' minus its {c['sections'][0]['lead_ticks']}-tick lead-in)")
+          f"loop A-B set while playing (A = the bar playing, B = its section's last bar): {lo['loops']} jump(s) from "
+          f"tick {lo['loop_to']} to {lo['loop_from']} (expected {b} -> {a}: bars {a_bar}..{b_bar})")
     check(a <= lo["last_tick"] < b, f"after the jump, inside the loop (tick {lo['last_tick']})")
     check(lo["voices_after_stop"] in (0, 0xFFFFFFFF), "no voices left by a stop")
     lines.append(f"- screens: {slug}-screen.png (at {shot_ms - PLAY_MS} ms: bass L2, harmony and drums muted), "
@@ -886,7 +897,94 @@ def test_part3(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3}
+def settings_script(t0, rows):
+    """GLO, GLO (the settings), then for each (row, clicks): SELECT to the row, ALGORITHM clicks; GLO (saved, back)"""
+    sc = press(t0, "GLO") + press(t0 + 200, "GLO")
+    t, row = t0 + 400, 0
+    for r, n in rows:
+        if r != row:
+            sc.append(f"{t}:e0:{r - row}")
+            t += 300
+            row = r
+        sc.append(f"{t}:e1:{n}")
+        t += 300
+    return sc + press(t, "GLO"), t + 200
+
+
+def test_part4(all_songs, rep):
+    """M3 part 4: legend, layout, zoomed keyboard, count-in everywhere, the beep, inversions, settings"""
+    lines, st, check = checker("Part 4: screen polish, count-in, inversions, settings")
+    slugs = [c["slug"] for c in all_songs]
+    g, d = slugs.index("amazing-grace"), slugs.index("danny-boy")
+    cg = all_songs[g]
+    bt = int(cg["time_signature"][0]) * cg["ppq"]
+    beat_ms = 60000 / own_bpm(cg)
+    # the count-in: a beep, much louder than M2's clicks (MASTER 100 %, Amazing Grace, 1 bar + its pickup)
+    cin = (3 + 1) * beat_ms
+    seg = lambda r: r["left"][int((PLAY_MS + 50) / 1000 * RATE):int((PLAY_MS + cin - 100) / 1000 * RATE)]
+    m3 = run("p4-countin", int(PLAY_MS + cin), open_song(g) + ["1500:pot:4096"] + press(PLAY_MS, "PLAY"))
+    m2 = run("p4-countin-m2", int(PLAY_MS + cin), open_song(g) + ["1500:pot:4096"] + press(PLAY_MS, "PLAY"),
+             pkg=M2_PKG, flash=str(M2_FLASH)) if M2_FLASH.exists() else None
+    p3, r3 = max(abs(v) for v in seg(m3)), rms(seg(m3))
+    p2, r2 = (max(abs(v) for v in seg(m2)), rms(seg(m2))) if m2 else (0, 0)
+    check(m3["stats"]["click_peak_vel"] == 127 and (not m2 or r3 > 2 * r2),
+          f"count-in beep (square lead, C6 / G5, 70 ms): peak {p3}, rms {r3:.0f}; M2's wood-block clicks: peak {p2}, "
+          f"rms {r2:.0f}" + (f" ({r3 / r2:.1f}x the energy level)" if r2 else ""))
+    # settings: blink off, count-in 2 bars, volume LOW; saved; kept over a restart (the same flash)
+    sc, t = settings_script(OPEN_MS + 200, [(0, 1), (1, 1), (2, 1)])
+    r1 = run("p4-settings", t + 600, open_song(g) + sc)
+    run("p4-settings-screen", t - 300, open_song(g) + sc[:-2])
+    want = 0 | 1 << 4 | 0 << 8 | 1 << 12
+    r2b = run("p4-settings-restart", PLAY_MS + 3000, open_song(g) + ["1500:pot:4096"] + press(PLAY_MS, "PLAY"),
+              flash=r1["flash"])
+    s2 = r2b["stats"]
+    check(r1["stats"]["settings"] == want and r1["stats"]["settings_saves"] == 1 and s2["settings"] == want,
+          f"settings (GLO, GLO; p4-settings-screen.png): key lights blink OFF, count-in 2 BARS, volume LOW: in use "
+          f"({r1['stats']['settings']:#x}), saved once, and after a restart from that flash still {s2['settings']:#x}")
+    check(s2["start_from"] - s2["start_tick"] == bt + 2 * bt - (bt - cg["pickup_beats"] * cg["ppq"]) or
+          s2["start_tick"] == (s2["start_from"] // bt) * bt - 2 * bt,
+          f"count-in 2 bars: PLAY from tick {s2['start_from']} counts in from {s2['start_tick']} (two bars before "
+          f"its bar)")
+    lo = rms(r2b["left"][int((PLAY_MS + 50) / 1000 * RATE):int((PLAY_MS + 1500) / 1000 * RATE)])
+    check(lo < r3 * 0.85, f"count-in volume LOW: rms {lo:.0f} (HIGH: {r3:.0f})")
+    # blink off: the keys steady (no middle level)
+    r = run("p4-blink-off", PLAY_MS + 7000, open_song(g) + sc + press(t + 300, "ENV") + press(t + 500, "ARP")
+            + press(PLAY_MS + 1500, "PLAY"))
+    s4 = r["stats"]
+    check(s4["part"] == 2 and s4["mid_keys"] == 0 and s4["lit_keys"] and s4["key_flashes"] <= 2,
+          f"blink OFF: the harmony's keys lit steadily (lit {s4['lit_keys']:#x}, middle {s4['mid_keys']:#x}, "
+          f"{s4['key_flashes']} flash(es))")
+    # the levels make inversions visible: level 1 all root position, level 2 has other inversions (the data); shown
+    # on the inversion line (p4-inv-l1.png, p4-inv-l2.png) and in the zoomed keyboard view (p4-keys.png)
+    def inv(c, lvl):
+        out = []
+        for e in c["chord_events"]:
+            v = [n for n in e["voicing"][lvl - 1] if n]
+            ch = c["chords"][e["chord"]]
+            if v and ch["root"] is not None:
+                out.append((min(v) - ch["root"]) % 12)
+        return out
+    l1, l2 = inv(cg, 1), inv(cg, 2)
+    check(all(x == 0 for x in l1) and any(x for x in l2), f"Amazing Grace: level 1 all root position; level 2 "
+          f"{sum(1 for x in l2 if x)} of {len(l2)} chords in an inversion (voice leading)")
+    o = open_song(d) + press(OPEN_MS + 200, "ENV")
+    run("p4-inv-l1", PLAY_MS + 9000, o + press(PLAY_MS, "PLAY"))
+    run("p4-inv-l2", PLAY_MS + 9000, o + [f"{OPEN_MS + 400}:e4:1"] + press(PLAY_MS, "PLAY"))
+    run("p4-keys", PLAY_MS + 9000, o + [f"{OPEN_MS + 400}:e4:1"] + press(OPEN_MS + 700, "EDIT") + press(PLAY_MS, "PLAY"))
+    run("p4-keys-bass", PLAY_MS + 9000, open_song(d) + press(OPEN_MS + 200, "SCL") + press(OPEN_MS + 700, "EDIT")
+        + press(PLAY_MS, "PLAY"))
+    # the count-in in every view: chord, keyboard, chart (p4-count-*.png)
+    for v, n in (("chord", 0), ("keys", 1), ("chart", 2)):
+        r = run(f"p4-count-{v}", int(PLAY_MS + beat_ms * 1.5), open_song(g) + press(OPEN_MS + 200, "ENV")
+                + [x for k in range(n) for x in press(OPEN_MS + 500 + 300 * k, "EDIT")] + press(PLAY_MS, "PLAY"))
+        px = r["lcd"].crop((0, 64, 480, 352)).getcolors(1 << 16) or []
+        amber = sum(c for c, (rr, gg, bb) in px if rr > 200 and 120 < gg < 200 and bb < 60)
+        check(r["stats"]["view"] == n and amber > 500, f"count-in shown in the {v} view (p4-count-{v}.png)")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3, "part4": test_part4}
 
 
 def main():

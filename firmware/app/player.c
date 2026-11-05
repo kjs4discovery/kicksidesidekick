@@ -11,13 +11,21 @@
 #include "synth.h"
 #include "plat.h"
 
-#define BIAS_BARS 2                       /* the count-in runs below tick 0: positions are kept this far above */
+#define BIAS_BARS 3                       /* the count-in runs below tick 0: positions are kept this far above (M3:
+                                           * up to 2 bars of count-in before a pickup) */
 #define PL_EVENTS_PER_BLOCK 128u          /* a block sends at most this many; the rest go in the next */
 #define CLICK_CH 9u                       /* GM percussion */
-#define CLICK_BAR 76u                     /* hi wood block on a bar's first beat, low wood block on the others */
+/* the count-in (M3): a beep that cuts through, on a channel the song does not use: GM 81 Lead 1 (square), C6 on a
+ * bar's first beat and G5 on the others, 70 ms; its channel volume the count-in volume (a setting). With no free
+ * channel: M2's wood-block clicks on the percussion channel */
+#define BEEP_PROGRAM 80u
+#define BEEP_BAR 84u
+#define BEEP_BEAT 79u
+#define BEEP_VEL_BAR 127u
+#define BEEP_VEL_BEAT 112u
+#define BEEP_BLOCKS 12u                   /* its length: 12 blocks of 256 frames, 70 ms */
+#define CLICK_BAR 76u                     /* (no free channel) hi wood block on beat 1, low on the others */
 #define CLICK_BEAT 77u
-#define CLICK_VEL_BAR 127u                /* M2: louder (M1 112 / 88), beat 1 accented; the percussion channel at full */
-#define CLICK_VEL_BEAT 104u               /* volume during the count-in (the drums' own volume back after it) */
 #define FRAME_RATE 44100u
 #define DEN (FRAME_RATE * 60u)            /* a tick is DEN units of position; a frame adds ppq * bpm */
 
@@ -27,6 +35,7 @@ volatile struct player_stats player_stats = {.magic = PL_STATS_MAGIC, .version =
 static const struct song *volatile want_song;
 static volatile uint32_t song_req, song_done, play_req, play_done, loop_req, loop_done;
 static volatile uint8_t play_cmd, countin_want = 1, start_countin;   /* play_cmd: 0 stop, 1 start, 2 pause */
+static volatile uint8_t countin_bars_want = 1, beep_vol_want = 127;
 static volatile int32_t start_want;
 static volatile uint32_t mute_want, tempo_want = 120;
 static volatile uint8_t var_want[SONG_LAYERS] = {1, 1, 1, 1};
@@ -48,7 +57,8 @@ static int32_t transpose_cur;
 static uint32_t active[SONG_LAYERS][4];   /* notes sounding, per layer */
 static int loop_mode;
 static int32_t loop_from, loop_to;
-static uint8_t click_on;                  /* a click note to end at the next block (0: none) */
+static uint8_t click_on;                  /* the count-in note sounding (0: none), on click_ch */
+static uint8_t click_ch = CLICK_CH, click_left;   /* its channel (the beep's: a free one); blocks until it ends */
 static uint32_t budget_left;
 static uint32_t stop_frames;
 
@@ -115,6 +125,8 @@ void player_tempo(uint32_t b)
 }
 
 void player_count_in(int on) { countin_want = (uint8_t)(on != 0); }
+void player_count_in_bars(uint32_t bars) { countin_bars_want = (uint8_t)(bars >= 2u ? 2u : 1u); }
+void player_count_in_volume(uint32_t cc7) { beep_vol_want = (uint8_t)(cc7 > 127u ? 127u : cc7); }
 
 void player_transpose(int32_t t) { transpose_want = (int8_t)(t < -11 ? -11 : t > 11 ? 11 : t); }
 int32_t player_transpose_of(void) { return transpose_want; }
@@ -193,7 +205,7 @@ static void release_all(void)
         if (song->layer[l].variants)
             release(l);
     if (click_on) {
-        synth_send_now(0x80u | CLICK_CH, click_on, 0);
+        synth_send_now((uint8_t)(0x80u | click_ch), click_on, 0);
         click_on = 0;
     }
 }
@@ -290,33 +302,52 @@ static void log_chords(int32_t from, int32_t to, uint32_t f0)
     }
 }
 
-/* the drums' own volume on the click channel again (the count-in turned it up) */
-static void click_channel_back(void)
+/* the beep's channel: the first from 15 down that no layer, the keys (16) or the percussion (10) use; none: the clicks */
+static void click_channel_pick(void)
 {
-    uint32_t l;
+    uint32_t c, l, used = 1u << CLICK_CH | 1u << SYNTH_KEYS_CH;
     for (l = 0; l < SONG_LAYERS; l++)
-        if (song->layer[l].variants && song->layer[l].channel == CLICK_CH)
-            synth_send_now(0xB0u | CLICK_CH, 7u, song->layer[l].volume);
+        if (song->layer[l].variants)
+            used |= 1u << song->layer[l].channel;
+    click_ch = CLICK_CH;
+    for (c = 15; c-- > 0;)
+        if (!(used >> c & 1u)) {
+            click_ch = (uint8_t)c;
+            break;
+        }
+}
+
+/* before a count-in: the beep's sound and volume on its channel */
+static void click_channel_setup(void)
+{
+    if (click_ch == CLICK_CH)
+        return;
+    synth_send_now((uint8_t)(0xB0u | click_ch), 121u, 0);
+    synth_send_now((uint8_t)(0xC0u | click_ch), BEEP_PROGRAM, 0);
+    synth_send_now((uint8_t)(0xB0u | click_ch), 7u, beep_vol_want);
+    synth_send_now((uint8_t)(0xB0u | click_ch), 10u, 64u);
 }
 
 static void clicks(int32_t from, int32_t to)
 {
     int32_t ppq = (int32_t)song->ppq, t;
-    if (click_on) {
-        synth_send_now(0x80u | CLICK_CH, click_on, 0);
+    if (click_on && (click_left == 0 || --click_left == 0)) {
+        synth_send_now((uint8_t)(0x80u | click_ch), click_on, 0);
         click_on = 0;
     }
     if (from >= music_from)
         return;
-    if (to >= music_from)
-        click_channel_back();             /* the last count-in block */
     /* the first beat at or after from (from may be negative: round towards +infinity by hand) */
     t = from >= 0 ? (from + ppq - 1) / ppq * ppq : -((-from) / ppq * ppq);
     if (t < to && t < music_from) {
         int32_t in_bar = (t + (int32_t)song->bar_ticks * BIAS_BARS) % (int32_t)song->bar_ticks;
-        uint32_t vel = in_bar == 0 ? CLICK_VEL_BAR : CLICK_VEL_BEAT;
-        click_on = in_bar == 0 ? CLICK_BAR : CLICK_BEAT;
-        synth_send_now(0x90u | CLICK_CH, click_on, (uint8_t)vel);
+        int beep = click_ch != CLICK_CH;
+        uint32_t vel = in_bar == 0 ? (beep ? BEEP_VEL_BAR : 127u) : (beep ? BEEP_VEL_BEAT : 104u);
+        if (click_on)
+            synth_send_now((uint8_t)(0x80u | click_ch), click_on, 0);
+        click_on = (uint8_t)(beep ? (in_bar == 0 ? BEEP_BAR : BEEP_BEAT) : (in_bar == 0 ? CLICK_BAR : CLICK_BEAT));
+        click_left = beep ? (uint8_t)BEEP_BLOCKS : 1u;
+        synth_send_now((uint8_t)(0x90u | click_ch), click_on, (uint8_t)vel);
         player_stats.clicks++;
         if (vel > player_stats.click_peak_vel)
             player_stats.click_peak_vel = vel;
@@ -352,7 +383,6 @@ static void stop(void)
 {
     if (song && state != PL_STOPPED && state != PL_PAUSED) {
         release_all();
-        click_channel_back();
         stop_frames = frames ? frames : 1u;
         player_stats.voices_after_stop = 0xFFFFFFFFu;   /* measured in player_after, 1 s on */
     }
@@ -364,7 +394,6 @@ static void pause(uint32_t f0)
     if (state != PL_PLAYING && state != PL_COUNT_IN)
         return;
     release_all();
-    click_channel_back();
     state = PL_PAUSED;
     player_stats.pauses++;
     player_stats.pause_frames = f0;
@@ -394,11 +423,11 @@ static void start(uint32_t f0, int32_t s0, int count_in)
     mute_cur = mute_want;
     channel_setup();
     music_from = s0;
-    from = count_in ? s0 / bt * bt - bt : s0;
+    from = count_in ? s0 / bt * bt - bt * (int32_t)countin_bars_want : s0;   /* 1 or 2 bars (a setting) */
     q = q_of(from);
     seek_all(s0);
     if (from < s0)
-        synth_send_now(0xB0u | CLICK_CH, 7u, 127u);   /* the clicks at full volume (click_channel_back after) */
+        click_channel_setup();
     state = from < s0 ? PL_COUNT_IN : PL_PLAYING;
     pub_from = s0;
     player_stats.starts++;
@@ -422,6 +451,7 @@ static void requests(uint32_t f0)
             pub_from = music_from;
             pub_tick = music_from;
             set_tempo(tempo_want);
+            click_channel_pick();
             player_stats.song_crc = song->data[12] | (uint32_t)song->data[13] << 8 |
                                     (uint32_t)song->data[14] << 16 | (uint32_t)song->data[15] << 24;
         }

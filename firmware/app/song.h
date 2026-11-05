@@ -71,6 +71,8 @@ uint32_t song_seek(const struct song_stream *st, uint32_t tick);     /* the firs
 uint32_t song_chord_at(const struct song *s, uint32_t tick);         /* the chord event sounding at tick */
 uint32_t song_cevt_tick(const struct song *s, uint32_t i);
 const char *song_cevt_symbol(const struct song *s, uint32_t i);      /* "G7", "N.C." */
+uint32_t song_cevt_root(const struct song *s, uint32_t i);           /* its root's pitch class, SONG_NO_CHORD: N.C. */
+uint32_t song_cevt_mask(const struct song *s, uint32_t i);           /* its pitch classes: bit k = pitch class k */
 const uint8_t *song_cevt_voicing(const struct song *s, uint32_t i, uint32_t level);   /* level 1, 2: 5 notes, 0 = none */
 uint32_t song_bar_chord(const struct song *s, uint32_t bar);         /* the chord event sounding on the bar's beat 1 */
 uint32_t song_bar_section(const struct song *s, uint32_t bar);

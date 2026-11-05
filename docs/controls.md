@@ -180,3 +180,39 @@ Mock-ups: ![set A](step-M3/mock-p3-loop-set-a.png) ![set B](step-M3/mock-p3-loop
 ![loop on](step-M3/mock-p3-loop-on.png)
 
 Built: ![set A](step-M3/p3-set-a.png) ![set B](step-M3/p3-set-b.png) ![loop on](step-M3/p3-loop-on.png)
+
+### Part 4: screen polish, count-in, inversion label, settings
+
+- **Legend:** button names in amber, actions in gray, a thin divider between pairs (`PLAY pause | EDIT view | ...`),
+  on every screen. If a legend is too wide it uses the smaller font.
+- **No section row:** the space goes to the views (144 rows, from y 32 to 176). The layers row moves down to 180.
+  The start point (`FROM 3`) and the loop (`LOOP 5-8`) are on the top line. The section's name is still in the
+  stopped screen and the chart view.
+- **Inversion line** (chord view, under the strip): the voicing at the harmony's level, e.g. `C/E, 1st inversion`
+  or `G7, root position`, with `L1 root pos.` or `L2 inversions` on the right. For another part: its chord and
+  level. The keyboard view has the same line under the keys.
+  - Level 1 is always root position; level 2 voice-leads through inversions. On Amazing Grace, 19 of 29 chords at
+    level 2 are in an inversion.
+- **Keyboard view, zoomed:** 11 white keys (about 1.5 octaves), 21 px each. The window follows your part's notes:
+  it moves only when a note now or next would fall outside, with a key to spare. Notes show at their real pitch.
+- **Count-in in every view:** the count (and the first chord or note) replaces the view while it counts in. This
+  covers the chord, keyboard and chart views, and the later views use the same path.
+- **Count-in sound:** a beep on a channel the song does not use: square lead, C6 on beat 1 and G5 on the others,
+  70 ms. Its peak is 21x M2's wood-block clicks (7725 against 362 at MASTER 100 %). With no free channel it falls
+  back to M2's clicks.
+- **Settings (GLO, then GLO again):**
+  - SELECT picks a row; ALGORITHM, PLAY or EDIT change its value; GLO or HOME go back and save.
+  - The rows: key lights blink ON/OFF; count-in length 1 or 2 BARS; count-in volume LOW, MEDIUM or HIGH (the
+    beep's channel volume 64, 96 or 127); note names under the notation ON/OFF (Part 7). Guide volume comes in
+    Part 8.
+  - Saved in fm1-base's settings store (OBJ_SETTINGS, two copies at 0xFC000 and 0xFD000, the newer valid one wins),
+    only when something changed. The stock firmware never uses these sectors: they are all 0xFF in our unit's
+    stock dump.
+- **Help:** "GLO again: settings".
+
+Mock-ups: ![layout and legend](step-M3/mock-p4-layout.png) ![zoomed keyboard](step-M3/mock-p4-keys-zoom.png)
+![settings](step-M3/mock-p4-settings.png)
+
+Built: ![chord view, L2](step-M3/p4-inv-l2.png) ![zoomed keyboard](step-M3/p4-keys.png)
+![bass on the keyboard](step-M3/p4-keys-bass.png) ![settings](step-M3/p4-settings-screen.png)
+![count-in in the chart view](step-M3/p4-count-chart.png)
