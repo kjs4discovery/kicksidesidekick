@@ -4,8 +4,10 @@
  * the set as it was made (0x33CBD bytes, ~212 KB); _16_BIT_SAMPLES stores a 16-bit copy twice that size
  * (measured: 440 KB, which nearly filled the app slot).
  * Reverb and chorus on: upstream's eas_public.c uses them without the #ifdefs (it does not build without them).
- * No file formats beyond the SMF parser eas_config.c always lists. Dynamic memory: the host layer (eas_host_fw.c)
- * hands out a fixed pool. */
+ * No file formats beyond the SMF parser eas_config.c always lists (Step 0.7 plays a MIDI file with it).
+ * JET_INTERFACE (Step 0.7): upstream's per-track mute lives behind it (eas_smf.c PARSER_DATA_SET_MUTE / _MUTE_FLAGS,
+ * a muted track's note-ons dropped, its note-offs and controllers kept); it needs jet.c linked, never opened.
+ * Dynamic memory: the host layer (eas_host_fw.c) hands out a fixed pool. */
 #ifndef FW_EAS_OPTIONS_H
 #define FW_EAS_OPTIONS_H
 
@@ -17,5 +19,6 @@
 #define _CHORUS_ENABLED
 #define _8_BIT_SAMPLES
 #define _SAMPLE_RATE_22050
+#define JET_INTERFACE
 
 #endif

@@ -1,6 +1,49 @@
-# Our firmware (Step 0.6: first build)
+# Our firmware
 
-**Emulator only so far. Nothing has been installed on the FM-1.**
+**Emulator only so far. Nothing has been installed on the FM-1.** Step 0.7's checklist for the first writes:
+[step-0.7-first-writes.md](step-0.7-first-writes.md) (waiting for review).
+
+## Step 0.7: the song-playing PROTOTYPE (v0.1.0-proto, identity FM-1_4600)
+
+Plays the built-in `songs/amazing-grace` with Sonivox EAS's MIDI file player; four layers mutable; the chord
+chart from `song.yaml` on the screen. Prototype code, for Phase 1 to replace: `firmware/app/proto_*.c|h`,
+`tools/proto_song_to_c.py`, `tools/proto_test.py`; `app.c` only includes `proto_ui.c`.
+
+| Control | Does |
+|---|---|
+| PLAY | play from the top / stop (lit green while playing) |
+| FX, SEL, ENV, LFO | mute / unmute drums, bass, harmony, melody (lit: the layer plays) |
+| MASTER | volume |
+| keys | Electric Piano 1 on MIDI channel 16, over the song |
+| REC, OCT−, OCT+ | not used: fm1-base's rescues at power-on (below) |
+
+Screen: title, `CPU n%  V now/most` (top left), `bar:beat` and the beats of the bar (top right; bar 0 is the
+pickup), the current chord large, the next one below, the four layers (amber outline "MUTE" when muted).
+
+How it works:
+- **Song data, at build time:** `fm1.toml gen` runs `tools/proto_song_to_c.py songs/amazing-grace` →
+  `build/gen/proto_song.h`: `song.mid`'s bytes as they are, which track plays which layer (variant `:1` of each;
+  the other variants' tracks muted for good), and the chord chart (from `song.yaml`: pickup, sections, ending)
+  as (tick, chord) pairs, consecutive repeats merged. It refuses a song with tempo or metre changes, a chart that
+  does not fit the bars, or a chart that disagrees with `song.mid`'s old `chords` text track (D014 cross-check).
+- **Playing from the flash:** `eas/eas_host_fw.c` implements EAS's file calls over an `EAS_FILE` locator's
+  `readAt`/`size` (upstream's own interface, `eas_types.h`); the song's locator reads the array in place.
+- **Muting:** upstream EAS's per-track mute (`eas_smf.c` `PARSER_DATA_MUTE_FLAGS`), compiled in by
+  `JET_INTERFACE` (`eas/eas_options.h`; `jet.c` linked, never used): a muted track's note-ons are dropped, its
+  note-offs and controllers still applied; on muting, an all-notes-off on the layer's channel stops held notes.
+- **One synth:** the live MIDI stream (keys) is opened on the song stream's synth (`EAS_OpenMIDIStream(…, song)`),
+  so the 24 voices are shared and a panic silences both.
+- **Threads:** the main loop only sets requests (play/stop counter, mute mask); the audio interrupt applies them
+  before each EAS render (`synth.c` calls `pp_before` / `pp_after`), and publishes the position and voices.
+- **Chord timing:** the screen runs `PP_LEAD_MS` (80 ms) ahead of the parser's position, to cover a UI frame,
+  a blit in progress and the big chord's LCD transfer (~0.32 ms a row); the chord is drawn and sent first.
+
+Tests (`make proto-test`, ~10 min headless): `docs/step-0.7-emulator-report.md`.
+
+Fallback diagnostic: `make hello` → `build/hello/fm1acc-hello.fwsc`, the Step 0.6 hello world built from commit
+4629478's source (identity FM-1_7100).
+
+## Step 0.6: first build (hello world)
 
 ![The firmware in fm1-emu, C4 held](step-0.6-emulator.png)
 
@@ -20,7 +63,7 @@ shown large ("C4"), and a small keyboard lights the held keys.
 ## Build and run
 
 ```bash
-make firmware        # firmware/app/build/fm1acc.fwsc (identity FM-1_7100), ~10-20 s
+make firmware        # firmware/app/build/fm1acc.fwsc (identity FM-1_4600 from Step 0.7), ~10-20 s
 make emu             # build, then play it in the emulator window
 make shot            # build, 2.5 s headless with C4 held: build/emu/panel.png, build/emu/audio.raw
 make patches         # once after refreshing third_party/fm1-emu: the flash-id patch, rebuilt

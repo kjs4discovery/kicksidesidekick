@@ -2,9 +2,13 @@
 /* The General MIDI synth (synth.h). EAS is not re-entrant, so only the audio interrupt calls it after start-up:
  * the main loop puts messages in a single-producer, single-consumer ring, and each render drains it into EAS's
  * MIDI stream before rendering. EAS runs at 22.05 kHz (the wt_200k_G sound set's rate); each output block is
- * twice that many frames, filled by linear interpolation. */
+ * twice that many frames, filled by linear interpolation.
+ * PROTOTYPE (Step 0.7): the built-in song's player (proto_player.c) shares the synth: the live stream joins the
+ * song's, and the player's hooks run around each render. */
 #include "synth.h"
 #include "eas.h"
+#include "plat.h"
+#include "proto_player.h"
 
 uint32_t fw_eas_pool_used(void);          /* eas/eas_host_fw.c */
 uint32_t fw_eas_pool_size(void);
@@ -13,7 +17,7 @@ uint32_t fw_eas_pool_size(void);
 #define QLEN 64u                          /* queued messages (a power of two) */
 
 static EAS_DATA_HANDLE eas;
-static EAS_HANDLE stream;
+static EAS_HANDLE stream, song;
 static volatile uint8_t ready;
 static volatile uint8_t panic_req;
 
@@ -23,7 +27,7 @@ static volatile uint32_t q_head, q_tail;  /* head: written by the main loop; tai
 static EAS_PCM pcm[EAS_FRAMES * 2u];      /* one EAS buffer, stereo */
 static int32_t prev_l, prev_r;            /* the last EAS frame of the previous block, for the interpolation */
 
-static void eas_send(uint8_t status, uint8_t d1, uint8_t d2)
+void synth_send_now(uint8_t status, uint8_t d1, uint8_t d2)
 {
     EAS_U8 m[3];
     m[0] = status;
@@ -39,9 +43,10 @@ int synth_init(void)
         return -1;                        /* built for another rate or channel count than this file expects */
     if (EAS_Init(&eas) != EAS_SUCCESS)
         return -2;
-    if (EAS_OpenMIDIStream(eas, &stream, 0) != EAS_SUCCESS)
+    song = pp_open(eas);                  /* PROTOTYPE: the song's stream (0: none; the keys play anyway) */
+    if (EAS_OpenMIDIStream(eas, &stream, song) != EAS_SUCCESS)   /* on the song's synth: one set of voices */
         return -3;
-    eas_send(0xC0u, GM_ELECTRIC_PIANO_1, 0);   /* channel 1: Electric Piano 1 */
+    synth_send_now(0xC0u | SYNTH_KEYS_CH, GM_ELECTRIC_PIANO_1, 0);   /* the keys' channel: Electric Piano 1 */
     ready = 1;
     return 0;
 }
@@ -60,12 +65,17 @@ void synth_midi(uint8_t status, uint8_t d1, uint8_t d2)
     q_head = h + 1u;
 }
 
-void synth_panic(void) { panic_req = 1; }
+void synth_panic(void)
+{
+    panic_req = 1;
+    pp_panic();
+}
 
 void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     uint32_t i, t;
     EAS_I32 got = 0;
+    uint32_t t0;
     if (!ready || n != SYNTH_BLOCK) {
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
@@ -75,13 +85,15 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         panic_req = 0;
         q_tail = q_head;                  /* forget what is queued */
         for (i = 0; i < 16u; i++)
-            eas_send((uint8_t)(0xB0u | i), 123u, 0);   /* all notes off, every channel */
+            synth_send_now((uint8_t)(0xB0u | i), 123u, 0);   /* all notes off, every channel */
     }
     for (t = q_tail; t != q_head; t++) {
         uint32_t m = q[t % QLEN];
-        eas_send((uint8_t)m, (uint8_t)(m >> 8), (uint8_t)(m >> 16));
+        synth_send_now((uint8_t)m, (uint8_t)(m >> 8), (uint8_t)(m >> 16));
     }
     q_tail = t;
+    t0 = plat_ticks24();
+    pp_before();
     if (EAS_Render(eas, pcm, (EAS_I32)EAS_FRAMES, &got) != EAS_SUCCESS || got != (EAS_I32)EAS_FRAMES) {
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
@@ -97,4 +109,5 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         prev_l = l;
         prev_r = r;
     }
+    pp_after(plat_ticks24() - t0);
 }

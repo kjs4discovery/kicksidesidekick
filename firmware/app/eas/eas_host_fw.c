@@ -1,7 +1,8 @@
 /* Licence: TBD (see D017) */
 /* The host layer Sonivox EAS asks of its platform (host_src/eas_host.h), for the FM-1: memory from a fixed pool,
- * no files (we feed MIDI bytes straight in, never a file), no debug output. Written for this project; upstream's
- * host_src/eas_hostmm.c (a desktop host with malloc and stdio) was the reference for what each call must do. */
+ * files that are buffers (a MIDI file in the flash, read through its EAS_FILE locator), no debug output. Written for
+ * this project; upstream's host_src/eas_hostmm.c (a desktop host with malloc and stdio) was the reference for what
+ * each call must do. */
 #include <stdarg.h>
 #include "eas.h"
 #include "eas_host.h"
@@ -88,67 +89,153 @@ int strcmp(const char *a, const char *b)
 }
 #endif
 
-/* no files on this host */
+/* files: whatever an EAS_FILE locator reads (eas_types.h: its readAt and size, e.g. a MIDI file in the flash; there
+ * is no file system). The SMF parser takes one handle for the file and one more for each track (EAS_HWDupHandle). */
+#ifndef FW_EAS_FILES
+#define FW_EAS_FILES 34                 /* a file of up to 32 tracks, opened once, and a spare */
+#endif
+
+struct eas_hw_file_tag {
+    const EAS_FILE *loc;                /* 0 = free */
+    EAS_I32 pos;
+};
+static struct eas_hw_file_tag files[FW_EAS_FILES];
+
+static EAS_FILE_HANDLE file_new(const EAS_FILE *loc, EAS_I32 pos)
+{
+    uint32_t i;
+    for (i = 0; i < FW_EAS_FILES; i++)
+        if (!files[i].loc) {
+            files[i].loc = loc;
+            files[i].pos = pos;
+            return &files[i];
+        }
+    return 0;
+}
+
 EAS_RESULT EAS_HWOpenFile(EAS_HW_DATA_HANDLE h, EAS_FILE_LOCATOR locator, EAS_FILE_HANDLE *pFile, EAS_FILE_MODE mode)
 {
     (void)h;
-    (void)locator;
-    (void)mode;
     *pFile = 0;
-    return EAS_ERROR_FEATURE_NOT_AVAILABLE;
+    if (mode != EAS_FILE_READ)
+        return EAS_ERROR_INVALID_FILE_MODE;
+    if (!locator || !locator->readAt || !locator->size)
+        return EAS_ERROR_INVALID_PARAMETER;
+    *pFile = file_new(locator, 0);
+    return *pFile ? EAS_SUCCESS : EAS_ERROR_MAX_FILES_OPEN;
 }
+
 EAS_RESULT EAS_HWReadFile(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, void *b, EAS_I32 n, EAS_I32 *got)
 {
-    (void)h; (void)f; (void)b; (void)n;
+    EAS_I32 left;
+    (void)h;
     *got = 0;
-    return EAS_ERROR_INVALID_HANDLE;
+    if (!f || !f->loc)
+        return EAS_ERROR_INVALID_HANDLE;
+    left = f->loc->size(f->loc->handle) - f->pos;
+    if (n < 0 || left <= 0)
+        return EAS_EOF;
+    if (n > left)
+        n = left;
+    *got = f->loc->readAt(f->loc->handle, b, (int)f->pos, (int)n);
+    if (*got <= 0) {
+        *got = 0;
+        return EAS_EOF;
+    }
+    f->pos += *got;
+    return EAS_SUCCESS;
 }
+
 EAS_RESULT EAS_HWGetByte(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, void *p)
 {
-    (void)h; (void)f; (void)p;
-    return EAS_ERROR_INVALID_HANDLE;
+    EAS_I32 got;
+    EAS_RESULT r = EAS_HWReadFile(h, f, p, 1, &got);
+    return r != EAS_SUCCESS ? r : got == 1 ? EAS_SUCCESS : EAS_EOF;
 }
+
+static EAS_RESULT get_n(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, uint32_t *v, uint32_t n, EAS_BOOL msbFirst)
+{
+    EAS_U8 c[4];
+    uint32_t i, x = 0;
+    EAS_RESULT r;
+    for (i = 0; i < n; i++)
+        if ((r = EAS_HWGetByte(h, f, &c[i])) != EAS_SUCCESS)
+            return r;
+    for (i = 0; i < n; i++)
+        x |= (uint32_t)c[msbFirst ? i : n - 1u - i] << (8u * (n - 1u - i));
+    *v = x;
+    return EAS_SUCCESS;
+}
+
 EAS_RESULT EAS_HWGetWord(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, void *p, EAS_BOOL msbFirst)
 {
-    (void)h; (void)f; (void)p; (void)msbFirst;
-    return EAS_ERROR_INVALID_HANDLE;
+    uint32_t v;
+    EAS_RESULT r = get_n(h, f, &v, 2, msbFirst);
+    if (r == EAS_SUCCESS)
+        *(EAS_U16 *)p = (EAS_U16)v;
+    return r;
 }
+
 EAS_RESULT EAS_HWGetDWord(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, void *p, EAS_BOOL msbFirst)
 {
-    (void)h; (void)f; (void)p; (void)msbFirst;
-    return EAS_ERROR_INVALID_HANDLE;
+    uint32_t v;
+    EAS_RESULT r = get_n(h, f, &v, 4, msbFirst);
+    if (r == EAS_SUCCESS)
+        *(EAS_U32 *)p = v;
+    return r;
 }
+
 EAS_RESULT EAS_HWFilePos(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, EAS_I32 *pos)
 {
-    (void)h; (void)f;
-    *pos = 0;
-    return EAS_ERROR_INVALID_HANDLE;
+    (void)h;
+    if (!f || !f->loc)
+        return EAS_ERROR_INVALID_HANDLE;
+    *pos = f->pos;
+    return EAS_SUCCESS;
 }
+
 EAS_RESULT EAS_HWFileSeek(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, EAS_I32 pos)
 {
-    (void)h; (void)f; (void)pos;
-    return EAS_ERROR_INVALID_HANDLE;
+    (void)h;
+    if (!f || !f->loc)
+        return EAS_ERROR_INVALID_HANDLE;
+    if (pos < 0 || pos > f->loc->size(f->loc->handle))
+        return EAS_ERROR_FILE_SEEK;
+    f->pos = pos;
+    return EAS_SUCCESS;
 }
+
 EAS_RESULT EAS_HWFileSeekOfs(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, EAS_I32 pos)
 {
-    (void)h; (void)f; (void)pos;
-    return EAS_ERROR_INVALID_HANDLE;
+    if (!f || !f->loc)
+        return EAS_ERROR_INVALID_HANDLE;
+    return EAS_HWFileSeek(h, f, f->pos + pos);
 }
+
 EAS_RESULT EAS_HWFileLength(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, EAS_I32 *len)
 {
-    (void)h; (void)f;
-    *len = 0;
-    return EAS_ERROR_INVALID_HANDLE;
+    (void)h;
+    if (!f || !f->loc)
+        return EAS_ERROR_INVALID_HANDLE;
+    *len = f->loc->size(f->loc->handle);
+    return EAS_SUCCESS;
 }
+
 EAS_RESULT EAS_HWDupHandle(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f, EAS_FILE_HANDLE *pFile)
 {
-    (void)h; (void)f;
+    (void)h;
     *pFile = 0;
-    return EAS_ERROR_INVALID_HANDLE;
+    if (!f || !f->loc)
+        return EAS_ERROR_INVALID_HANDLE;
+    *pFile = file_new(f->loc, f->pos);
+    return *pFile ? EAS_SUCCESS : EAS_ERROR_MAX_FILES_OPEN;
 }
+
 EAS_RESULT EAS_HWCloseFile(EAS_HW_DATA_HANDLE h, EAS_FILE_HANDLE f)
 {
-    (void)h; (void)f;
+    (void)h;
+    if (f)
+        f->loc = 0;
     return EAS_SUCCESS;
 }
 

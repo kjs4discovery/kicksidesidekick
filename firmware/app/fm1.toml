@@ -1,10 +1,14 @@
 # fm1-accompaniment firmware: the build's settings for fm1-base's tools/build.py (firmware/build.sh runs it).
 # Licence: TBD (see D017)
 name = "fm1acc"                # the build's files: build/fm1acc.fwsc
-id_prefix = "FM-1_71"          # package identity: dev builds FM-1_7100 (check the Firmware Hub before a release)
+id_prefix = "FM-1_46"          # package identity: dev builds FM-1_4600. FM-1_71 was taken (Bunker Evolved FM-1_7100002, Skiff
+                               # FM-1_712); FM-1_46 is free in awesome-fm-1 mooring/catalog.json c7cc615 (2026-11-01)
 usb_manufacturer = "fm1-accompaniment"
 usb_product = "FM-1 Accompaniment"
 words = "words.tsv"
+font_full = ["L", "M"]         # chord names have lower case (Em, Bbmaj7)
+# PROTOTYPE (Step 0.7): the built-in song, made into a header at build time (the device parses no YAML)
+gen = ["../../tools/proto_song_to_c.py ../../songs/amazing-grace {gen}/proto_song.h"]
 tagline = "a play-along band for the FM-1"
 licence = "TBD"
 credits = "Built on fm1-base and felucca-bsp (MPL-2.0). GM sounds: Sonivox EAS (Apache-2.0)."
@@ -13,7 +17,7 @@ credits = "Built on fm1-base and felucca-bsp (MPL-2.0). GM sounds: Sonivox EAS (
 # with our configuration and host layer from eas/ (ours). The 22.05 kHz wavetable set wt_200k_G (GM).
 include = ["eas", "../vendor/sonivox/arm-wt-22k/host_src", "../vendor/sonivox/arm-wt-22k/lib_src"]
 device_include = ["eas/fm1inc"]   # the C library header EAS wants, for the firmware only (ours)
-o2 = ["synth.c", "eas/eas_host_fw.c",
+o2 = ["synth.c", "proto_player.c", "eas/eas_host_fw.c",
       "../vendor/sonivox/arm-wt-22k/host_src/eas_config.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_chorus.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_chorusdata.c",
@@ -36,4 +40,5 @@ o2 = ["synth.c", "eas/eas_host_fw.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_voicemgt.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_wtengine.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_wtsynth.c",
+      "../vendor/sonivox/arm-wt-22k/lib_src/jet.c",          # JET_INTERFACE: linked for the track mute, never opened
       "../vendor/sonivox/arm-wt-22k/lib_src/wt_200k_G.c"]
