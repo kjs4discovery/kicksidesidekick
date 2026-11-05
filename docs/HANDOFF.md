@@ -321,3 +321,36 @@ output.
 - [x] Step 0.7 Part A — done
 - [x] Step 0.7 checklist — reviewed and approved (20:40)
 - [ ] Step 0.7 Part B — user runs steps 1–5
+
+---
+
+## 2026-11-04 22:58 — from the planning chat — Phase 0 done; Phase 1 starts with Milestone M1
+
+Step 0.7 reviewed: all five writes passed; prototype left installed. Phase 0 is done.
+Thank you. Device CPU/sound notes from the user will come later.
+
+User feedback #1 on the prototype: "NEXT" showed the next chord change a bar too
+early when a chord lasted two bars (bars 4-5, 15-16). Fix in M1b with a bar strip
+(this bar + next 3) and a beat countdown before a change.
+
+Phase 1 now runs as **Milestone M1** (proposed D019): M1a = steps 1.1-1.3 (format v1,
+fm1song, 3-5 songs), STOP for format review; M1b = steps 1.4-1.5 + hardware
+checkpoint. The user will paste the M1a prompt from the vault's build plan.
+
+### Current step
+- [x] Step 0.7 — done; Phase 0 complete
+- [ ] Milestone M1a — song format v1, compiler, starter songs
+
+---
+
+## 2026-11-04 23:02 — from the planning chat — M1 runs overnight as ONE prompt
+
+The user accepted D019 and will run M1a + M1b as one prompt overnight (auto mode,
+FM-1 unplugged). Changes to the 22:58 note:
+- No stop between M1a and M1b. Log the format summary and your doubts; continue.
+- Record every judgement call in LOG with the reason (the planning chat reviews in
+  the morning).
+- End with docs/step-M1-install.md and STOP. No hardware tonight.
+
+### Current step
+- [ ] Milestone M1 (M1a + M1b) — overnight, ends with the install checklist
