@@ -16,7 +16,7 @@ Controls: [controls.md](controls.md).
 | `firmware/app/ui.c` | song list and play screen (simple; step 1.6 designs the real ones) |
 | `firmware/app/synth.c` | EAS behind a queue; one MIDI stream for the song and the keys; calls `player_block` before each render |
 | `tools/songs_to_c.py` | build step (`fm1.toml gen`): compiles every song folder and writes `build/gen/songs_gen.h` |
-| `tools/m1_test.py` | headless emulator tests (`make m1-test`): docs/step-M1-emulator-report.md |
+| `tools/m1_test.py` | headless emulator tests (`make m1-test`): [step-M1-emulator-report.md](step-M1-emulator-report.md) |
 
 How it works:
 - **Songs in the build.** The compiled `.fm1s` files are `const` arrays in the app image (the flash, read in

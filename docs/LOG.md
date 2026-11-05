@@ -380,3 +380,39 @@ Questions for the planning chat:
 - The vault's Song Format Draft may have fields I did not see (D009). Please list any that v1 should carry.
 - Arrangement licence (TBD) for all starter songs; proposal from the sample: CC0-1.0.
 Next: Milestone M1b (device parser, player, screens, emulator tests, install checklist), without stopping (HANDOFF 23:02).
+
+2026-11-04 23:44 — Milestone M1b (steps 1.4-1.5 + hardware checkpoint, prepared) — device parser, player, screens
+Status: done; install checklist docs/step-M1-install.md WAITING FOR REVIEW by the planning chat and the user. Nothing installed.
+Did:
+- firmware/app/song.c/.h: the .fm1s parser in standalone C (no platform calls): song_peek (header + META, for the list), song_open (CRC and every bound), accessors that read in place. tools/song_fuzz.c + song_fuzz.sh: host gcc, ASan + UBSan, -fno-sanitize-recover; 10-minute run: 2,304,000 mutated files (75 % with the CRC fixed up), 43,182 accepted and every accessor walked, no sanitizer report (build/fuzz/fuzz-600s.log). `song_fuzz --diff` + pytest: the C parser and the Python reader accept/refuse exactly the same 1,500 mutated files.
+- firmware/app/player.c/.h: our scheduler (D017), in the audio interrupt before each EAS render: per-layer streams, note tracking (128-bit sets) so mutes / variant changes / loop jumps / stops release exactly the sounding notes; tempo 50-120 % with an exact 64-bit position (no drift); count-in (one bar + the pickup's empty beats, GM wood blocks); loops whole song / current section (docs/song-format.md 3.3). RAM stats for the tests ("PLST").
+- firmware/app/ui.c: song list (title, key, metre, tempo) and play screen: big chord, NEXT + countdown ("IN 3") only in the last bar before a change, bar strip (this bar + 3; held chords dimmed; beat cursor), layers with level and MUTE, tempo / loop / count-in flags, section, CPU/voices debug line. docs/controls.md: the control map proposal (REC, OCT-, OCT+ left free).
+- Songs bundled in the app image as const data (tools/songs_to_c.py, fm1.toml gen): 5 songs, 113,208 bytes; image 483,808 B of the ~581 KB slot.
+- Removed the Step 0.7 prototype (proto_*.c/h, proto_song_to_c.py, proto_test.py; in git at 98fc08c), JET_INTERFACE and jet.c. Version 0.2.0-m1.
+- tools/m1_test.py (`make m1-test`): per song a full run (count-in, bass L2, harmony and drums muted mid-song), a tempo run (50 % then 120 %), a section-loop run; flash ids 856014 / b36014 / unknown. ALL PASS on the dev build and again on the release package itself: docs/step-M1-emulator-report.md (+ docs/step-M1/*.png).
+- Release package for the install: build/step-M1/fm1acc-0.2.0-m1.fwsc, sha256 bf8f640f8137efc278fa17f6bcd7c21791eb1adbd68a7b7299c22f851804ff25, identity FM-1_46000200, from commit 018e5d7. The vendored installer's load_package (offline, file only) accepts it without overrides; V16 still refused.
+- docs/step-M1-install.md: pre-flight P1-P7, rules from Step 0.7 (20:40), step 1 install over the prototype, step 2 on-unit checks (incl. the user's feedback #1 in bars 4-5 and 15-16), optional step 3 (back to stock and again), fallback = reinstall the prototype, restore paths unchanged.
+Learned / measured (emulator):
+- Chord changes reached the LCD 81-99 ms before the block that plays them (every change, every song; lead 100 ms).
+- Busiest: 14 voices of 24, CPU 14 %, longest EAS render 17.0 % of a block (Blues); Amazing Grace 14 / 14 % / 16.2 %.
+- Song length from PLAY to the end within one 256-frame block of the prediction for all five; tempo run: position within 1 tick of the exact value after 14 tempo steps; frames played = emulated time (20004 vs 20000 ms).
+- Mutes: muted note-ons held back; 0 EAS voices 1 s after the end; no block hit the 128-events cap.
+- felucca-bsp docs/CPU.md: inlined 32x32->64-bit multiplies beside loads corrupt registers on this CPU; the first build inlined some in player_block. All are now in a noinline helper; the build's check says none is inlined.
+Judgement calls (with reasons):
+- Songs as const data in the app image (not the resource region or data area): no new flash layout or write path, covered by the package's checks; songs change only with a rebuild until `fm1song send` (1.7).
+- Release build identity FM-1_46000200 instead of the dev FM-1_4600: the prototype on the unit is FM-1_4600, so `--info` could not show that the install happened. fm1-base's own `--release` scheme (prefix + XXYYZZ).
+- Fallback in the checklist is the prototype (known good on this unit), not the hello world.
+- Events are sent at the start of the block they fall in (up to 5.8 ms early, like EAS's file player); sample-accurate starts stay deferred (HANDOFF 17:10 item 4).
+- Chord lead raised from 80 to 100 ms (more drawing per frame than the prototype; the beat cursor and countdown use 30 ms). The UI waits for the chord's DMA before logging it, so the test is strict.
+- Opening a song resets mutes, levels (all L1) and the loop; tempo and count-in are kept.
+- Count-in on by default (ARP toggles).
+- Section loop picks the section by the heard position (with lead-ins), and from the top when started with PLAY.
+- Not re-proven: back to stock from this build (step 3 is optional; the update code is byte-identical to Step 0.7's).
+Hardware touched: none (FM-1 unplugged)
+Questions for the planning chat:
+- Review docs/step-M1-install.md; decide optional step 3.
+- Review docs/controls.md (proposal) and the format questions of the 23:16 entry.
+- Cosmetic for step 1.6: the current bar's box dims a held-over chord like the following boxes do (Saints screenshot); the current box should probably stay bright.
+- Flash: 484 KB of ~581 KB used with 5 songs; more songs before step 1.7 would need smaller events (delta coding, deferred) or the data area.
+- I could not listen to anything (no audio here): the previews and the emulator audio are only checked by numbers.
+Next: the planning chat and the user review docs/step-M1-install.md; then the user runs it (steps 1-2), pasting output.
