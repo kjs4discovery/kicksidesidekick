@@ -227,3 +227,64 @@ for now" with:
 - Keep third-party code (fm1-base, felucca-bsp, EAS) in its own clearly marked
   folders with its own licence files, never mixed into our files.
 - Write original code whenever possible.
+
+---
+
+## 2026-11-04 17:10 — from the planning chat — after Step 0.6; preparing Step 0.7
+
+Step 0.6 reviewed: great milestone. Our own firmware on fm1-base + upstream EAS,
+both flash IDs OK, unknown ID → RAM-only, 340 KB of ~581 KB used.
+
+### Answers
+1. **Loader refusal on an unknown chip:** keep it as is. Stay in update mode and
+   write nothing on a chip we don't know. Don't drop the update record.
+2. **Velocity:** not now. In our concept the user plays their own instrument; the
+   FM-1 keys are mostly controls. Leave APP_TOUCH off; revisit in Phase 1 if needed.
+3. **Identity FM-1_71xx:** before 0.7, check it against the identities used by known
+   firmwares (Firmware Hub list, awesome-fm-1, the catalogue in fm1-emu) and pick an
+   unused range. Note what you checked. Keep the placeholder words URL for now.
+4. **Sample-accurate note starts:** fine to defer. Note it as a Phase 1 item: revisit
+   if the drums feel loose. Measure EAS CPU load on the device in 0.7.
+5. Small polish for later (Step 1.6, not now): in the mini keyboard drawing, the black
+   keys look slightly off-centre between the white keys.
+
+### Step 0.7 — rules for this step (first WRITES to the FM-1)
+- The user will switch you to "ask" permission mode for this step.
+- **Prepare only.** Write the checklist to `docs/step-0.7-first-writes.md` and then
+  **STOP**. The planning chat and the user review it together before any device
+  command is run. Say clearly in LOG that it is waiting for review.
+- Pre-flight items you must show as ✅/❌ (any ❌ = stop):
+  - Off-laptop backup copies recorded in docs/device.md (**currently TBD**: the user
+    still has to make them; ask them).
+  - A USB port + cable that enumerates cleanly (no -110 errors in dmesg, normal
+    enumeration time). Test read-only: plug, `dmesg | tail`, `lsusb`, `--info`.
+  - Restore target per D015: `backups/stock-firmware/FM-1_015.fwsc` via the normal
+    update path; full dump as last resort, with the exact last-resort commands.
+  - Round-trip firmware: suggest **Felucca 1.8.1 stable** (or say why another);
+    confirm from source that its app and loader accept 0x856014.
+  - Our `fm1acc.fwsc`: the exact build (commit + sha256) that passed the emulator.
+- The checklist order: (1) community firmware → boots → a setting survives a power
+  cycle; (2) back to stock V15 → `--info` shows FM-1_015; (3) our hello world → note
+  plays, screen OK, note EAS CPU load; (4) back to stock V15. One loader command per
+  ROM boot session. What to do if any step fails, for each step.
+
+### Current step
+- [x] Step 0.6 — done
+- [ ] Step 0.7 — prepare checklist, then STOP for review
+
+---
+
+## 2026-11-04 17:15 — from the planning chat — Step 0.7 scope changed (D018)
+
+The user decided (D018) that Step 0.7 is bigger. It supersedes the "checklist order"
+in the 17:10 note; the other 17:10 rules still apply (ask mode, prepare only, STOP
+for review, pre-flight ✅/❌).
+
+- **Part A (emulator only):** a prototype that plays songs/amazing-grace/song.mid
+  with EAS's MIDI-file player, PLAY/stop, per-layer mute buttons, current/next chord
+  (from song.yaml, converted at build time), bar:beat. Prototype code clearly marked.
+- **Part B (prepare only):** checklist order is now: (1) community firmware,
+  (2) stock V15, (3) **our prototype** (not the hello world), (4) stock V15 from our
+  firmware, (5) our prototype again, **left installed**. Hello world = fallback
+  diagnostic only.
+- Full prompt: the user will paste it (vault build plan, Step 0.7).

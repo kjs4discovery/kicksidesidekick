@@ -250,3 +250,38 @@ Questions for the planning chat:
 - Identity FM-1_71xx and a URL for the screen-reader words: what should they be?
 - Not done: sample-accurate note starts inside an EAS block (notes land on 5.8 ms block boundaries), EAS CPU load on the device.
 Next: Planning chat reviews 0.6; Step 0.7 per HANDOFF.
+
+2026-11-04 19:59 — Step 0.7 — Song prototype (Part A, emulator) + first-writes checklist (Part B, prepared only)
+Status: partial (Part A done; Part B prepared and WAITING FOR REVIEW: pre-flight P1 and P2 are ❌, both need the user; no device command run)
+Did:
+- A0: upstream Sonivox EAS (86bd0734) has the SMF player (eas_smf.c, already compiled in 0.6). It plays from a buffer: EAS_FILE is a locator with readAt/size callbacks (host_src/eas_types.h:147-151); our host layer (eas/eas_host_fw.c) now implements the file calls over it, with duplicate handles per track. Per-track mute exists upstream behind JET_INTERFACE (eas_smf.c:302-305, 642-671: PARSER_DATA_MUTE_FLAGS / SET_MUTE; a muted track drops note-ons, keeps note-offs and controllers, eas_midi.c:240-300). JET_INTERFACE changes a struct (eas_miditypes.h jetData), so it is set globally in eas_options.h and upstream jet.c is linked (never opened). Per channel: no public API (CHANNEL_FLAG_MUTE is SP-MIDI's only). Nothing of Polly's used.
+- A1: tools/proto_song_to_c.py (fm1.toml gen, venv pyyaml + mido) -> build/gen/proto_song.h: song.mid's 8,890 B as is, track->layer table (variant :1; :2 tracks muted for good, old chords track ignored), chord chart from song.yaml (pickup, form sections, ending) as 30 (tick, chord) changes. Cross-check: the chart equals song.mid's old chords track. Refuses tempo/metre changes (prototype limit).
+- A2: PLAY play/stop (green LED); FX/SEL/ENV/LFO = drums/bass/harmony/melody mute (top row, left four; lit = plays); MASTER = volume (platform gain); keys = EP1 on ch 16. REC, OCT-, OCT+ untouched (rescues). Mute = track mute + CC123 on the layer's channel (a held chord stops at once).
+- A3: screen: current chord at 2x FONT_L (64 px), next chord, bar:beat + beat dots, four layer boxes (amber MUTE), CPU % and voices, version on the stop screen. font_full L, M (lower case: Em).
+- A4/A5: tools/proto_test.py (make proto-test, ~10 min, 80+ headless fm1-live runs) -> docs/step-0.7-emulator-report.md, screenshots in docs/step-0.7/: ALL PASS on the committed package.
+- Prototype code marked: firmware/app/proto_player.[ch], proto_ui.c (app.c only includes it), tools/proto_*.py. Hello world kept: tools/build_hello.sh (make hello) builds commit 4629478's firmware -> build/hello/fm1acc-hello.fwsc, 340,236 B app as in 0.6, sha256 e191c005…1a1c.
+- HANDOFF 17:10 item 3 (identity): checked awesome-fm-1 mooring/catalog.json (c7cc615, 2026-11-01, 87 identities), fm1-emu's catalogue and the id_prefix of every fm1.toml in third_party/. FM-1_71 is taken (Bunker Evolved FM-1_7100002, Skiff FM-1_712). Moved to FM-1_46 (none used): dev builds FM-1_4600. Words URL placeholder kept.
+- Part B: docs/step-0.7-first-writes.md (pre-flight, packages, 5 steps with commands / expected output / time / what if it fails, restore paths A, B1, B2). Read-only only: lsusb, kernel log.
+- Downloaded third_party/firmwares/felucca-1.8.1.fwsc (Felucca's web installer file, gh-pages 1db38f8). Booted it in fm1-emu (4 s: screen + sound). Nothing sent anywhere.
+- Committed 8bc977e (code). This entry's commit: docs, report, screenshots, and the planning chat's HANDOFF additions (17:10, 17:15) as found.
+Learned / measured:
+- Our package: commit 8bc977e, firmware/app/build/fm1acc.fwsc sha256 58be4537be314bf463dc828c919b18675c2626d01be5a01724560b3cc760d54f, 611,527 B, identity FM-1_4600, v0.1.0-proto; app 370,672 B of ~581 KB (+30 KB over 0.6: fonts with lower case, jet.c, song 8.9 KB, player); RAM .data+.bss 67,340 of 98,304 B. Two builds give the same sha256. Copy: build/step-0.7/fm1acc-proto-0.1.0.fwsc (+ .sha256).
+- Emulator (fm1-live, emulated clock): busiest bar 17 (the turnaround into verse 2): 14 voices of 24, platform audio load 14 %, EAS render 16.5 % of a 5.8 ms block. Harmony muted: at most 7 voices, load 8-9 %. Typical bar 10 voices / 11 %. Headless speed ~2x real time.
+- Harmony muted: fewer voices in all 32 bars; audio identical to the all-layers run until the song starts; build/emu/proto/harmony-muted.wav (75 s, local).
+- Chord vs audio: with a 30 ms look-ahead the chord was up to ~20 ms LATE (2 of 4 changes): the LCD is slow (SPI, ~0.32 ms a row; a full frame ~77 ms). Fix: the big chord gets its own 84-row blit, sent first, and the screen runs 80 ms ahead of the parser. Now 6 of 6 changes on screen 40-80 ms before their first audio frame (±~20 ms for the WAV/clock alignment).
+- Flash ids: 856014 and b36014 identical screens, sound; 123456: "RAM ONLY" in amber, the song plays on, no crash.
+- Bug found and fixed in my own measurement: 256*24*10^6 overflowed 32 bits (render % was 3.3x too high).
+- fm1-live: FM1_BENCH_NOKEYS also clears FM1_BENCH_KEYS; our app takes buttons only after the splash (~1.2 s; PLAY at 1.0 s was ignored).
+- Felucca 1.8.1 has a git tag (f4df296, 2026-11-02) but NO GitHub release; latest GitHub stable is 1.7.0, 1.8.2-beta a prerelease. 1.8.1 ships through the web installer: felucca-1.8.1.fwsc, 610,286 B, sha256 187d4a9bc5b555866848d8e2c9964bea134d764cdeb62712a30da1825c5caf15, identity FM-1_918 (git blob a85155fb = GitHub's).
+- Felucca 1.8.1 and 0x856014: app project.c:1195 accepts only 0x856014 (else RAM-only); its own loader (firmware/loader/ldr_core.c) has no flash-ID check, writes only 0x4000-0x92FFF after board, chip-key and CRC checks. Same for 1.7.0 (project.c:1162).
+- Each package is written by its OWN update loader (bsp/chip/ota.c:3-13); the running firmware only checks and stages it. So "stock V15 from our firmware" depends on our app's step 1: fm1-base's host test (tests/ota_test.c on our vendored ota.c) stages FM-1_015.fwsc ("commits ok") and refuses it with a damaged boot area (-5).
+- Installer: the vendored firmware/vendor/fm1-base/bsp/tools/fm1_install.py accepts Felucca 1.8.1, stock V15 (by its sha256 db1642b2…, no --force), our prototype and the hello world; it refuses FM-1_016. The Felucca fm1_install.py in fm1-linux-update/.cache and fm1-update.sh need --force for stock: not used.
+- Last resort: m-flasher 0.8.2 `restore BACKUP.bin` (writes the differing sectors after its own backup and a typed yes); middle path: fm1_unbrick.py restore FM-1_015.fwsc --verify-v15. Neither run yet.
+- USB today: the FM-1 is on port 1-2 again; dmesg shows `device descriptor read/64, error -110` and ~15 s enumeration (327.3 s -> 343.2 s).
+Hardware touched: read-only (lsusb, kernel log, by Claude Code). No write.
+Questions for the planning chat:
+- Felucca 1.8.1 (web installer's file, no GitHub release) or 1.7.0 (GitHub release, emulator-tested in 0.4) for the round trip? The checklist uses 1.8.1.
+- Step 1's "a setting survives a power cycle": I did not verify which Felucca setting saves by itself or its key presses (Felucca saves preferences such as the palette: editor_preferences.c settings_save); the checklist points to Felucca's manual. Name one?
+- OK to keep the screen 80 ms ahead (chord appears 40-80 ms before the sound in the emulator)? Device LCD timing may differ; the user checks by eye in step 3.
+- Notes start on 5.8 ms block boundaries still (Phase 1 item from 0.6); the user listens for loose drums in step 3.
+Next: the user makes the off-laptop backup copies (P1) and finds a clean USB port + cable (P2, read-only; Claude Code can read dmesg/--info with them); the planning chat and the user review docs/step-0.7-first-writes.md; then the user runs steps 1-5; Claude Code records the results and the playing-along impressions here.
