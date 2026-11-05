@@ -58,12 +58,12 @@ enum { PV_CHORD, PV_KEYS, PV_CHART, PV_N };   /* the play screen's views (EDIT);
 #define L_HARM 2u
 #define L_MELODY 3u
 #define DARK_AMB RGB(150, 88, 20)        /* your part's keys between attacks (the keyboard view) */
+#define LOOP_BG RGB(64, 38, 8)           /* the loop's bars, filled (strip, chart) */
 
 static const uint8_t LAYER_BUTTON[SONG_LAYERS] = {B_FX, B_SEL, B_ENV, B_LFO};
 static const uint8_t LAYER_ENC[SONG_LAYERS] = {EN_K1, EN_K2, EN_K3, EN_K4};
 static const char *const LAYER_NAME[SONG_LAYERS] = {"DRUMS", "BASS", "HARMONY", "MELODY"};
 static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "MELODY"};
-static const char *const LOOP_NAME[] = {"", "LOOP SECTION", "LOOP BARS", "LOOP SONG"};
 
 static struct {
     int view, back;                      /* V_*; back: the view the help returns to */
@@ -76,7 +76,8 @@ static struct {
     int loop;
     uint32_t from_bar;                   /* the start point: a bar index; from_tick its first tick of music */
     int32_t from_tick;
-    uint32_t a_bar, b_bar;               /* LOOP BARS */
+    uint32_t a_bar, b_bar;               /* the loop, bars A..B (M3: the one kind of loop) */
+    int loop_step;                       /* setting the loop: 1 moving A, 2 moving B (SEQ confirms each); 0 not */
     uint32_t tempo_ms;                   /* the last tempo click (quick turns: bigger steps) */
     int32_t key;                         /* the transposition, -5..+6 semitones (the key: the nearest way there) */
     uint32_t keymode_until;              /* the KEY mode: SELECT changes the key until then (0: off) */
@@ -521,40 +522,38 @@ static void set_from_bar(uint32_t b)
             ui.from_tick = (int32_t)section_from(i);
 }
 
-/* the loop's ticks (docs/song-format.md 3.3: a section loop runs from start - lead to end - lead) */
-static void loop_region(int mode, uint32_t *from, uint32_t *to)
+/* the loop's ticks: bar A's beat 1 to the end of bar B (no pickup: a loop starts on a bar line). M3: one kind of loop,
+ * bars A..B (M2's section and whole-song loops are gone: a section, or the whole song, is A..B set with PRESETS) */
+static void loop_region(uint32_t *from, uint32_t *to)
 {
-    const struct song *s = ui.s;
-    uint32_t i = mode == LOOP_SONG ? 0 : section_at(ui.from_tick), last = mode == LOOP_SONG ? s->nsect - 1u : i;
-    uint32_t lead = song_section_lead(s, i);
-    if (mode == LOOP_BARS) {
-        *from = ui.a_bar * bar_ticks();
-        *to = (ui.b_bar + 1u) * bar_ticks();
-        return;
-    }
-    *from = section_from(i);
-    *to = section_end(last);
-    *to = *to > lead ? *to - lead : *to;
+    *from = ui.a_bar * bar_ticks();
+    *to = (ui.b_bar + 1u) * bar_ticks();
 }
 
-static void set_loop(int mode)
+static void set_loop(int on)
 {
     uint32_t from = 0, to = 0;
-    ui.loop = mode;
-    if (mode != LOOP_OFF)
-        loop_region(mode, &from, &to);
-    player_loop(mode, from, to);
+    ui.loop = on ? LOOP_BARS : LOOP_OFF;
+    loop_region(&from, &to);
+    player_loop(ui.loop, from, to);
     ui.sh_strip = -1;
+    ui.sh_view = 0;
 }
 
 /* where PLAY starts from stopped: the loop's start, or the start point */
 static int32_t start_point(void)
 {
-    uint32_t from = 0, to = 0;
     if (ui.loop == LOOP_OFF)
         return ui.from_tick;
-    loop_region(ui.loop, &from, &to);
-    return (int32_t)from;
+    return (int32_t)(ui.a_bar * bar_ticks());
+}
+
+/* the bars highlighted as the loop (also while it is being set: A alone, then A..B); 0: none */
+static int loop_shown(uint32_t *a, uint32_t *b)
+{
+    *a = ui.a_bar;
+    *b = ui.loop_step == 1 ? ui.a_bar : ui.b_bar;
+    return ui.loop_step || ui.loop == LOOP_BARS;
 }
 
 /* ------------------------------------------------------------------------ input --- */
@@ -580,7 +579,8 @@ static void open_song(uint32_t i)
     player_transpose(0);
     set_from_bar(first_bar());
     ui.from_tick = (int32_t)section_from(0);
-    set_loop(LOOP_OFF);
+    set_loop(0);
+    ui.loop_step = 0;
     ui.view = V_PLAY;
     ui.redraw = 1;
 }
@@ -629,6 +629,7 @@ static void lights(void)
     player_stats.lit_keys = ui.lit_keys;
     player_stats.dim_keys = ui.dim_keys;
     player_stats.mid_keys = ui.mid_keys;
+    player_stats.loop_step = (uint32_t)ui.loop_step;
     plat_lights(lit, ui.keys | ui.lit_keys, dim, ui.dim_keys & ~(ui.lit_keys | ui.mid_keys), 1);   /* keys pressed:
                                                                                                  * lit as ever */
     plat_lights_mid(mid, ui.mid_keys & ~(ui.keys | ui.lit_keys));
@@ -648,8 +649,8 @@ static void input_list(uint32_t down)
 static void say_from(void)
 {
     char t[24] = "BAR ";
-    num_cat(t, (ui.loop == LOOP_BARS ? ui.a_bar : ui.from_bar) + ui.s->first_bar_number);
-    app_say(ui.loop == LOOP_BARS ? "LOOP FROM" : "START", t);
+    num_cat(t, ui.from_bar + ui.s->first_bar_number);
+    app_say("START", t);
 }
 
 static void input_play(uint32_t down, uint32_t now)
@@ -671,6 +672,13 @@ static void input_play(uint32_t down, uint32_t now)
         } else {
             player_pause();
         }
+    }
+    if ((down >> B_HOME & 1u) && ui.loop_step) {   /* setting the loop: B back to A, A: cancelled */
+        ui.loop_step--;
+        app_say("LOOP", ui.loop_step ? "SET A" : "NOT SET");
+        ui.sh_status = 0xFFFFFFFFu;
+        ui.sh_strip = -1;
+        down &= ~(1u << B_HOME);
     }
     if (down >> B_HOME & 1u) {
         if (st == PL_STOPPED) {
@@ -744,60 +752,82 @@ static void input_play(uint32_t down, uint32_t now)
         ui.sh_top_key = 0xFFFFFFFFu;
     }
     d = plat_enc(EN_PRESET);
-    if (d) {
-        if (ui.loop == LOOP_BARS) {      /* A, by bar (B moves along to stay at or after A) */
-            ui.a_bar = (uint32_t)clamp((int32_t)ui.a_bar + d, (int32_t)first_bar(), (int32_t)last_bar());
-            if (ui.b_bar < ui.a_bar)
-                ui.b_bar = ui.a_bar;
-            set_loop(LOOP_BARS);
-        } else {                         /* the start point, by section */
-            int32_t i = clamp((int32_t)section_at(ui.from_tick) + d, 0, (int32_t)ui.s->nsect - 1);
-            set_from_bar(song_section_first(ui.s, (uint32_t)i));
-            if (ui.loop == LOOP_SECTION)
-                set_loop(LOOP_SECTION);
-            app_say("START", song_section_name(ui.s, (uint32_t)i));
+    if (d && ui.loop_step) {             /* setting the loop: A to a section's first bar, B to a section's last */
+        uint32_t *m = ui.loop_step == 1 ? &ui.a_bar : &ui.b_bar, i = song_bar_section(ui.s, *m), lo, hi;
+        if (ui.loop_step == 1) {
+            if (d < 0 && *m == song_section_first(ui.s, i) && i > 0)
+                i--;
+            else if (d > 0 && i + 1u < ui.s->nsect)
+                i++;
+            *m = song_section_first(ui.s, i);
+        } else {
+            lo = song_section_first(ui.s, i) + song_section_bars(ui.s, i) - 1u;
+            if (d > 0 && *m == lo && i + 1u < ui.s->nsect)
+                i++;
+            else if (d < 0 && i > 0)
+                i--;
+            hi = song_section_first(ui.s, i) + song_section_bars(ui.s, i) - 1u;
+            *m = hi < ui.a_bar ? ui.a_bar : hi;
         }
-        if (ui.loop == LOOP_BARS)
-            say_from();
+        *m = (uint32_t)clamp((int32_t)*m, (int32_t)first_bar(), (int32_t)last_bar());
+        ui.sh_status = ui.sh_strip = 0xFFFFFFFFu;
+        d = 0;
+    }
+    if (d && ui.loop == LOOP_OFF) {      /* the start point, by section */
+        int32_t i = clamp((int32_t)section_at(ui.from_tick) + d, 0, (int32_t)ui.s->nsect - 1);
+        set_from_bar(song_section_first(ui.s, (uint32_t)i));
+        app_say("START", song_section_name(ui.s, (uint32_t)i));
         ui.sh_status = 0xFFFFFFFFu;
+    } else if (d) {
+        app_say("LOOP ON", "SEQ: OFF FIRST");
     }
     d = plat_enc(EN_ALGO);
-    if (d) {
-        if (ui.loop == LOOP_BARS) {      /* B, by bar */
-            char t[24] = "BAR ";
+    if (d && ui.loop_step) {             /* setting the loop: A or B, by bar (B at or after A) */
+        if (ui.loop_step == 1)
+            ui.a_bar = (uint32_t)clamp((int32_t)ui.a_bar + d, (int32_t)first_bar(), (int32_t)last_bar());
+        else
             ui.b_bar = (uint32_t)clamp((int32_t)ui.b_bar + d, (int32_t)ui.a_bar, (int32_t)last_bar());
-            set_loop(LOOP_BARS);
-            num_cat(t, ui.b_bar + ui.s->first_bar_number);
-            app_say("LOOP TO", t);
-        } else {                         /* the start point, by bar */
-            uint32_t sec = section_at(ui.from_tick);
-            set_from_bar((uint32_t)clamp((int32_t)ui.from_bar + d, (int32_t)first_bar(), (int32_t)last_bar()));
-            if (ui.loop == LOOP_SECTION && section_at(ui.from_tick) != sec)
-                set_loop(LOOP_SECTION);
-            say_from();
-        }
+        ui.sh_status = ui.sh_strip = 0xFFFFFFFFu;
+        d = 0;
+    }
+    if (d && ui.loop == LOOP_OFF) {      /* the start point, by bar */
+        set_from_bar((uint32_t)clamp((int32_t)ui.from_bar + d, (int32_t)first_bar(), (int32_t)last_bar()));
+        say_from();
         ui.sh_status = 0xFFFFFFFFu;
+    } else if (d) {
+        app_say("LOOP ON", "SEQ: OFF FIRST");
     }
     if (down >> B_ARP & 1u) {
         player_count_in(!player_count_in_of());
         app_say("COUNT-IN", player_count_in_of() ? "ON" : "OFF");
     }
-    if (down >> B_SEQ & 1u) {
-        int mode = ui.loop == LOOP_OFF ? LOOP_SECTION : ui.loop == LOOP_SECTION ? LOOP_BARS :
-                   ui.loop == LOOP_BARS ? LOOP_SONG : LOOP_OFF;
-        uint32_t at = ui.from_bar;
-        if (st == PL_PLAYING || st == PL_PAUSED) {   /* playing: the loop takes the bar / section playing */
-            at = bar_at(player_tick(PL_LEAD_BEAT_MS));
-            if (mode == LOOP_SECTION)
-                set_from_bar(song_section_first(ui.s, section_at(player_tick(PL_LEAD_BEAT_MS))));
-        }
-        if (mode == LOOP_BARS) {         /* (A and B only: the start point stays where it was) */
-            ui.a_bar = at;
+    if (down >> B_SEQ & 1u) {            /* the loop, step by step: SEQ sets A, SEQ sets B (on); SEQ again: off */
+        char t[24] = "";
+        if (ui.loop == LOOP_BARS) {
+            set_loop(0);
+            app_say("LOOP", "OFF");
+        } else if (ui.loop_step == 0) {  /* A starts at the bar playing (or the start point); the start point stays */
+            ui.a_bar = st == PL_PLAYING || st == PL_PAUSED ? bar_at(player_tick(PL_LEAD_BEAT_MS)) : ui.from_bar;
+            ui.loop_step = 1;
+            app_say("LOOP", "SET A");
+        } else if (ui.loop_step == 1) {  /* A set: B starts 4 bars on */
             ui.b_bar = ui.a_bar + 3u > last_bar() ? last_bar() : ui.a_bar + 3u;
+            ui.loop_step = 2;
+            text_cat(t, "A = BAR ");
+            num_cat(t, ui.a_bar + ui.s->first_bar_number);
+            app_say(t, "SET B");
+        } else {                         /* B set: the loop is on */
+            ui.loop_step = 0;
+            set_loop(1);
+            text_cat(t, "BARS ");
+            num_cat(t, ui.a_bar + ui.s->first_bar_number);
+            text_cat(t, "-");
+            num_cat(t, ui.b_bar + ui.s->first_bar_number);
+            app_say("LOOP ON", t);
         }
-        set_loop(mode);
-        app_say("LOOP", mode == LOOP_OFF ? "OFF" : mode == LOOP_SECTION ? "SECTION" : mode == LOOP_BARS ?
-                "BARS A-B" : "SONG");
+        ui.sh_status = ui.sh_strip = 0xFFFFFFFFu;
+        ui.sh_legend = 0;
+        ui.sh_top_key = 0xFFFFFFFFu;
     }
 }
 
@@ -953,12 +983,12 @@ static void draw_list(void)
 static void draw_help(void)
 {
     static const char *const ENC[5][2] = {{"MASTER", "volume"}, {"SELECT", "tempo (BPM)"},
-                                          {"PRESETS", "start: section / A"}, {"ALGORITHM", "start: bar / B"},
+                                          {"PRESETS", "start: section"}, {"ALGORITHM", "start: bar; loop A/B"},
                                           {"OCT- OCT+", "keys' octave"}};
     static const char *const ENC_LIST[5][2] = {{"MASTER", "volume"}, {"SELECT", "choose a song"},
                                                {"PRESETS", "-"}, {"ALGORITHM", "-"}, {"OCT- OCT+", "keys' octave"}};
     static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX..LFO", "mute a layer"},
-                                          {"PLAY", "play / pause"}, {"HOME", "stop / list"}, {"SEQ", "loop"},
+                                          {"PLAY", "play / pause"}, {"HOME", "stop / list"}, {"SEQ", "loop: A, B, off"},
                                           {"ARP", "count-in"}, {"EDIT", "view"}, {"SAVE", "key (SELECT)"},
                                           {"keys", "play along"}};
     static const char *const BTN_LIST[9][2] = {{"PLAY", "open the song"}, {"EDIT", "open the song"},
@@ -1036,10 +1066,19 @@ static void draw_top(int32_t bar, int32_t beat, int st)
         if (player_count_in_of())
             text_cat(t, "  CNT");
         if (ui.loop) {
-            text_cat(t, "  ");
-            text_cat(t, LOOP_NAME[ui.loop]);
+            text_cat(t, "  LOOP ");
+            num_cat(t, ui.a_bar + s->first_bar_number);
+            text_cat(t, "-");
+            num_cat(t, ui.b_bar + s->first_bar_number);
         }
         cv_text(x, 16, &FONT_XS, t, player_tempo_of() == player_song_bpm(s) && !ui.key ? C_DIM : C_AMB);
+    }
+    if (ui.loop_step) {                  /* setting the loop: which mark ALGORITHM moves now */
+        char k[32] = "";
+        text_cat(k, ui.loop_step == 1 ? "LOOP: SET A  bar " : "LOOP: SET B  bar ");
+        num_cat(k, (ui.loop_step == 1 ? ui.a_bar : ui.b_bar) + s->first_bar_number);
+        cv_rect(4, 15, text_w(&FONT_XS, k) + 8, 16, C_HI);
+        cv_text(8, 16, &FONT_XS, k, C_BLACK);
     }
     if (ui.keymode_until) {              /* the KEY mode: what SELECT does now */
         char k[32] = "KEY: ";
@@ -1132,7 +1171,18 @@ static void attack_name(char *d, uint32_t l, const uint8_t *v, uint32_t n, int o
 static void draw_big(int st, const struct pinfo *pi, int32_t count, int32_t bar, int32_t beat)
 {
     cv_begin(W_BIG, H_CHORD, C_BLACK);
-    if (st == PL_STOPPED) {
+    if (st == PL_STOPPED && ui.loop_step) {   /* setting the loop: the steps */
+        char t[32] = "A = bar ";
+        text_in(0, W_BIG, 2, &FONT_M, "SET THE LOOP", C_WHITE);
+        if (ui.loop_step == 1) {
+            text_in(0, W_BIG, 32, &FONT_XS, "1. turn ALGORITHM to bar A", C_HI);
+            text_in(0, W_BIG, 48, &FONT_XS, "2. press SEQ", C_DIM);
+        } else {
+            num_cat(t, ui.a_bar + ui.s->first_bar_number);
+            text_in(0, W_BIG, 32, &FONT_XS, t, C_DIM);
+            text_in(0, W_BIG, 48, &FONT_XS, "ALGORITHM: bar B, then SEQ", C_HI);
+        }
+    } else if (st == PL_STOPPED) {
         char t[48] = "from bar ";
         num_cat(t, ui.from_bar + ui.s->first_bar_number);
         text_cat(t, " (");
@@ -1174,6 +1224,14 @@ static void draw_next(int st, const struct pinfo *pi, int32_t left)
 {
     cv_begin(240 - W_BIG, H_CHORD, C_BLACK);
     cv_rect(0, 6, 1, H_CHORD - 12, C_LINE);
+    if (st == PL_STOPPED && ui.loop_step) {
+        char t[16] = "bar ";
+        num_cat(t, (ui.loop_step == 1 ? ui.a_bar : ui.b_bar) + ui.s->first_bar_number);
+        cv_text(8, 4, &FONT_XS, ui.loop_step == 1 ? "A" : "B", C_DIM);
+        cv_text(8, 20, &FONT_M, t, C_AMB);
+        cv_blit(W_BIG, Y_CHORD);
+        return;
+    }
     cv_text(8, 4, &FONT_XS, st == PL_STOPPED ? "FIRST" : "NEXT", C_DIM);
     if (pi->next[0])
         cv_text(8, 20, text_w(&FONT_M, pi->next) <= 56 ? &FONT_M : &FONT_XS, pi->next, C_AMB);
@@ -1245,9 +1303,8 @@ static void bar_cell(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t b, uin
 static void draw_strip(int32_t bar, uint32_t l)
 {
     const struct song *s = ui.s;
-    uint32_t i, from = 0, to = 0;
-    if (ui.loop)
-        loop_region(ui.loop, &from, &to);
+    uint32_t i, la, lb;
+    int shown = loop_shown(&la, &lb);
     cv_begin(240, H_STRIP, C_BLACK);
     for (i = 0; i < 4u; i++) {
         int32_t b = strip_bar(bar + (int32_t)i), x = 2 + (int32_t)i * BOX_STEP;
@@ -1257,16 +1314,23 @@ static void draw_strip(int32_t bar, uint32_t l)
             frame_rect(x, 0, BOX_W, BOX_H, C_LINE);
             continue;
         }
+        t0 = (uint32_t)b * s->bar_ticks;
+        if (shown && (uint32_t)b >= la && (uint32_t)b <= lb) {   /* the loop's bars: filled, a line under them */
+            cv_rect(x, 0, BOX_W, BOX_H, LOOP_BG);
+            cv_rect(x, BOX_H + 1, BOX_W + ((uint32_t)b < lb && i < 3u ? BOX_STEP - BOX_W : 0), 3, C_AMB);
+        }
         frame_rect(x, 0, BOX_W, BOX_H, i == 0 ? C_HI : C_DIM);
+        if (ui.loop_step && b == bar + (int32_t)i && (uint32_t)b == (ui.loop_step == 1 ? la : lb))
+            frame_rect(x + 1, 1, BOX_W - 2, BOX_H - 2, C_WHITE);   /* the mark being moved */
         num_cat(t, (uint32_t)b + s->first_bar_number);
         cv_text(x + 4, 1, &FONT_XS, t, C_DIM);
-        t0 = (uint32_t)b * s->bar_ticks;
-        if (ui.loop && t0 + s->bar_ticks > from && t0 < to)   /* the loop's bars: a line under them */
-            cv_rect(x, BOX_H + 1, BOX_W + (t0 + s->bar_ticks < to && i < 3u ? BOX_STEP - BOX_W : 0), 3, C_AMB);
-        if (ui.loop == LOOP_BARS && b == bar + (int32_t)i && ((uint32_t)b == ui.a_bar || (uint32_t)b == ui.b_bar))
-            /* (only on the bars in song order: the strip repeats a loop's bars after its end, and M2 drew A on each
-             * copy: several A marks at once) */
-            cv_text(x + BOX_W - 12, 1, &FONT_XS, (uint32_t)b == ui.a_bar ? "A" : "B", C_HI);
+        if (shown && b == bar + (int32_t)i) {   /* one A, one B: on the bars in song order (the strip repeats a
+                                                 * loop's bars after its end; M2 marked each copy) */
+            if ((uint32_t)b == la)
+                cv_text(x + BOX_W - 12, 1, &FONT_XS, "A", C_HI);
+            if ((uint32_t)b == lb && ui.loop_step != 1)
+                cv_text(x + BOX_W - (la == lb ? 22 : 12), 1, &FONT_XS, "B", C_HI);
+        }
         if (l != L_HARM) {               /* your part's notes (or the drums' hits) */
             bar_cell(x + 1, 16, BOX_W - 2, BOX_H - 18, (uint32_t)b, l, i == 0 ? C_WHITE : C_AMB);
             continue;
@@ -1397,7 +1461,8 @@ static void draw_chart_view(int32_t bar, int32_t section, uint32_t l)
 {
     const struct song *s = ui.s;
     uint32_t first = song_section_first(s, (uint32_t)section), nb = song_section_bars(s, (uint32_t)section), i;
-    uint32_t page = (uint32_t)bar >= first ? ((uint32_t)bar - first) / 16u : 0;
+    uint32_t page = (uint32_t)bar >= first ? ((uint32_t)bar - first) / 16u : 0, la, lb;
+    int shown = loop_shown(&la, &lb);
     char t[48] = "";
     cv_begin(240, Y_LAYERS - Y_CHORD, C_BLACK);
     text_cat(t, song_section_name(s, (uint32_t)section));
@@ -1416,9 +1481,13 @@ static void draw_chart_view(int32_t bar, int32_t section, uint32_t l)
         int32_t x = 2 + (int32_t)(i % 4u) * 60, y = 16 + (int32_t)(i / 4u) * 28;
         int cur = (int32_t)b == bar;
         char nbuf[8] = "", sym[24] = "";
+        if (shown && b >= la && b <= lb)  /* the loop's bars filled, A and B marked */
+            cv_rect(x, y, 56, 26, LOOP_BG);
         frame_rect(x, y, 56, 26, cur ? C_HI : C_DIM);
         num_cat(nbuf, b + s->first_bar_number);
         cv_text(x + 2, y, &FONT_T, nbuf, C_DIM);
+        if (shown && (b == la || (b == lb && ui.loop_step != 1)))
+            cv_text(x + 46, y, &FONT_T, b == la ? (b == lb && ui.loop_step != 1 ? "AB" : "A") : "B", C_HI);
         if (l != L_HARM) {
             bar_cell(x + 8, l == L_DRUMS ? y + 6 : y + 4, 48, 20, b, l, cur ? C_WHITE : C_AMB);
             continue;
@@ -1481,13 +1550,14 @@ static void draw_status(int32_t section)
     cv_begin(240, H_STATUS, C_BLACK);
     if (section >= 0)
         cv_text(6, 4, &FONT_XS, song_section_name(ui.s, (uint32_t)section), C_GRAY);
-    if (ui.loop == LOOP_BARS) {
-        text_cat(t, "LOOP BARS ");
+    if (ui.loop_step) {
+        text_cat(t, ui.loop_step == 1 ? "SET A: BAR " : "SET B: BAR ");
+        num_cat(t, (ui.loop_step == 1 ? ui.a_bar : ui.b_bar) + ui.s->first_bar_number);
+    } else if (ui.loop == LOOP_BARS) {
+        text_cat(t, "LOOP ");
         num_cat(t, ui.a_bar + ui.s->first_bar_number);
         text_cat(t, "-");
         num_cat(t, ui.b_bar + ui.s->first_bar_number);
-    } else if (ui.loop) {
-        text_cat(t, LOOP_NAME[ui.loop]);
     } else if (ui.from_bar != first_bar()) {
         text_cat(t, "START BAR ");
         num_cat(t, ui.from_bar + ui.s->first_bar_number);
@@ -1500,10 +1570,14 @@ static const char *legend_play(int st)
 {
     if (ui.keymode_until)
         return "SELECT: KEY    SAVE: DONE";
+    if (ui.loop_step == 1)
+        return "ALGO: A  PRESETS: SECTION  SEQ: SET  HOME: X";
+    if (ui.loop_step == 2)
+        return "ALGO: B  PRESETS: SECTION  SEQ: SET  HOME: BACK";
     if (st == PL_PLAYING || st == PL_COUNT_IN)
-        return "PLAY: PAUSE  EDIT: VIEW  SAVE: KEY  GLO: ?";
+        return ui.loop ? "PLAY: PAUSE  SEQ: LOOP OFF  EDIT: VIEW" : "PLAY: PAUSE  EDIT: VIEW  SEQ: LOOP  GLO: ?";
     if (ui.loop == LOOP_BARS && st == PL_STOPPED)
-        return "PLAY  PRESETS: A  ALGO: B  SEQ  GLO: ?";
+        return "PLAY: FROM A   SEQ: LOOP OFF   GLO: ?";
     if (st == PL_STOPPED)
         return "PLAY  PRESETS/ALGO: START  SEQ: LOOP  GLO: ?";
     if (st == PL_PAUSED)
@@ -1622,7 +1696,8 @@ static void frame_play(uint32_t now)
     if (st == PL_COUNT_IN && tb < from)
         bar = from / (int32_t)s->bar_ticks;   /* the strip waits on the first bar */
     if (st == PL_STOPPED)
-        bar = start_point() / (int32_t)s->bar_ticks;
+        bar = ui.loop_step == 1 ? (int32_t)ui.a_bar : ui.loop_step == 2 ?   /* setting B: A on the strip too if it fits */
+              (int32_t)(ui.b_bar > ui.a_bar + 3u ? ui.b_bar - 3u : ui.a_bar) : start_point() / (int32_t)s->bar_ticks;
     section = (int32_t)section_at(st == PL_STOPPED ? start_point() : tb);
     part_info(&pi, st, tb, k, next, left);
     if (pi.part != L_HARM)
@@ -1652,6 +1727,7 @@ static void frame_play(uint32_t now)
         ui.sh_top_key = 0xFFFFFFFFu;
     }
     big_key = hash(pi.big, hash(pi.next, hash(pi.small, 2166136261u))) ^ pi.cue ^ (uint32_t)st << 5 ^
+              (uint32_t)ui.loop_step << 14 ^ (ui.loop_step ? ui.a_bar << 16 ^ ui.b_bar << 22 : 0u) ^
               (uint32_t)count << 8 ^ (uint32_t)(k + 1) << 12 ^ pi.part << 28;
     if (ui.pview != PV_CHORD) {          /* the keyboard and chart views: the chord band, strip and cursor's place */
         view_key = big_key ^ (uint32_t)left << 22 ^ (uint32_t)(ui.pview == PV_CHART ? bar : 0) << 3 ^
@@ -1683,22 +1759,23 @@ static void frame_play(uint32_t now)
             ui.sh_chord = k;
             ui.sh_count = count;
         }
-        if (ui.redraw || st != ui.sh_state || hash(pi.next, hash(pi.small, 7u)) != (uint32_t)ui.sh_next ||
-            left != ui.sh_left) {
+        uint32_t nk = hash(pi.next, hash(pi.small, 7u)) ^ (uint32_t)ui.loop_step << 3 ^ ui.a_bar << 8 ^ ui.b_bar << 20;
+        if (ui.redraw || st != ui.sh_state || nk != (uint32_t)ui.sh_next || left != ui.sh_left) {
             draw_next(st, &pi, left);
-            ui.sh_next = (int32_t)hash(pi.next, hash(pi.small, 7u));
+            ui.sh_next = (int32_t)nk;
             ui.sh_left = left;
         }
     }
     top_key = (uint32_t)(bar * 16 + beat) ^ player_tempo_of() << 16 ^ (uint32_t)ui.loop << 25 ^
               (uint32_t)player_count_in_of() << 27 ^ (uint32_t)st << 28 ^ (uint32_t)(ui.key + 8) << 10 ^
-              (ui.keymode_until ? 1u << 31 : 0u) ^ (playing_yours() ? pi.part + 1u : 0u) << 6;
+              (ui.keymode_until ? 1u << 31 : 0u) ^ (playing_yours() ? pi.part + 1u : 0u) << 6 ^
+              (uint32_t)ui.loop_step << 29 ^ ui.a_bar * 7u ^ ui.b_bar * 131u;
     if (ui.redraw || top_key != ui.sh_top_key) {
         draw_top(bar, beat, st);
         ui.sh_top_key = top_key;
     }
     if (ui.pview == PV_CHORD && (ui.redraw || bar != ui.sh_strip || (int32_t)(looping ? lto : 0) != ui.sh_bar ||
-                                 pi.part != ui.sh_part)) {
+                                 pi.part != ui.sh_part || ui.sh_strip == -1)) {
         draw_strip(bar, pi.part);
         ui.sh_strip = bar;
         ui.sh_bar = (int32_t)(looping ? lto : 0);
@@ -1714,13 +1791,14 @@ static void frame_play(uint32_t now)
         ui.sh_layers = (int32_t)(ui.muted | player_variant_of(0) << 4 | player_variant_of(1) << 6 |
                                  player_variant_of(2) << 8 | player_variant_of(3) << 10 | yours() << 12);
     }
-    status_key = (uint32_t)section ^ (uint32_t)ui.loop << 8 ^ ui.from_bar << 10 ^ ui.a_bar << 20 ^ ui.b_bar << 26;
+    status_key = (uint32_t)section ^ (uint32_t)ui.loop << 8 ^ ui.from_bar << 10 ^ ui.a_bar << 20 ^ ui.b_bar << 26 ^
+                 (uint32_t)ui.loop_step << 6;
     if (ui.redraw || status_key != ui.sh_status) {
         draw_status(section);
         ui.sh_status = status_key;
     }
     leg = legend_play(st);
-    if (ui.redraw || (uint32_t)(uintptr_t)leg != ui.sh_legend) {
+    if (ui.redraw || (uint32_t)(uintptr_t)leg != ui.sh_legend) {   /* (a new text: a new pointer) */
         draw_legend(Y_LEGEND, leg);
         ui.sh_legend = (uint32_t)(uintptr_t)leg;
     }

@@ -155,3 +155,28 @@ Mock-ups (drawn first): ![harmony](step-M3/mock-p2-harmony.png) ![bass](step-M3/
 Built (emulator): ![bass](step-M3/p2-bass.png) ![bass, keyboard](step-M3/p2-bass-keys.png)
 ![bass, chart](step-M3/p2-bass-chart.png) ![melody](step-M3/p2-melody.png) ![drums](step-M3/p2-drums.png)
 ![two muted](step-M3/p2-two.png) ![none muted: the cue](step-M3/p2-none.png)
+
+### Part 3: loops redesigned (bars A–B only)
+
+- **One kind of loop:** bars A–B. M2's section loop and whole-song loop are gone: a section is A..B with PRESETS (it
+  jumps to section edges), and the whole song is A at the first bar, B at the last.
+- **Setting it, step by step** (the legend and a badge on the top line say what to do at each step):
+  1. **SEQ:** "LOOP: SET A". A starts at the bar playing (or the start point, stopped). ALGORITHM moves A by a bar,
+     PRESETS to a section's first bar.
+  2. **SEQ:** A is set; "LOOP: SET B". B starts 4 bars on. ALGORITHM moves it (never before A), PRESETS to a
+     section's last bar.
+  3. **SEQ:** B is set and the loop is on. Playing outside it, the music jumps in at the next bar line.
+  - **HOME** while setting: from B back to A; from A, cancelled (no loop).
+  - **SEQ with the loop on:** the loop is off. Nothing else changes it, so there is no hidden state. PRESETS and
+    ALGORITHM say "SEQ: OFF FIRST".
+- **Shown:** the loop's bars are filled (dark amber) on the strip and the chart, with a line under them, a small A on
+  bar A and a small B on bar B. The bar being moved has a white frame. There is exactly one A and one B: the marks
+  are only on bars in song order, not on the strip's repeated copies after the loop's end. While A and B are being
+  set the loop is not on yet.
+- **Start points:** with the loop off, PRESETS = start from a section, ALGORITHM = start from a bar, as before. With
+  the loop on, PLAY starts at A (on its beat 1, no pickup).
+
+Mock-ups: ![set A](step-M3/mock-p3-loop-set-a.png) ![set B](step-M3/mock-p3-loop-set-b.png)
+![loop on](step-M3/mock-p3-loop-on.png)
+
+Built: ![set A](step-M3/p3-set-a.png) ![set B](step-M3/p3-set-b.png) ![loop on](step-M3/p3-loop-on.png)

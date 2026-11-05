@@ -765,3 +765,33 @@ Hardware touched: none
 Questions for the planning chat:
 - "Last muted is your part": OK, or do you want an explicit control?
 Next: Part 3 (loops redesigned: bars A–B only, set and confirm, highlighted bars).
+
+2026-11-05 19:05 — Milestone M3, Part 3 (loops redesigned) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "Part 3"; mock-ups first: docs/step-M3/mock-p3-*.png):
+- One kind of loop: bars A–B. The section and whole-song loops are gone.
+- Set and confirm with SEQ: set A, set B, then the loop is on.
+  - ALGORITHM moves the mark by a bar; PRESETS jumps it to a section's edge.
+  - HOME steps back (B → A → cancelled).
+  - SEQ with the loop on turns it off.
+  - The top-line badge "LOOP: SET A bar 5", the status line and the legend show each step.
+- The loop's bars are filled on the strip and the chart, with one A and one B; the bar being moved is framed white.
+  This fixes the root cause of Part 1 item 2, as Part 1 started: the marks belong to bars in song order.
+- PRESETS / ALGORITHM still pick the start point with the loop off. With the loop on, PLAY starts at A.
+Learned / measured:
+- tools/m3_test.py --only part1,part2,part3 on the release build: ALL PASS (19 checks).
+  - Part 3: set stopped (A bar 3, B bar 5; starts at A; jumps 9600 → 3840).
+  - Not active while being set; HOME back and cancel; SEQ off.
+  - PRESETS to section edges (Saints: A 17, B 32).
+  - Set while playing: bars 2–5, 2 jumps.
+- Release build build/step-M3/part3/fm1acc-0.3.3-m3p3.fwsc: FM-1_46000303, sha256
+  859752445f1095736804e046bb5f46d79238cd1e4fc82008b4e30264e33cfff9. Image 399,664 B.
+Choices (with reasons):
+- No separate whole-song loop: A at the first bar and B at the last is the same thing, with two PRESETS turns.
+  One loop type is what the user asked for.
+- No pickup on A: a loop starts on a bar line, as M2's A–B.
+- With the loop on, PRESETS / ALGORITHM do not edit it (they say "SEQ: OFF FIRST"). Editing means clear and set
+  again, so the confirm steps are the only way to change it.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 4 (legend colours, no section row, zoomed keyboard, count-in in every view, beep, inversion label, settings).

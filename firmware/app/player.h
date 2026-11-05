@@ -92,6 +92,7 @@ struct player_stats {
     uint32_t part;                        /* your part (ui.c): the layer followed, 0xFF: none muted */
     uint32_t key_flashes;                 /* the key lights' bright flashes (an attack of your part) */
     uint32_t mid_keys;                    /* the key lights between attacks (ui.c) */
+    uint32_t loop_step;                   /* setting the loop (ui.c): 1 moving A, 2 moving B, 0 not */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

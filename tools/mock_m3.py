@@ -121,7 +121,76 @@ def mock_keys_blink(path):
     s.save(path)
 
 
-MOCKS = {"p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
+LOOP_BG = (64, 38, 8)
+
+
+def loop_strip(s, y, bars, cur, a=None, b=None, sel=None):
+    """the strip with the loop's bars highlighted (filled), the small A and B marks; sel: the bar being moved"""
+    for i, (n, ch) in enumerate(bars):
+        x = 2 + i * 60
+        inloop = a is not None and b is not None and a <= n <= b
+        if inloop:
+            s.rect(x, y, 56, 44, LOOP_BG)
+        s.rect(x, y, 56, 44, HI if i == cur else DIM, fill=False)
+        if sel == n:
+            s.rect(x + 1, y + 1, 54, 42, WHITE, fill=False)
+        s.text(x + 4, y + 1, str(n), XS, DIM)
+        s.text(x, y + 16, ch, M, WHITE if i == cur else AMB, center_w=56)
+        if n == a:
+            s.text(x + 44, y + 1, "A", XS, HI)
+        if n == b:
+            s.text(x + 44, y + 1, "B", XS, HI)
+
+
+def mock_loop_set_a(path):
+    s = Screen()
+    top(s, "Twelve-Bar Blues in C", "96 BPM  C", "STOP")
+    s.rect(4, 15, 120, 16, HI)
+    s.text(8, 16, "LOOP: SET A  bar 5", XS, BLACK)
+    s.text(0, 40, "SET THE LOOP", M, WHITE, center_w=176)
+    s.text(0, 70, "1. turn ALGORITHM to bar A", XS, HI, center_w=176)
+    s.text(0, 86, "2. press SEQ", XS, DIM, center_w=176)
+    s.rect(176, 38, 1, 64, LINE)
+    s.text(184, 36, "A", XS, DIM)
+    s.text(184, 52, "bar 5", M, AMB)
+    loop_strip(s, 108, [(5, "F7"), (6, "F7"), (7, "C7"), (8, "C7")], 0, a=5, b=5, sel=5)
+    layers(s, 162, ["L1", "L1", "MUTE", "L1"])
+    s.text(6, 197, "Chorus 1", XS, GRAY)
+    legend(s, "ALGO: A   PRESETS: SECTION   SEQ: SET   HOME: X")
+    s.save(path)
+
+
+def mock_loop_set_b(path):
+    s = Screen()
+    top(s, "Twelve-Bar Blues in C", "96 BPM  C", "STOP")
+    s.rect(4, 15, 120, 16, HI)
+    s.text(8, 16, "LOOP: SET B  bar 8", XS, BLACK)
+    s.text(0, 40, "SET THE LOOP", M, WHITE, center_w=176)
+    s.text(0, 70, "A = bar 5", XS, DIM, center_w=176)
+    s.text(0, 86, "turn ALGORITHM to bar B, press SEQ", XS, HI, center_w=176)
+    s.rect(176, 38, 1, 64, LINE)
+    s.text(184, 36, "B", XS, DIM)
+    s.text(184, 52, "bar 8", M, AMB)
+    loop_strip(s, 108, [(5, "F7"), (6, "F7"), (7, "C7"), (8, "C7")], 0, a=5, b=8, sel=8)
+    layers(s, 162, ["L1", "L1", "MUTE", "L1"])
+    s.text(6, 197, "Chorus 1", XS, GRAY)
+    legend(s, "ALGO: B   PRESETS: SECTION   SEQ: SET   HOME: BACK")
+    s.save(path)
+
+
+def mock_loop_on(path):
+    s = Screen()
+    top(s, "Twelve-Bar Blues in C", "96 BPM  C  LOOP 5-8", "6:2", "HARMONY - YOURS")
+    big_band(s, "F7", "C7", None, "half", count="IN 3")
+    loop_strip(s, 108, [(6, "F7"), (7, "C7"), (8, "C7"), (5, "F7")], 0, a=5, b=8)
+    layers(s, 162, ["L1", "L1", "MUTE", "L1"])
+    s.text(6, 197, "Chorus 1", XS, GRAY)
+    s.text(0, 197, "LOOP 5-8", XS, HI, right=234)
+    legend(s, "PLAY: PAUSE   SEQ: LOOP OFF   EDIT: VIEW")
+    s.save(path)
+
+
+MOCKS = {"p3-loop-set-a": mock_loop_set_a, "p3-loop-set-b": mock_loop_set_b, "p3-loop-on": mock_loop_on, "p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
          "p2-keys-blink": mock_keys_blink}
 
 if __name__ == "__main__":

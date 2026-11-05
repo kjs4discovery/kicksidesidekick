@@ -51,7 +51,7 @@ RATE = 44100
 BLOCK = 256
 OPEN_MS, PLAY_MS = 3400, 4600                  # after the splash (3 s): open the song, then PLAY
 STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIIIi4I3I")   # PL_STATS_TEMPOS 64
-STATS4 = struct.Struct("<3I")                  # version 4 (M3): part, key_flashes, mid_keys
+STATS4 = struct.Struct("<4I")                  # version 4 (M3): part, key_flashes, mid_keys, loop_step
 FIELDS = ("magic version blocks render_max budget starts start_frames ends end_frames last_tick loops loop_from "
           "loop_to ntempo").split()
 FIELDS2 = ("start_from start_tick pauses pause_frames pause_tick bpm clicks click_peak_vel key_note_last keys_octave "
@@ -162,9 +162,9 @@ def stats(ram):
     s.update(zip(FIELDS2, v[p:p + len(FIELDS2)]))
     p += len(FIELDS2)
     s["note_on_last"], (s["lit_keys"], s["dim_keys"], s["view"]) = v[p:p + 4], v[p + 4:p + 7]
-    s["part"], s["key_flashes"], s["mid_keys"] = 0xFF, 0, 0
+    s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"] = 0xFF, 0, 0, 0
     if s["version"] >= 4:
-        s["part"], s["key_flashes"], s["mid_keys"] = STATS4.unpack_from(ram, i + STATS.size)
+        s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"] = STATS4.unpack_from(ram, i + STATS.size)
     return s
 
 
@@ -828,7 +828,65 @@ def test_part2(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS = {"part1": test_part1, "part2": test_part2}
+def test_part3(all_songs, rep):
+    """M3 part 3: loops redesigned: bars A-B only, set and confirmed step by step (SEQ), highlighted (the Blues, Saints)"""
+    lines, st, check = checker("Part 3: loops")
+    slugs = [c["slug"] for c in all_songs]
+    i = slugs.index("twelve-bar-blues")
+    c = all_songs[i]
+    bt = int(c["time_signature"][0]) * c["ppq"]
+    bar_ms = bt * 60000 / (c["ppq"] * own_bpm(c))
+    o = open_song(i) + press(OPEN_MS + 100, "ARP")
+    O = OPEN_MS
+    # stopped: SEQ (set A), ALGORITHM +2 (bar 3), SEQ (A set; B = A + 3 = bar 6), ALGORITHM -1 (bar 5), SEQ (on)
+    seta = o + press(O + 300, "SEQ") + [f"{O + 500}:e1:2"]
+    run("p3-set-a", O + 1100, seta)
+    setb = seta + press(O + 1100, "SEQ") + [f"{O + 1300}:e1:-1"]
+    rb = run("p3-set-b", O + 1900, setb)
+    on = setb + press(O + 1900, "SEQ")
+    r = run("p3-loop-on", int(O + 2400 + 3.3 * bar_ms), on + press(O + 2400, "PLAY"))
+    s = r["stats"]
+    check(rb["stats"]["loop_step"] == 2 and s["loop_step"] == 0 and s["start_from"] == 2 * bt and s["loops"] >= 1
+          and s["loop_from"] == 2 * bt and s["loop_to"] == 5 * bt and 2 * bt <= s["last_tick"] < 5 * bt,
+          f"stopped: SEQ, ALGORITHM to bar 3, SEQ (A set: p3-set-a.png), ALGORITHM to bar 5, SEQ (B set: on; "
+          f"p3-set-b.png): PLAY starts at A (tick {s['start_from']}), jumps from the end of bar 5 back to bar 3 "
+          f"({s['loops']} jump(s), {s['loop_to']} -> {s['loop_from']}); the loop's bars filled (p3-loop-on.png)")
+    # not active while being set: PLAY during step 2 starts at the start point, no jump
+    r = run("p3-not-yet", int(O + 2400 + 5.5 * bar_ms), setb + press(O + 2400, "PLAY"))
+    check(r["stats"]["loops"] == 0 and r["stats"]["start_from"] == 0, "while A and B are being set the loop is not on "
+          f"yet: PLAY starts at the start point, no jump ({r['stats']['loops']} jumps)")
+    # HOME steps back: at B -> A, at A -> cancelled (no loop)
+    r = run("p3-home", O + 2600, setb + press(O + 1900, "HOME") + press(O + 2100, "HOME") + press(O + 2400, "PLAY"))
+    check(r["stats"]["loop_step"] == 0 and r["stats"]["start_from"] == 0 and r["stats"]["ui_view"] == 1,
+          "HOME while setting: B back to A, then cancelled (no loop; still on the play screen)")
+    # SEQ with the loop on: off; PLAY starts at the start point again
+    r = run("p3-off", O + 3000, on + press(O + 2300, "SEQ") + press(O + 2600, "PLAY"))
+    check(r["stats"]["start_from"] == 0 and r["stats"]["loops"] == 0, "SEQ with the loop on: the loop off; PLAY "
+          "starts at the start point (bar 1)")
+    # PRESETS while setting: A to a section's first bar, B to a section's last (Saints: 16-bar sections)
+    k = slugs.index("saints")
+    cs = all_songs[k]
+    bts = int(cs["time_signature"][0]) * cs["ppq"]
+    sec = cs["sections"]
+    o2 = open_song(k) + press(O + 100, "ARP") + press(O + 300, "SEQ") + [f"{O + 500}:e6:1"] + press(O + 900, "SEQ") \
+        + [f"{O + 1100}:e6:1"] + press(O + 1500, "SEQ")
+    r = run("p3-sections", O + 2600, o2 + press(O + 2000, "PLAY"))
+    a_want = sec[1]["first_bar"]
+    b_want = sec[1]["first_bar"] + sec[1]["bars"] - 1
+    check(r["stats"]["start_from"] == a_want * bts, f"PRESETS while setting: A to section 2's first bar ({a_want}), "
+          f"B to its last ({b_want}); PLAY starts at A (tick {r['stats']['start_from']}, expected {a_want * bts})")
+    # while playing: SEQ takes the bar playing as A; SEQ, SEQ: A..A+3, jumped into at the next bar line if outside
+    r = run("p3-playing", int(PLAY_MS + 9 * bar_ms), o + press(PLAY_MS, "PLAY") + press(int(PLAY_MS + 1.5 * bar_ms), "SEQ")
+            + press(int(PLAY_MS + 1.6 * bar_ms), "SEQ") + press(int(PLAY_MS + 1.7 * bar_ms), "SEQ"))
+    s = r["stats"]
+    check(s["loops"] >= 1 and s["loop_to"] - s["loop_from"] == 4 * bt and s["loop_from"] in (bt, 2 * bt),
+          f"while playing: SEQ three times in bar 2: the loop is bars 2-5 ({s['loop_from']}..{s['loop_to']}), "
+          f"{s['loops']} jump(s) back to A")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3}
 
 
 def main():
