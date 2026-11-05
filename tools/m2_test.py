@@ -2,7 +2,7 @@
 # m2_test.py -- Milestone M2: headless emulator tests of the firmware. Never touches the FM-1.
 # Licence: TBD (see D017)
 #
-#   .venv/bin/python -I tools/m2_test.py [--jobs N] [--only SLUG|store|flash|boot|practice|levels] [--pkg PACKAGE]
+#   .venv/bin/python -I tools/m2_test.py [--jobs N] [--only SLUG|store|flash|boot|practice|views|levels] [--pkg PKG]
 #
 # Runs the package in fm1-live (third_party/fm1-emu, patched: tools/apply_patches.sh; deterministic emulated clock)
 # and reads the player's numbers from a RAM dump (struct player_stats, "PLST", firmware/app/player.h). The songs are
@@ -48,11 +48,11 @@ LCD = (370, 42, 850, 522)                      # the LCD in fm1-live's panel ima
 RATE = 44100
 BLOCK = 256
 OPEN_MS, PLAY_MS = 3400, 4600                  # after the splash (3 s): open the song, then PLAY
-STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIII")   # PL_STATS_TEMPOS 64
+STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIIIi4I3I")   # PL_STATS_TEMPOS 64
 FIELDS = ("magic version blocks render_max budget starts start_frames ends end_frames last_tick loops loop_from "
           "loop_to ntempo").split()
 FIELDS2 = ("start_from start_tick pauses pause_frames pause_tick bpm clicks click_peak_vel key_note_last keys_octave "
-           "ui_view flash_bars flash_beats").split()
+           "ui_view flash_bars flash_beats transpose").split()
 M1_PKG = ROOT / "build/step-M1/fm1acc-0.2.0-m1.fwsc"   # for before / after numbers (its songs are built in)
 
 
@@ -138,7 +138,7 @@ def records(path):
 
 def stats(ram):
     i = ram.find(b"PLST")
-    while i >= 0 and struct.unpack_from("<I", ram, i + 4)[0] != 2:
+    while i >= 0 and struct.unpack_from("<I", ram, i + 4)[0] != 3:
         i = ram.find(b"PLST", i + 1)
     if i < 0:
         return None
@@ -156,6 +156,8 @@ def stats(ram):
     s["chord_due"], s["chord_drawn"] = v[p:p + 256], v[p + 256:p + 512]
     p += 512
     s.update(zip(FIELDS2, v[p:p + len(FIELDS2)]))
+    p += len(FIELDS2)
+    s["note_on_last"], (s["lit_keys"], s["dim_keys"], s["view"]) = v[p:p + 4], v[p + 4:p + 7]
     return s
 
 
@@ -542,6 +544,95 @@ def test_practice(all_songs, rep):
     return ok
 
 
+def key_bits(notes, oct=0):
+    """MIDI notes -> the FM-1's key bits (F3 = key 0, 27 keys), folded by octaves, as ui.c key_bit"""
+    bits = 0
+    for n in notes:
+        k = n - 53 - 12 * oct
+        while k < 0:
+            k += 12
+        while k >= 27:
+            k -= 12
+        bits |= 1 << k
+    return bits
+
+
+def chord_at(c, tick):
+    k = 0
+    for i, e in enumerate(c["chord_events"]):
+        if e["tick"] <= tick:
+            k = i
+    return k
+
+
+def test_views(all_songs, rep):
+    """part 3: the key (transposition), the views, the key lights, the bass names"""
+    lines, ok = ["\n## Key, views, key lights (part 3)\n"], True
+
+    def check(cond, text):
+        nonlocal ok
+        lines.append(f"- {'PASS' if cond else 'FAIL'}: {text}")
+        ok &= bool(cond)
+
+    slugs = [c["slug"] for c in all_songs]
+    i = slugs.index("twelve-bar-blues")
+    c = all_songs[i]
+    o = open_song(i)
+    ms = PLAY_MS + 6000
+    plain = run("view-key0", ms, o + press(PLAY_MS, "PLAY"))
+    up2 = run("view-key2", ms, o + press(OPEN_MS + 200, "SAVE") + [f"{OPEN_MS + 400}:e0:2"] + press(PLAY_MS, "PLAY"))
+    a, b = plain["stats"], up2["stats"]
+    moved = [(b["note_on_last"][l] - a["note_on_last"][l]) % 12 for l in (1, 2, 3)]
+    check(b["transpose"] == 2 and moved == [2, 2, 2] and a["note_on_last"][0] == b["note_on_last"][0],
+          f"SAVE, SELECT +2: the key D (+2): bass, harmony, melody sent 2 semitones up (last notes {a['note_on_last'][1:]} "
+          f"-> {b['note_on_last'][1:]}), drums unchanged ({b['note_on_last'][0]}) (view-key2.png: names in D)")
+    nx = run("view-key-next-song", PLAY_MS + 2000, o + press(OPEN_MS + 200, "SAVE") + [f"{OPEN_MS + 400}:e0:2"]
+             + press(OPEN_MS + 900, "SAVE") + press(OPEN_MS + 1000, "HOME") + [f"{OPEN_MS + 1100}:e0:-1"]
+             + press(OPEN_MS + 1200, "PLAY") + press(PLAY_MS, "PLAY"))
+    check(nx["stats"]["transpose"] == 0, "another song opened: its own key again (transpose 0)")
+    live = run("view-key-live", PLAY_MS + 10000, o + press(PLAY_MS, "PLAY") + press(PLAY_MS + 3000, "SAVE")
+               + [f"{PLAY_MS + 3200}:e0:-3"] + press(PLAY_MS + 6000, "HOME"))
+    quiet = rms(live["left"][int((PLAY_MS + 9000) / 1000 * RATE):int((PLAY_MS + 9900) / 1000 * RATE)])
+    check(live["stats"]["transpose"] == -3 and quiet < 5,
+          f"the key changed while playing (-3): the sounding notes ended at once; silent 3 s after HOME (rms "
+          f"{quiet:.0f}): no hanging note")
+    # the views (EDIT) and the chord's timing in the keyboard view
+    v1 = run("view-keys", PLAY_MS + 9000, o + press(OPEN_MS + 200, "ENV") + press(OPEN_MS + 400, "EDIT")
+             + press(PLAY_MS, "PLAY"))
+    v2 = run("view-chart", PLAY_MS + 9000, o + press(OPEN_MS + 200, "SCL") + press(OPEN_MS + 400, "EDIT")
+             + press(OPEN_MS + 700, "EDIT") + press(PLAY_MS, "PLAY"))
+    v3 = run("view-chord-cue", PLAY_MS + 9000, o + press(OPEN_MS + 200, "SCL") + press(OPEN_MS + 300, "ENV")
+             + press(PLAY_MS, "PLAY"))
+    st = v1["stats"]
+    due, drawn = st["chord_due"], st["chord_drawn"]
+    late = [k for k in range(1, 256) if due[k] and (not drawn[k] or drawn[k] > due[k])]
+    check(v1["stats"]["view"] == 1 and v2["stats"]["view"] == 2 and not late and sum(1 for d in due if d) > 2,
+          f"EDIT: the keyboard view (view-keys.png), EDIT again: the chart (view-chart.png); in the keyboard view every "
+          f"chord was on the screen before its sound ({sum(1 for d in due if d)} changes)")
+    # the key lights: harmony muted -> the chord's voicing; bass muted -> the bass note; the octave shift moves them
+    def voicing_bits(r, oct=0):
+        t = r["stats"]["last_tick"]
+        lvl = 0
+        want = set()
+        for lead in (0, 200, 400):                 # the chord the screen shows (drawn ahead of the sound)
+            k = chord_at(c, t + lead)
+            want.add(key_bits(c["chord_events"][k]["voicing"][lvl], oct))
+        return want
+    check(st["lit_keys"] in voicing_bits(v1) and st["lit_keys"],
+          f"harmony muted: the keys lit = the chord's level-1 voicing (bits {st['lit_keys']:#09x})")
+    oc = run("view-keys-oct", PLAY_MS + 9000, o + press(OPEN_MS + 100, "OCTUP") + press(OPEN_MS + 200, "ENV")
+             + press(PLAY_MS, "PLAY"))
+    check(oc["stats"]["lit_keys"] in voicing_bits(oc, 1) and oc["stats"]["lit_keys"] != 0,
+          "with OCT+ the lit keys move down an octave, where those notes now are under the hands")
+    bs = run("view-bass-lights", PLAY_MS + 9000, o + press(OPEN_MS + 200, "SCL") + press(PLAY_MS, "PLAY"))
+    bits = bin(bs["stats"]["lit_keys"]).count("1")
+    check(bits == 1 and bs["stats"]["note_on_last"][1] == 0,
+          f"bass muted (harmony playing): one key lit, the bass note ({bs['stats']['lit_keys']:#09x}); the bass "
+          f"layer sent nothing (view-chord-cue.png: BASS name and the rhythm cue)")
+    rep += lines
+    return ok
+
+
 def test_levels(all_songs, rep):
     """part 2 item 7: every song at level 2 on every layer, MASTER 100 %: the peak, and samples at full scale"""
     lines, ok = ["\n## Levels: every song at L2, MASTER 100 % (part 2)\n"], True
@@ -591,10 +682,13 @@ def main():
     ap.add_argument("--jobs", type=int, default=3)
     ap.add_argument("--only")
     ap.add_argument("--pkg", help="the package to test (default: the dev build, firmware/app/build/fm1acc.fwsc)")
+    ap.add_argument("--out", help="the work folder (default build/emu/m2); two runs at once need two folders")
     a = ap.parse_args()
-    global PKG
+    global PKG, OUT
     if a.pkg:
         PKG = Path(a.pkg).resolve()
+    if a.out:
+        OUT = Path(a.out).resolve()
     if not PKG.exists():
         raise SystemExit("m2_test: build first (make firmware)")
     OUT.mkdir(parents=True, exist_ok=True)
@@ -617,6 +711,9 @@ def main():
         if not a.only or a.only == "practice":
             reports["practice"] = []
             futs["practice"] = pool.submit(test_practice, all_songs, reports["practice"])
+        if not a.only or a.only == "views":
+            reports["views"] = []
+            futs["views"] = pool.submit(test_views, all_songs, reports["views"])
         if not a.only or a.only == "levels":
             reports["levels"] = []
             futs["levels"] = pool.submit(test_levels, all_songs, reports["levels"])

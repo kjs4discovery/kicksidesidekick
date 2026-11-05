@@ -6,6 +6,9 @@
  * Play screen: PLAY play / pause / go on; HOME stop (back to the start point), stopped: the list; FX SEL ENV LFO mute
  *   drums / bass / harmony / melody; K1..K4 their level; SELECT tempo (BPM); PRESETS the start point by section (in
  *   LOOP BARS: bar A); ALGORITHM by bar (LOOP BARS: bar B); SEQ loop off / section / bars / song; ARP count-in.
+ * Part 3: EDIT the view (chord / keyboard / chart); SAVE the KEY mode (SELECT changes the key, SAVE again or 4 s:
+ *   done); the rhythm cue left of the chord, the bass notes when the bass is muted, the FM-1's keys lit for the part
+ *   being played (docs/controls.md).
  * Everywhere: GLO the controls (help), OCT- / OCT+ the keys' octave, MASTER volume; the keys play Electric Piano 1
  *   on channel 16. REC is not used (held at power-on: the update mode), nothing is held at start-up. */
 #include "synth.h"
@@ -23,6 +26,9 @@ static void ui_busy(const char *a, const char *b);
 #define LIST_ROW_H 36
 #define SPLASH_MS 3000u                  /* the splash stays at least this long after power-on */
 #define FLASH_MS 110u                    /* the beat light's flash */
+#define CUE_MS 140u                      /* the rhythm cue's flash at each attack */
+#define KEYMODE_MS 4000u                 /* the KEY mode ends this long after its last use */
+#define W_CUE 34                         /* the rhythm cue's part of the chord band, left of the big chord */
 
 /* the bands of the play screen, top to bottom */
 #define Y_TOP 0
@@ -45,6 +51,10 @@ static void ui_busy(const char *a, const char *b);
 #define BOX_STEP 60
 
 enum { V_LIST, V_PLAY, V_HELP };
+enum { PV_CHORD, PV_KEYS, PV_CHART, PV_N };   /* the play screen's views (EDIT) */
+enum { PART_NONE, PART_HARMONY, PART_BASS };  /* the part being played on the keys: the cue, the lights */
+#define L_BASS 1u
+#define L_HARM 2u
 
 static const uint8_t LAYER_BUTTON[SONG_LAYERS] = {B_FX, B_SEL, B_ENV, B_LFO};
 static const uint8_t LAYER_ENC[SONG_LAYERS] = {EN_K1, EN_K2, EN_K3, EN_K4};
@@ -65,6 +75,10 @@ static struct {
     int32_t from_tick;
     uint32_t a_bar, b_bar;               /* LOOP BARS */
     uint32_t tempo_ms;                   /* the last tempo click (quick turns: bigger steps) */
+    int32_t key;                         /* the transposition, -5..+6 semitones (the key: the nearest way there) */
+    uint32_t keymode_until;              /* the KEY mode: SELECT changes the key until then (0: off) */
+    int pview;                           /* PV_* */
+    uint32_t lit_keys, dim_keys;         /* the key lights for the part being played (frame_play sets them) */
     char msg[2][24];
     uint32_t msg_until;
     uint8_t flash_ok, splash, redraw, flashing;
@@ -72,7 +86,7 @@ static struct {
     /* what is on the screen */
     int32_t sh_chord, sh_count, sh_next, sh_left, sh_bar, sh_beat, sh_strip, sh_layers, sh_section;
     int sh_state;
-    uint32_t sh_top_key, sh_stats_ms, sh_list, sh_status, sh_legend;
+    uint32_t sh_top_key, sh_stats_ms, sh_list, sh_status, sh_legend, sh_cue, sh_view;
 } ui;
 
 /* -------------------------------------------------------------- the platform's calls --- */
@@ -213,6 +227,191 @@ void app_splash(void)
     cv_blit(0, (uint32_t)oy + LOGO_H + 6u);
 }
 
+/* ---------------------------------------------------------------- the key (part 3, item 8) --- */
+/* names for the key now: sharps or flats by the key's signature (its mode's parent major); C major mixed */
+static const char *const SHARP[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+static const char *const FLAT[12] = {"C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"};
+static const char *const MIXED[12] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+static const uint8_t MODE_PARENT[7] = {0, 3, 10, 5, 7, 8, 1};   /* major minor dorian mixolydian lydian phrygian locrian */
+
+static const char *const *names(void)
+{
+    uint32_t parent = (ui.s->key_root + MODE_PARENT[ui.s->key_mode % 7u] + 12u + (uint32_t)ui.key) % 12u;
+    if (parent == 0)
+        return MIXED;
+    return parent == 5 || parent == 10 || parent == 3 || parent == 8 || parent == 1 ? FLAT : SHARP;
+}
+
+/* a note name at p (C, C#, Db, ...): its pitch class, *n its length; -1 if none */
+static int pc_at(const char *p, uint32_t *n)
+{
+    static const uint8_t PC[7] = {9, 11, 0, 2, 4, 5, 7};   /* A..G */
+    int pc;
+    if (*p < 'A' || *p > 'G')
+        return -1;
+    pc = PC[*p - 'A'];
+    *n = 1;
+    if (p[1] == '#' || p[1] == 'b') {
+        pc += p[1] == '#' ? 1 : 11;
+        *n = 2;
+    }
+    return pc % 12;
+}
+
+/* a chord symbol (or a key's name: "Em", "D dorian") in the key now: the root and a slash bass moved and spelled,
+ * the rest as written. Four rotating buffers: up to four in use at once */
+static const char *spell(const char *sym)
+{
+    static char buf[4][24];
+    static uint32_t k;
+    const char *const *nm;
+    char *o, *d;
+    uint32_t n;
+    int pc;
+    if (!ui.key || (pc = pc_at(sym, &n)) < 0)
+        return sym;                      /* not moved, or N.C. */
+    nm = names();
+    o = d = buf[k++ & 3u];
+    *d = 0;
+    text_cat(d, nm[(uint32_t)(pc + 12 + ui.key) % 12u]);
+    while (*d)
+        d++;
+    for (sym += n; *sym && *sym != '/' && d < o + 18;)
+        *d++ = *sym++;
+    *d = 0;
+    if (*sym == '/' && (pc = pc_at(sym + 1, &n)) >= 0) {
+        text_cat(o, "/");
+        text_cat(o, nm[(uint32_t)(pc + 12 + ui.key) % 12u]);
+    }
+    return o;
+}
+
+static const char *chord_name(uint32_t k) { return spell(song_cevt_symbol(ui.s, k)); }
+
+/* a note's name with its octave (C4 = 60), in the key now's spelling (n: as sounded) */
+static void note_cat(char *d, uint32_t n)
+{
+    text_cat(d, names()[n % 12u]);
+    num_cat(d, n / 12u - 1u);
+}
+
+/* ---------------------------------------------------- the part being played (part 3, items 10, F, G) --- */
+/* the part the keys play: the muted one of harmony and bass; both muted: harmony (the bass is still named) */
+static int part(void)
+{
+    if (ui.muted >> L_HARM & 1u)
+        return PART_HARMONY;
+    if (ui.muted >> L_BASS & 1u)
+        return PART_BASS;
+    return PART_NONE;
+}
+
+static const struct song_stream *layer_stream(uint32_t l)
+{
+    const struct song_layer *ly = &ui.s->layer[l];
+    uint32_t v = player_variant_of(l);
+    if (!ly->variants)
+        return 0;
+    return &ly->var[(v > ly->variants ? ly->variants : v < 1u ? 1u : v) - 1u];
+}
+
+/* the layer's attack at or before tick (*at), how long its notes last (*len, ticks), the next attack (*next);
+ * 0: none yet */
+static int attack_at(uint32_t l, int32_t tick, uint32_t *at, uint32_t *len, uint32_t *next)
+{
+    const struct song_stream *st = layer_stream(l);
+    struct song_event e;
+    uint32_t i, k, a = 0, found = 0, end = 0;
+    if (!st || !st->count || tick < 0)
+        return 0;
+    i = song_seek(st, (uint32_t)tick + 1u);   /* the first event after tick */
+    *next = 0xFFFFFFFFu;
+    for (k = i; k < st->count && k < i + 64u; k++) {
+        song_event_get(st, k, &e);
+        if (e.status == 0x90u) {
+            *next = e.tick;
+            break;
+        }
+    }
+    for (k = i; k > 0 && i - k < 64u; k--) {   /* back to the last note-on */
+        song_event_get(st, k - 1u, &e);
+        if (e.status == 0x90u) {
+            a = e.tick;
+            found = 1;
+            break;
+        }
+    }
+    if (!found)
+        return 0;
+    for (k = song_seek(st, a); k < st->count && end == 0; k++) {   /* its first note-off: how long it is held */
+        song_event_get(st, k, &e);
+        if (e.status == 0x80u && e.tick > a)
+            end = e.tick;
+    }
+    *at = a;
+    *len = (end ? end : *next) - a;
+    return 1;
+}
+
+/* the layer's note sounding at tick (its lowest), and the next one; 0xFF: none */
+static void bass_notes(int32_t tick, uint32_t *now, uint32_t *next)
+{
+    const struct song_stream *st = layer_stream(L_BASS);
+    struct song_event e;
+    uint32_t i, k;
+    *now = *next = 0xFFu;
+    if (!st || !st->count || tick < 0)
+        return;
+    i = song_seek(st, (uint32_t)tick + 1u);
+    for (k = i; k < st->count && k < i + 64u; k++) {
+        song_event_get(st, k, &e);
+        if (e.status == 0x90u) {
+            *next = e.d1;
+            break;
+        }
+    }
+    for (k = i; k > 0 && i - k < 64u; k--) {
+        song_event_get(st, k - 1u, &e);
+        if (e.status == 0x90u) {
+            *now = e.d1;
+            break;
+        }
+    }
+}
+
+/* a note as the player sends it: transposed, folded into MIDI's range */
+static uint32_t moved(uint32_t n)
+{
+    int32_t t = (int32_t)n + ui.key;
+    while (t < 0)
+        t += 12;
+    while (t > 127)
+        t -= 12;
+    return (uint32_t)t;
+}
+
+/* a note's key on the FM-1 (with the keys' octave), folded into its 27 keys */
+static uint32_t key_bit(uint32_t n)
+{
+    int32_t k = (int32_t)n - KEY_LOW - 12 * ui.oct;
+    while (k < 0)
+        k += 12;
+    while (k >= (int32_t)NKEYS)
+        k -= 12;
+    return 1u << k;
+}
+
+/* the voicing of chord event k for the harmony's level (L1: level 1, L2 and L3: level 2), moved to the key now */
+static uint32_t voicing(uint32_t k, uint8_t *out)
+{
+    const uint8_t *v = song_cevt_voicing(ui.s, k, player_variant_of(L_HARM) >= 2u ? 2u : 1u);
+    uint32_t i, n = 0;
+    for (i = 0; i < SONG_VOICING_NOTES; i++)
+        if (v[i])
+            out[n++] = (uint8_t)moved(v[i]);
+    return n;
+}
+
 /* ------------------------------------------------------------------- the song's facts --- */
 static uint32_t bar_ticks(void) { return ui.s->bar_ticks; }
 static uint32_t first_bar(void) { return song_section_first(ui.s, 0); }   /* the first bar of music (1: a pickup) */
@@ -308,7 +507,10 @@ static void open_song(uint32_t i)
     player_mute(0);
     for (r = 0; r < (int)SONG_LAYERS; r++)
         player_variant((uint32_t)r, 1);
-    player_tempo(player_song_bpm(s));    /* every song opens at its own tempo */
+    player_tempo(player_song_bpm(s));    /* every song opens at its own tempo, in its own key */
+    ui.key = 0;
+    ui.keymode_until = 0;
+    player_transpose(0);
     set_from_bar(first_bar());
     ui.from_tick = (int32_t)section_from(0);
     set_loop(LOOP_OFF);
@@ -358,7 +560,11 @@ static void lights(void)
         lit |= 1u << B_OCTDN;
     if (ui.oct > 0)
         lit |= 1u << B_OCTUP;
-    plat_lights(lit, ui.keys, dim, 0, 1);
+    if (ui.view != V_PLAY || st == PL_STOPPED)
+        ui.lit_keys = ui.dim_keys = 0;
+    player_stats.lit_keys = ui.lit_keys;
+    player_stats.dim_keys = ui.dim_keys;
+    plat_lights(lit, ui.keys | ui.lit_keys, dim, ui.dim_keys & ~ui.lit_keys, 1);   /* keys pressed: lit as ever */
     plat_lights_mid(mid, 0);
 }
 
@@ -424,7 +630,36 @@ static void input_play(uint32_t down, uint32_t now)
             app_say(LAYER_NAME[l], t);
         }
     }
+    if (ui.keymode_until && now >= ui.keymode_until) {
+        ui.keymode_until = 0;
+        ui.sh_legend = 0;
+        ui.sh_top_key = 0xFFFFFFFFu;
+    }
+    if (down >> B_SAVE & 1u) {           /* the KEY mode on / off */
+        ui.keymode_until = ui.keymode_until ? 0 : now + KEYMODE_MS;
+        ui.sh_legend = 0;
+        ui.sh_top_key = 0xFFFFFFFFu;
+    }
+    if (down >> B_EDIT & 1u) {           /* the next view */
+        ui.pview = (ui.pview + 1) % PV_N;
+        player_stats.view = (uint32_t)ui.pview;
+        ui.redraw = 1;
+        app_say("VIEW", ui.pview == PV_CHORD ? "CHORD" : ui.pview == PV_KEYS ? "KEYBOARD" : "CHART");
+    }
     d = plat_enc(EN_SELECT);
+    if (d && ui.keymode_until) {         /* the key: a semitone a click, all twelve keys, the nearest way (-5..+6) */
+        char t[24] = "";
+        ui.key = ((ui.key + d) % 12 + 12 + 5) % 12 - 5;
+        player_transpose(ui.key);
+        ui.keymode_until = now + KEYMODE_MS;
+        ui.redraw = 1;
+        text_cat(t, spell(ui.s->key));
+        text_cat(t, " (");
+        snum_cat(t, ui.key);
+        text_cat(t, ")");
+        app_say("KEY", t);
+        d = 0;
+    }
     if (d) {                             /* tempo: 1 BPM a click; turned quickly, 5 */
         int32_t step = (d > 1 || d < -1 || now - ui.tempo_ms < 90u) ? 5 : 1;
         ui.tempo_ms = now;
@@ -645,9 +880,10 @@ static void draw_help(void)
                                           {"OCT- OCT+", "keys' octave"}};
     static const char *const ENC_LIST[5][2] = {{"MASTER", "volume"}, {"SELECT", "choose a song"},
                                                {"PRESETS", "-"}, {"ALGORITHM", "-"}, {"OCT- OCT+", "keys' octave"}};
-    static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX", "mute drums"}, {"SEL", "mute bass"},
-                                          {"ENV", "mute harmony"}, {"LFO", "mute melody"}, {"PLAY", "play / pause"},
-                                          {"HOME", "stop / list"}, {"SEQ", "loop"}, {"ARP", "count-in"}};
+    static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX..LFO", "mute a layer"},
+                                          {"PLAY", "play / pause"}, {"HOME", "stop / list"}, {"SEQ", "loop"},
+                                          {"ARP", "count-in"}, {"EDIT", "view"}, {"SAVE", "key (SELECT)"},
+                                          {"keys", "play along"}};
     static const char *const BTN_LIST[9][2] = {{"PLAY", "open the song"}, {"EDIT", "open the song"},
                                                {"keys", "play along"}, {"", ""}, {"", ""}, {"", ""}, {"", ""},
                                                {"", ""}, {"", ""}};
@@ -706,14 +942,28 @@ static void draw_top(int32_t bar, int32_t beat, int st)
     } else {
         num_cat(t, player_tempo_of());
         text_cat(t, " BPM  ");
-        text_cat(t, s->key);
+        text_cat(t, spell(s->key));
+        if (ui.key) {
+            text_cat(t, " (");
+            snum_cat(t, ui.key);
+            text_cat(t, ")");
+        }
         if (player_count_in_of())
             text_cat(t, "  CNT");
         if (ui.loop) {
             text_cat(t, "  ");
             text_cat(t, LOOP_NAME[ui.loop]);
         }
-        cv_text(6, 16, &FONT_XS, t, player_tempo_of() == player_song_bpm(s) ? C_DIM : C_AMB);
+        cv_text(6, 16, &FONT_XS, t, player_tempo_of() == player_song_bpm(s) && !ui.key ? C_DIM : C_AMB);
+    }
+    if (ui.keymode_until) {              /* the KEY mode: what SELECT does now */
+        char k[32] = "KEY: ";
+        text_cat(k, spell(s->key));
+        text_cat(k, " (");
+        snum_cat(k, ui.key);
+        text_cat(k, ")  SELECT");
+        cv_rect(4, 15, text_w(&FONT_XS, k) + 8, 16, C_HI);
+        cv_text(8, 16, &FONT_XS, k, C_BLACK);
     }
     t[0] = 0;
     if (st == PL_PLAYING) {
@@ -727,9 +977,46 @@ static void draw_top(int32_t bar, int32_t beat, int st)
     cv_blit(0, Y_TOP);
 }
 
-static void draw_big(int st, int32_t k, int32_t count, int32_t bar, int32_t beat)
+/* the rhythm cue: a note symbol for how long the part's attack lasts (whole, half, quarter, eighth, sixteenth),
+ * bright at the attack (CUE_MS), dim between; drawn (there is no music font). kind 0: none */
+static void draw_cue(int32_t x, int32_t y, uint32_t kind, int bright)
 {
-    const char *sym = k >= 0 ? song_cevt_symbol(ui.s, (uint32_t)k) : 0;
+    static const uint8_t W[9] = {5, 9, 11, 11, 11, 11, 11, 9, 5};   /* the head's rows (11 x 9), drawn twice the size */
+    uint16_t c = bright ? C_HI : C_GRAY;
+    int32_t i, hy = y + 44;
+    if (!kind)
+        return;
+    for (i = 0; i < 9; i++) {
+        int32_t w = W[i], ox = (11 - w) / 2 + (4 - i) / 3;   /* tilted a little */
+        if (kind <= 2u && i > 1 && i < 7) {                   /* whole and half: hollow */
+            cv_rect(x + 2 * ox, hy + 2 * i, 6, 2, c);
+            cv_rect(x + 2 * (ox + w) - 6, hy + 2 * i, 6, 2, c);
+        } else {
+            cv_rect(x + 2 * ox, hy + 2 * i, 2 * w, 2, c);
+        }
+    }
+    if (kind >= 2u)
+        cv_rect(x + 19, y, 3, 50, c);     /* the stem */
+    for (i = 0; kind >= 4u && i < (int32_t)kind - 3; i++) {   /* flags: one for an eighth, two for a sixteenth */
+        cv_line(x + 21, y + i * 10, x + 31, y + 14 + i * 10, c);
+        cv_line(x + 22, y + i * 10, x + 32, y + 14 + i * 10, c);
+    }
+}
+
+/* the cue for the part being played at tick: kind (1 whole .. 5 sixteenth), bright (an attack just now) */
+static uint32_t cue_at(int32_t tick, int *bright)
+{
+    uint32_t at, len, next, ppq = ui.s->ppq, l = part() == PART_BASS ? L_BASS : L_HARM;
+    *bright = 0;
+    if (!attack_at(l, tick, &at, &len, &next))
+        return 0;
+    *bright = (uint32_t)tick - at < CUE_MS * ppq * player_tempo_of() / 60000u;
+    return len >= ppq * 7u / 2u ? 1u : len >= ppq * 7u / 4u ? 2u : len >= ppq * 7u / 8u ? 3u : len >= ppq * 7u / 16u ? 4u : 5u;
+}
+
+static void draw_big(int st, int32_t k, int32_t count, int32_t bar, int32_t beat, uint32_t cue)
+{
+    const char *sym = k >= 0 ? chord_name((uint32_t)k) : 0;
     cv_begin(W_BIG, H_CHORD, C_BLACK);
     if (st == PL_STOPPED) {
         char t[48] = "from bar ";
@@ -758,11 +1045,19 @@ static void draw_big(int st, int32_t k, int32_t count, int32_t bar, int32_t beat
         num_cat(t, (uint32_t)count);
         text_in(0, W_BIG, 2, &FONT_XS, "COUNT-IN", C_DIM);
         text2x((W_BIG - 2 * text_w(&FONT_L, t)) / 2, 12, &FONT_L, t, C_AMB);
-    } else if (sym) {
-        if (2 * text_w(&FONT_L, sym) <= W_BIG - 4)
-            text2x((W_BIG - 2 * text_w(&FONT_L, sym)) / 2, 6, &FONT_L, sym, C_HI);
+    } else if (sym) {                    /* the cue (if any) on the left, the chord in the rest */
+        int32_t x0 = cue & 15u ? W_CUE : 0, w = W_BIG - x0;
+        if (2 * text_w(&FONT_L, sym) <= w - 4)
+            text2x(x0 + (w - 2 * text_w(&FONT_L, sym)) / 2, 6, &FONT_L, sym, C_HI);
         else
-            text_in(0, W_BIG, 22, &FONT_L, sym, C_HI);
+            text_in(x0, w, 22, &FONT_L, sym, C_HI);
+        if (cue & 15u) {
+            char t[4] = "L";
+            uint32_t l = part() == PART_BASS ? L_BASS : L_HARM;
+            draw_cue(2, 4, cue & 15u, (cue >> 4) & 1u);
+            num_cat(t, player_variant_of(l));
+            cv_text(26, 56, &FONT_XS, t, C_DIM);
+        }
     }
     cv_blit(0, Y_CHORD);
 }
@@ -773,7 +1068,8 @@ static void draw_next(int st, int32_t next, int32_t left)
     cv_rect(0, 6, 1, H_CHORD - 12, C_LINE);
     cv_text(8, 4, &FONT_XS, st == PL_STOPPED ? "FIRST" : "NEXT", C_DIM);
     if (next >= 0)
-        cv_text(8, 20, &FONT_M, song_cevt_symbol(ui.s, (uint32_t)next), C_AMB);
+        cv_text(8, 20, text_w(&FONT_M, chord_name((uint32_t)next)) <= 56 ? &FONT_M : &FONT_XS,
+                chord_name((uint32_t)next), C_AMB);
     else if (st != PL_STOPPED)
         cv_text(8, 24, &FONT_XS, "END", C_DIM);
     if (left > 0) {                      /* the beats until the change, in the last bar before it */
@@ -829,7 +1125,7 @@ static void draw_strip(int32_t bar)
             uint32_t z = k < k_end ? song_cevt_tick(s, k + 1u) - t0 : s->bar_ticks;
             int32_t sx = x + 1 + (int32_t)(a * (BOX_W - 2) / s->bar_ticks);
             int32_t sw = (int32_t)((z - a) * (BOX_W - 2) / s->bar_ticks);
-            const char *sym = song_cevt_symbol(s, k);
+            const char *sym = chord_name(k);
             const felucca_font_t *f = n == 1u && text_w(&FONT_M, sym) <= sw ? &FONT_M : &FONT_XS;
             if (a)
                 cv_rect(sx, 16, 1, BOX_H - 20, C_DIM);
@@ -837,6 +1133,99 @@ static void draw_strip(int32_t bar)
         }
     }
     cv_blit(0, Y_STRIP);
+}
+
+/* the keyboard view: the chord, its keys (the harmony level's voicing, in the key now) on a drawn keyboard C3..B5;
+ * the next chord's keys outlined in the last bar before it; the bass note (bass muted) amber */
+static void draw_keys_view(int st, int32_t k, int32_t next, int32_t left, uint32_t bass)
+{
+    uint8_t now[SONG_VOICING_NOTES], nx[SONG_VOICING_NOTES];
+    uint32_t nn = k >= 0 ? voicing((uint32_t)k, now) : 0, nnx = next >= 0 && left > 0 ? voicing((uint32_t)next, nx) : 0;
+    uint32_t n, i, wi = 0;
+    int32_t x0 = 4, y0 = 32, wk = 11;
+    char t[32] = "";
+    cv_begin(240, Y_LAYERS - Y_CHORD, C_BLACK);
+    if (k >= 0)
+        cv_text(6, 0, &FONT_L, chord_name((uint32_t)k), C_HI);
+    if (next >= 0) {
+        text_cat(t, st == PL_STOPPED ? "first " : "next ");
+        text_cat(t, chord_name((uint32_t)next));
+        if (left > 0) {
+            text_cat(t, "  IN ");
+            num_cat(t, (uint32_t)left);
+        }
+        cv_text(234 - text_w(&FONT_B, t), 6, &FONT_B, t, C_AMB);
+    }
+    for (n = 48; n < 84u; n++) {         /* white keys first, then the black keys over them */
+        uint32_t pc = n % 12u, lit = 0, dim = 0;
+        if (pc == 1u || pc == 3u || pc == 6u || pc == 8u || pc == 10u)
+            continue;
+        for (i = 0; i < nn; i++)
+            lit |= now[i] == n;
+        for (i = 0; i < nnx; i++)
+            dim |= nx[i] == n;
+        cv_rect(x0 + (int32_t)wi * wk, y0, wk - 1, 76, lit ? C_HI : bass == n ? C_AMB : RGB(220, 220, 225));
+        if (dim && !lit)
+            frame_rect(x0 + (int32_t)wi * wk + 2, y0 + 56, wk - 5, 16, C_AMB);
+        if (pc == 0u) {
+            char o[4] = "C";
+            num_cat(o, n / 12u - 1u);
+            cv_text(x0 + (int32_t)wi * wk + 1, y0 + 62, &FONT_T, o, lit ? C_BLACK : C_DIM);
+        }
+        wi++;
+    }
+    for (n = 48, wi = 0; n < 84u; n++) {
+        uint32_t pc = n % 12u, lit = 0, dim = 0;
+        if (!(pc == 1u || pc == 3u || pc == 6u || pc == 8u || pc == 10u)) {
+            wi++;
+            continue;
+        }
+        for (i = 0; i < nn; i++)
+            lit |= now[i] == n;
+        for (i = 0; i < nnx; i++)
+            dim |= nx[i] == n;
+        cv_rect(x0 + (int32_t)wi * wk - 4, y0, 7, 46, lit ? C_HI : bass == n ? C_AMB : RGB(40, 40, 46));
+        if (dim && !lit)
+            frame_rect(x0 + (int32_t)wi * wk - 3, y0 + 30, 5, 12, C_AMB);
+    }
+    cv_text(6, y0 + 78, &FONT_XS, part() == PART_BASS ? "bass muted: its note amber" :
+            player_variant_of(L_HARM) >= 2u ? "harmony L2: these keys (inversions)" : "harmony L1: these keys", C_DIM);
+    cv_blit(0, Y_CHORD);
+}
+
+/* the chart view: the section's bars (16 a page) with their chords, the bar now framed bright */
+static void draw_chart_view(int32_t bar, int32_t section)
+{
+    const struct song *s = ui.s;
+    uint32_t first = song_section_first(s, (uint32_t)section), nb = song_section_bars(s, (uint32_t)section), i;
+    uint32_t page = (uint32_t)bar >= first ? ((uint32_t)bar - first) / 16u : 0;
+    char t[48] = "";
+    cv_begin(240, Y_LAYERS - Y_CHORD, C_BLACK);
+    text_cat(t, song_section_name(s, (uint32_t)section));
+    text_cat(t, "  (bars ");
+    num_cat(t, first + s->first_bar_number);
+    text_cat(t, "-");
+    num_cat(t, first + nb - 1u + s->first_bar_number);
+    text_cat(t, ")");
+    cv_text(6, 0, &FONT_XS, t, C_GRAY);
+    for (i = 0; i < 16u && page * 16u + i < nb; i++) {
+        uint32_t b = first + page * 16u + i, k = song_bar_chord(s, b), t0 = b * s->bar_ticks, n = 1;
+        int32_t x = 2 + (int32_t)(i % 4u) * 60, y = 16 + (int32_t)(i / 4u) * 28;
+        int cur = (int32_t)b == bar;
+        char nbuf[8] = "", sym[24] = "";
+        while (k + n < s->ncevt && song_cevt_tick(s, k + n) < t0 + s->bar_ticks)
+            n++;                         /* the changes inside the bar: the first two named */
+        frame_rect(x, y, 56, 26, cur ? C_HI : C_DIM);
+        num_cat(nbuf, b + s->first_bar_number);
+        cv_text(x + 2, y, &FONT_T, nbuf, C_DIM);
+        text_cat(sym, chord_name(k));
+        if (n > 1u) {
+            text_cat(sym, " ");
+            text_cat(sym, chord_name(k + 1u));
+        }
+        text_in(x + 6, 50, y + 6, text_w(&FONT_B, sym) <= 48 ? &FONT_B : &FONT_XS, sym, cur ? C_WHITE : C_AMB);
+    }
+    cv_blit(0, Y_CHORD);
 }
 
 static void draw_cursor(int32_t beat, int st)
@@ -875,12 +1264,21 @@ static void draw_layers(void)
     cv_blit(0, Y_LAYERS);
 }
 
-static void draw_status(int32_t section)
+static void draw_status(int32_t section, uint32_t bass_now, uint32_t bass_next)
 {
     char t[40] = "";
     cv_begin(240, H_STATUS, C_BLACK);
-    if (section >= 0)
+    if ((ui.muted >> L_BASS & 1u) && bass_now != 0xFFu) {   /* the bass muted: its note now, and the next */
+        char b[32] = "BASS ";
+        note_cat(b, bass_now);
+        if (bass_next != 0xFFu) {
+            text_cat(b, "  then ");
+            note_cat(b, bass_next);
+        }
+        cv_text(6, 3, &FONT_B, b, C_HI);
+    } else if (section >= 0) {
         cv_text(6, 4, &FONT_XS, song_section_name(ui.s, (uint32_t)section), C_GRAY);
+    }
     if (ui.loop == LOOP_BARS) {
         text_cat(t, "LOOP BARS ");
         num_cat(t, ui.a_bar + ui.s->first_bar_number);
@@ -898,6 +1296,10 @@ static void draw_status(int32_t section)
 
 static const char *legend_play(int st)
 {
+    if (ui.keymode_until)
+        return "SELECT: KEY    SAVE: DONE";
+    if (st == PL_PLAYING || st == PL_COUNT_IN)
+        return "PLAY: PAUSE  EDIT: VIEW  SAVE: KEY  GLO: ?";
     if (ui.loop == LOOP_BARS && st == PL_STOPPED)
         return "PLAY  PRESETS: A  ALGO: B  SEQ  GLO: ?";
     if (st == PL_STOPPED)
@@ -913,12 +1315,14 @@ static void frame_play(uint32_t now)
     int st = player_state();
     int32_t tc = player_tick(PL_LEAD_CHORD_MS), tb = player_tick(PL_LEAD_BEAT_MS), from = player_play_from();
     int32_t k = -1, next = -1, left = 0, count = 0, bar = 0, beat = 0, section;
-    uint32_t lfrom, lto, top_key, status_key;
+    uint32_t lfrom, lto, top_key, status_key, cue = 0, bass_now = 0xFFu, bass_next = 0xFFu, view_key;
     int looping = player_loop_of(&lfrom, &lto);
     const char *leg;
     if (st == PL_STOPPED) {
         int32_t sp = start_point();
         next = (int32_t)song_chord_at(s, (uint32_t)(sp > (int32_t)s->start_tick ? sp : (int32_t)s->start_tick));
+        if (song_cevt_symbol(s, (uint32_t)next)[0] == 'N' && (uint32_t)next + 1u < s->ncevt)
+            next++;                      /* N.C. in the pickup: the first real chord */
         tb = sp;
     } else if (st == PL_PAUSED) {
         k = (int32_t)song_chord_at(s, tb > 0 ? (uint32_t)tb : 0);
@@ -957,14 +1361,56 @@ static void frame_play(uint32_t now)
     if (st == PL_STOPPED)
         bar = start_point() / (int32_t)s->bar_ticks;
     section = (int32_t)section_at(st == PL_STOPPED ? start_point() : tb);
+    {   /* the part being played: the cue, the bass notes, the key lights */
+        int bright = 0;
+        uint8_t v[SONG_VOICING_NOTES];
+        uint32_t i, nv, kc = st == PL_STOPPED || k < 0 ? (uint32_t)(next >= 0 ? next : 0) : (uint32_t)k;
+        cue = (st == PL_PLAYING && k >= 0 && part() != PART_NONE) ? cue_at(tb, &bright) : 0;
+        cue |= (uint32_t)bright << 4;
+        bass_now = bass_next = 0xFFu;
+        if (ui.muted >> L_BASS & 1u)
+            bass_notes(tb, &bass_now, &bass_next);
+        if (bass_now != 0xFFu)
+            bass_now = moved(bass_now);
+        if (bass_next != 0xFFu)
+            bass_next = moved(bass_next);
+        ui.lit_keys = ui.dim_keys = 0;
+        if (part() == PART_HARMONY && st != PL_STOPPED) {
+            nv = voicing(st == PL_COUNT_IN && k < 0 ? (uint32_t)(next >= 0 ? next : 0) : kc, v);
+            for (i = 0; i < nv; i++)
+                ui.lit_keys |= key_bit(v[i]);
+            if (next >= 0 && left > 0)
+                for (i = 0, nv = voicing((uint32_t)next, v); i < nv; i++)
+                    ui.dim_keys |= key_bit(v[i]);
+        } else if (part() == PART_BASS && st != PL_STOPPED && bass_now != 0xFFu) {
+            ui.lit_keys = key_bit(bass_now);
+        }
+    }
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
         ui.sh_top_key = 0xFFFFFFFFu;
     }
+    if (ui.pview != PV_CHORD) {          /* the keyboard and chart views: the chord band, strip and cursor's place */
+        view_key = (uint32_t)(k + 1) ^ (uint32_t)(next + 1) << 11 ^ (uint32_t)left << 22 ^ bass_now << 25 ^
+                   (uint32_t)st << 29 ^ (uint32_t)(ui.pview == PV_CHART ? bar : 0) << 3;
+        if (ui.redraw || view_key != ui.sh_view) {
+            if (ui.pview == PV_KEYS)
+                draw_keys_view(st, k, next, left, ui.muted >> L_BASS & 1u ? bass_now : 0xFFu);
+            else
+                draw_chart_view(bar, section);
+            lcd_done();
+            if (k >= 0 && k < (int32_t)PL_STATS_CHORDS && (st == PL_PLAYING || st == PL_COUNT_IN) &&
+                !player_stats.chord_drawn[k])
+                player_stats.chord_drawn[k] = player_frames();
+            ui.sh_view = view_key;
+        }
+        ui.sh_chord = k;
+    } else {
     /* the chord first: it is what must not be late (player.h PL_LEAD_CHORD_MS; tools/m2_test.py checks) */
-    if (ui.redraw || st != ui.sh_state || k != ui.sh_chord || count != ui.sh_count ||
+    if (ui.redraw || st != ui.sh_state || k != ui.sh_chord || count != ui.sh_count || cue != ui.sh_cue ||
         (st != PL_PLAYING && st != PL_COUNT_IN && ui.sh_status == 0xFFFFFFFFu)) {
-        draw_big(st, k, count, bar, beat);
+        draw_big(st, k, count, bar, beat, cue);
+        ui.sh_cue = cue;
         lcd_done();
         if (k >= 0 && k < (int32_t)PL_STATS_CHORDS && (st == PL_PLAYING || st == PL_COUNT_IN) &&
             !player_stats.chord_drawn[k])
@@ -977,18 +1423,20 @@ static void frame_play(uint32_t now)
         ui.sh_next = next;
         ui.sh_left = left;
     }
+    }
     top_key = (uint32_t)(bar * 16 + beat) ^ player_tempo_of() << 16 ^ (uint32_t)ui.loop << 25 ^
-              (uint32_t)player_count_in_of() << 27 ^ (uint32_t)st << 28;
+              (uint32_t)player_count_in_of() << 27 ^ (uint32_t)st << 28 ^ (uint32_t)(ui.key + 8) << 10 ^
+              (ui.keymode_until ? 1u << 31 : 0u);
     if (ui.redraw || top_key != ui.sh_top_key) {
         draw_top(bar, beat, st);
         ui.sh_top_key = top_key;
     }
-    if (ui.redraw || bar != ui.sh_strip || (int32_t)(looping ? lto : 0) != ui.sh_bar) {
+    if (ui.pview == PV_CHORD && (ui.redraw || bar != ui.sh_strip || (int32_t)(looping ? lto : 0) != ui.sh_bar)) {
         draw_strip(bar);
         ui.sh_strip = bar;
         ui.sh_bar = (int32_t)(looping ? lto : 0);
     }
-    if (ui.redraw || beat != ui.sh_beat || st != ui.sh_state) {
+    if (ui.pview == PV_CHORD && (ui.redraw || beat != ui.sh_beat || st != ui.sh_state)) {
         draw_cursor(beat, st);
         ui.sh_beat = beat;
     }
@@ -998,9 +1446,10 @@ static void frame_play(uint32_t now)
         ui.sh_layers = (int32_t)(ui.muted | player_variant_of(0) << 4 | player_variant_of(1) << 6 |
                                  player_variant_of(2) << 8 | player_variant_of(3) << 10);
     }
-    status_key = (uint32_t)section ^ (uint32_t)ui.loop << 8 ^ ui.from_bar << 10 ^ ui.a_bar << 20 ^ ui.b_bar << 26;
+    status_key = (uint32_t)section ^ (uint32_t)ui.loop << 8 ^ ui.from_bar << 10 ^ ui.a_bar << 20 ^ ui.b_bar << 26 ^
+                 bass_now << 4 ^ bass_next << 13;
     if (ui.redraw || status_key != ui.sh_status) {
-        draw_status(section);
+        draw_status(section, bass_now, bass_next);
         ui.sh_status = status_key;
     }
     leg = legend_play(st);

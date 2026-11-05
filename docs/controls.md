@@ -49,7 +49,8 @@ when opened stays in the list with `SONG ERROR <reason> (send it again)`.
 | ARP | count-in on / off (default on) | lit = on |
 | GLO | the controls (help); GLO again or any other button: back | |
 | OCT−, OCT+ | the keys' octave, −3..+3 (shown for a moment) | lit = shifted that way |
-| EDIT, SAVE | not used in M2 parts 1–2 (part 3: EDIT = the view) | |
+| EDIT | the view: **chord** → **keyboard** → **chart** (part 3) | |
+| SAVE | the **KEY** mode (part 3): SELECT changes the key, a semitone a click, through all twelve (the music moves the nearest way: at most 5 down or 6 up, so bass and melody stay in their range); SAVE again, or 4 s without a turn: back to the tempo. Every song opens in its own key | |
 | keys | Electric Piano 1 on channel 16, over the song | |
 | MASTER | volume | |
 
@@ -70,6 +71,35 @@ a chord held over: the strip shows it is the same chord; an amber line under the
 bar); the beat cursor; the four layers (level `L1`/`L2`, amber `MUTE`); the section, the loop; **the legend**. The
 CPU and voices line moved into the help screen.
 
+## Part 3: the part you play (views, key, cue, bass, key lights)
+
+**The part you play** is the muted one of harmony and bass: harmony muted → you play the chords; bass muted (harmony
+playing) → you play the bass; **both muted → harmony wins** (the bass notes are still named on the status line).
+That is a proposal (plan-M2 G asked for one): one rule for the rhythm cue and the key lights, nothing to set.
+
+- **Key (SAVE, then SELECT).** The whole band but the drums moves; the chord names, the key name and the bass
+  names are spelled for the new key (sharps or flats by its signature: F# in D, Gb in Db; C major mixed); the top
+  line shows `A (+2)`, amber. A key change while playing ends the sounding notes at once (no note hangs at the old
+  pitch).
+- **Chord view** (as M1/M2, plus): left of the big chord, the **rhythm cue**: a note symbol for how long the part's
+  attack lasts at the chosen level (whole, half, quarter, eighth, sixteenth; read from the song's own events for
+  that level), bright for a moment at each attack, grey between; `L1`/`L2` under it. Shown when harmony or bass is
+  muted.
+- **Keyboard view**: the chord, `next … IN n`, and a keyboard C3–B5 with the chord's keys lit (the voicing of the
+  harmony's level: L1 root position, L2 the inversions that move least), the next chord's keys outlined in the last
+  bar before it, the bass note amber when the bass is muted.
+- **Chart view**: the section's bars (16 a page) with their chords, the bar now framed.
+- **Bass names** (the bass muted): the status line shows `BASS C3  then G2` (the note now and the next, in the key
+  now, following the bass level).
+- **Key lights**: the FM-1's own keys light for the part you play, while playing (and in the count-in, paused):
+  harmony → the chord's keys (the level's voicing) bright and the next chord's keys dim in the last bar before a
+  change; bass → the bass note. Folded into the 27 keys (F3–G5) and following OCT− / OCT+ (the lit keys are where
+  those notes are under your hands). Keys you press light as ever.
+
+![chord view: the rhythm cue, bass names](step-M2/mock-chord-cue.png) ![keyboard view](step-M2/mock-keyboard-view.png)
+
+![chart view](step-M2/mock-chart-view.png) ![the KEY mode](step-M2/mock-key-mode.png)
+
 ## Why this map
 
 - PLAY pauses, as on most players; stopping is HOME, the "go back" button, which goes one step further when already
@@ -79,3 +109,5 @@ CPU and voices line moved into the help screen.
   fine step, bars).
 - The layer buttons, K1–K4 above them and ARP / SEQ are as in M1 (the user has used them).
 - GLO ("global") is the help: one press shows every control where it is on the panel.
+- EDIT ("edit what you see") changes the view; SAVE was free and the key is a setting you set and keep for the song
+  (the legend says `SAVE: KEY`). A shift (hold GLO + turn) was rejected: GLO opens the help on its press.

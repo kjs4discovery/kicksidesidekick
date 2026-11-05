@@ -51,6 +51,22 @@ Controls and screens: [controls.md](controls.md) (mock-ups first, then the scree
   sample at full scale); the melody's GM 81 "Lead 1 (square)" put 3.8 % of its energy above 8 kHz (aliasing in
   EAS's 22.05 kHz synth); clarinet (GM 72) 0.00 %. Four Chords' melody is now the clarinet (`tools/melody_check.py`).
 
+### Part 3: views and guidance (items 8, 10, 12, F, G)
+
+Controls and screens: [controls.md](controls.md), "Part 3".
+
+- **Transposition** in the player (`player_transpose`): every layer but the percussion channel's, applied as each
+  note is sent; the active-note sets hold the notes as sent, so a key change releases exactly what sounds. The UI
+  moves to the nearest key (−5..+6) and spells names for the new key's signature (`spell()` in ui.c).
+- **Views** (EDIT): chord (with the rhythm cue), keyboard (the harmony level's voicing on C3–B5), chart (the
+  section's bars). In every view the chord is drawn ahead of its sound and waits for the LCD's DMA (the tests check
+  the keyboard view too).
+- **Rhythm cue**: from the part's own events (the harmony's, or the bass's) at the chosen level: the last attack
+  at or before the position, how long its notes are held (whole … sixteenth), bright for 140 ms at each attack.
+- **Bass names** and **key lights** from the same: the bass note sounding and the next; the chord's voicing (or
+  the bass note) folded into the FM-1's 27 keys, with the keys' octave; `plat_lights` (bright, dim) with the keys
+  pressed always lit.
+
 ## Milestone M1: song list, player, play screen (v0.2.0-m1, identity FM-1_46000200)
 
 Plays the five starter songs (`songs/`, format `fm1-song/1`, docs/song-format.md) with our own scheduler.

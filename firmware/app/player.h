@@ -29,6 +29,9 @@ void player_variant(uint32_t layer, uint32_t v);   /* 1..variants; takes effect 
 void player_tempo(uint32_t bpm);          /* PL_BPM_MIN..PL_BPM_MAX */
 uint32_t player_song_bpm(const struct song *s);   /* its own tempo, whole BPM */
 void player_count_in(int on);
+void player_transpose(int32_t semitones); /* every layer but the percussion channel's, -11..+11; at once (sounding notes
+                                           * released) */
+int32_t player_transpose_of(void);
 void player_loop(int mode, uint32_t from, uint32_t to);   /* ticks; LOOP_OFF ignores them */
 int player_state(void);
 int player_idle(void);                    /* the audio interrupt has taken every request (load, play) made so far */
@@ -49,7 +52,7 @@ int player_loop_of(uint32_t *from, uint32_t *to);
 #define PL_STATS_TEMPOS 64u
 struct player_stats {
     uint32_t magic;                       /* PL_STATS_MAGIC */
-    uint32_t version;                     /* 2 (M2: tempo_pct is now BPM; the fields after chord_drawn) */
+    uint32_t version;                     /* 3 (M2: tempo_pct is BPM; the fields after chord_drawn; part 3 the last 9) */
     uint32_t blocks, render_max, budget;  /* blocks while playing; the longest EAS render and one block's time (ticks24) */
     uint32_t starts, start_frames;        /* PLAY presses that started, the frame count at the last */
     uint32_t ends, end_frames;            /* the song reached its end; the frame count then */
@@ -80,6 +83,10 @@ struct player_stats {
     uint32_t ui_view;                     /* the UI's screen (ui.c): 0 list, 1 play, 2 help; +16 the splash still up;
                                            * 0xFF the app's screens never started (a power-on rescue took over) */
     uint32_t flash_bars, flash_beats;     /* the beat light's flashes (ui.c): bright (beat 1), mid (the others) */
+    int32_t transpose;                    /* the transposition in use (semitones) */
+    uint32_t note_on_last[SONG_LAYERS];   /* the last note-on sent per layer (the note as sent, transposed) */
+    uint32_t lit_keys, dim_keys;          /* the key lights (ui.c): bit k = key k (F3 = 0) */
+    uint32_t view;                        /* the play screen's view (ui.c): 0 chord, 1 keyboard, 2 chart */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

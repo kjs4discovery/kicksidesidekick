@@ -21,7 +21,7 @@
 #define FRAME_RATE 44100u
 #define DEN (FRAME_RATE * 60u)            /* a tick is DEN units of position; a frame adds ppq * bpm */
 
-volatile struct player_stats player_stats = {.magic = PL_STATS_MAGIC, .version = 2, .ui_view = 0xFFu};
+volatile struct player_stats player_stats = {.magic = PL_STATS_MAGIC, .version = 3, .ui_view = 0xFFu};
 
 /* ------------------------------------------------- requests (main loop -> interrupt) --- */
 static const struct song *volatile want_song;
@@ -30,6 +30,7 @@ static volatile uint8_t play_cmd, countin_want = 1, start_countin;   /* play_cmd
 static volatile int32_t start_want;
 static volatile uint32_t mute_want, tempo_want = 120;
 static volatile uint8_t var_want[SONG_LAYERS] = {1, 1, 1, 1};
+static volatile int8_t transpose_want;
 static volatile int loop_mode_want;
 static volatile uint32_t loop_from_want, loop_to_want;
 
@@ -43,6 +44,7 @@ static int32_t music_from;                /* the count-in ends here: clicks belo
 static uint32_t idx[SONG_LAYERS];
 static uint8_t var_cur[SONG_LAYERS] = {1, 1, 1, 1};
 static uint32_t mute_cur;
+static int32_t transpose_cur;
 static uint32_t active[SONG_LAYERS][4];   /* notes sounding, per layer */
 static int loop_mode;
 static int32_t loop_from, loop_to;
@@ -113,6 +115,9 @@ void player_tempo(uint32_t b)
 }
 
 void player_count_in(int on) { countin_want = (uint8_t)(on != 0); }
+
+void player_transpose(int32_t t) { transpose_want = (int8_t)(t < -11 ? -11 : t > 11 ? 11 : t); }
+int32_t player_transpose_of(void) { return transpose_want; }
 
 void player_loop(int mode, uint32_t from, uint32_t to)
 {
@@ -203,9 +208,19 @@ static void seek_all(int32_t tick)
             idx[l] = song_seek(stream(l), tick > 0 ? (uint32_t)tick : 0);
 }
 
+/* the note as sent: transposed, except on the percussion channel (its notes are drums, not pitches) */
+static uint32_t pitch(uint32_t l, uint32_t n)
+{
+    int32_t t = (int32_t)n + transpose_cur;
+    if (song->layer[l].channel == CLICK_CH)
+        return n;
+    return (uint32_t)(t < 0 ? t + 12 * ((11 - t) / 12) : t > 127 ? t - 12 * ((t - 116) / 12) : t);
+}
+
 static void dispatch(uint32_t l, const struct song_event *e)
 {
-    uint32_t w = e->d1 >> 5, bit = 1u << (e->d1 & 31u);
+    uint32_t n = e->status == 0x90u || e->status == 0x80u ? pitch(l, e->d1) : e->d1;
+    uint32_t w = n >> 5, bit = 1u << (n & 31u);
     switch (e->status) {
     case 0x90u:
         if (mute_cur >> l & 1u) {
@@ -213,15 +228,16 @@ static void dispatch(uint32_t l, const struct song_event *e)
             return;
         }
         if (active[l][w] & bit)
-            send(l, 0x80u, e->d1, 0);     /* restarted: end the one sounding */
+            send(l, 0x80u, n, 0);         /* restarted: end the one sounding */
         active[l][w] |= bit;
-        send(l, 0x90u, e->d1, e->d2);
+        send(l, 0x90u, n, e->d2);
         player_stats.notes_on[l]++;
+        player_stats.note_on_last[l] = n;
         return;
     case 0x80u:
         if (active[l][w] & bit) {
             active[l][w] &= ~bit;
-            send(l, 0x80u, e->d1, 0);
+            send(l, 0x80u, n, 0);
         }
         return;
     default:                              /* controllers and bends, muted or not: the layer's state stays right */
@@ -442,12 +458,21 @@ static void requests(uint32_t f0)
         }
     }
     if (state == PL_STOPPED || state == PL_PAUSED) {
+        transpose_cur = transpose_want;
+        player_stats.transpose = transpose_cur;
         mute_cur = mute_want;
         for (l = 0; l < SONG_LAYERS; l++)
             var_cur[l] = var_want[l];
         if (state == PL_PAUSED)           /* a variant chosen while paused: its stream, from where it paused */
             seek_all(tick_of(q));
         return;
+    }
+    if (transpose_want != transpose_cur) {   /* another key: the sounding notes (at the old pitch) end now */
+        for (l = 0; l < SONG_LAYERS; l++)
+            if (song->layer[l].variants && song->layer[l].channel != CLICK_CH)
+                release(l);
+        transpose_cur = transpose_want;
+        player_stats.transpose = transpose_cur;
     }
     m = mute_want & ~mute_cur;            /* newly muted: their notes off now */
     for (l = 0; l < SONG_LAYERS; l++)
