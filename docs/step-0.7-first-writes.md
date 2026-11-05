@@ -1,6 +1,6 @@
 # Step 0.7 — First writes to the FM-1 (checklist)
 
-**Status: APPROVED** by the planning chat with the user (HANDOFF 2026-11-04 20:40), with the rules it added
+**Status: RUN by the user 2026-11-04 20:2x–20:48: steps 1–5 all passed (docs/LOG.md).** Approved by the planning chat with the user (HANDOFF 2026-11-04 20:40), with the rules it added
 below. **The user runs every device command**, one at a time, in this order, pasting each step's output to
 Claude Code before starting the next.
 Claude Code ran only read-only commands (`lsusb`, kernel log) while preparing it.

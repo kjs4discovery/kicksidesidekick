@@ -330,3 +330,24 @@ Hardware touched: none
 Questions for the planning chat:
 - Please confirm P2 (a) and P1 (one off-laptop copy, no cloud) in the review, plus the open questions of the 19:59 entry (Felucca 1.8.1 vs 1.7.0, which Felucca setting to test, the 80 ms chord lead).
 Next: the planning chat and the user review docs/step-0.7-first-writes.md; then the user runs steps 1-5.
+
+2026-11-04 20:48 — Step 0.7 — Part B: first writes, run by the user
+Status: done (steps 1-5 passed; our prototype left installed). Pending from the user: the device's CPU % / voices reading and listening / playing-along notes; step 5's quick on-unit check (PLAY + one mute) not yet confirmed in words.
+Did:
+- HANDOFF 20:40: checklist approved with additions; added its rules (suspend off, MIDI apps closed, USB power, user's own terminal, stop on unexpected output) and marked the P2 procedure historical. Pre-check (read-only, Claude Code): FM-1_015 [running], no emulator/MIDI apps.
+- The user ran every write in their own terminal with the vendored installer firmware/vendor/fm1-base/bsp/tools/fm1_install.py (no override flag), on port 1-2 with the new cable; Claude Code read the kernel log and --info after each step.
+- Step 1, Felucca 1.8.1 (sha256 187d4a9b… checked): "checking the package (22 reads) … done: the FM-1 runs FM-1_918". Boots, plays (user). A setting saved and survived a power cycle (user; which setting not recorded). --info after the power cycle: FM-1_918 [running].
+- Step 2, stock V15 from Felucca (sha256 db1642b2… checked): 73 reads, "done: the FM-1 runs FM-1_015". --info FM-1_015 [running].
+- Step 3, our prototype (sha256 58be4537… checked): 25 reads, "done: the FM-1 runs FM-1_4600". --info FM-1_4600 [running]. The user checked items 1-9 (screen, PLAY, all four mutes, chord timing by eye, MASTER, keys, CPU/voices display, speaker and headphones, playing along, end of song): all as expected. Hello world not needed.
+- Step 4, stock V15 from OUR firmware: 73 reads, writing 100 %, restarting; --info FM-1_015 [running]. We can leave our firmware by the normal path.
+- Step 5, our prototype again: 25 reads, "done: the FM-1 runs FM-1_4600"; --info FM-1_4600 [running]. Left installed. docs/device.md: new "Currently installed" section.
+Learned / measured (kernel log, port 1-2):
+- Felucca's and our update loader enumerate as 1209:0002 "Felucca Update" ~0.4-0.7 s after the disconnect; writing the app area took ~54-55 s (Felucca 4992->5047 s; ours 5706->5760 s, 6234->6289 s). Felucca boots as 1209:0001 "Felucca" (~5 s after the write, and ~5 s after a power cycle); ours as 1209:0001 "FM-1 Accompaniment" 0.13 s after the loader leaves. No -110 with Felucca's, our loader's or our app's USB.
+- M-VAVE's update loader enumerates as 4d4a:4155 "USB Composite Device", writes ~24 s (5543->5567 s, 6136->6160 s); stock then comes up with the single -110 after ~16 s every time (5568.9->5584.8 s, 6162.1->6178.2 s). So the -110 / ~16 s is stock V15's USB start-up only.
+- Stock V15's install output ended at "restarting" in the paste of steps 2 and 4; for step 2 the user later pasted "done: the FM-1 runs FM-1_015". --info confirmed FM-1_015 both times.
+- Device CPU load / voices at bar 16-17 and listening notes: not reported yet (emulator: 14 %, 14 voices).
+Hardware touched: WRITE, by the user: app area 0x4000-0x92FFF five times (Felucca 1.8.1, stock V15, our prototype, stock V15, our prototype) through each package's own update loader, plus the update staging area 0xE0000-0xE4FFF. No ROM boot session, boot head untouched. Read-only by Claude Code: kernel log, lsusb, --info.
+Questions for the planning chat:
+- Phase 1 can start from a unit running our firmware; the user's device CPU / sound notes will follow in a LOG addendum.
+- Cloud copy of the backup still recommended (HANDOFF 20:40 item 3).
+Next: the user sends the CPU / voices reading and playing-along impressions (addendum); the planning chat reviews Step 0.7 and sets Phase 1.

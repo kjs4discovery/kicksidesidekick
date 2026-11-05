@@ -4,6 +4,14 @@ All of these must be filled in before any write to the unit is even proposed
 (see CLAUDE.md, hardware safety rules). Note for each value how and when it was
 measured.
 
+## Currently installed (updated 2026-11-04 20:48)
+
+**Our prototype, FM-1_4600** (fm1-accompaniment v0.1.0-proto, commit 8bc977e, package sha256 `58be4537…0d54f`),
+installed by the user in Step 0.7 step 5. `--info`: `FM-1_4600  [running]  port: FM-1 Accompaniment:FM-1
+Accompaniment MIDI 1 24:0`; USB `1209:0001` "FM-1 Accompaniment" (no longer `4c4a:c755`). Back to stock any time:
+`fm1_install.py backups/stock-firmware/FM-1_015.fwsc` (tested from our firmware in step 4). History of writes:
+docs/LOG.md, Step 0.7.
+
 ## Stock firmware version
 
 - Version: **FM-1_015** (stock V15), running mode (not the update loader)
