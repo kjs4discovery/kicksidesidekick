@@ -285,3 +285,14 @@ Questions for the planning chat:
 - OK to keep the screen 80 ms ahead (chord appears 40-80 ms before the sound in the emulator)? Device LCD timing may differ; the user checks by eye in step 3.
 - Notes start on 5.8 ms block boundaries still (Phase 1 item from 0.6); the user listens for loose drums in step 3.
 Next: the user makes the off-laptop backup copies (P1) and finds a clean USB port + cable (P2, read-only; Claude Code can read dmesg/--info with them); the planning chat and the user review docs/step-0.7-first-writes.md; then the user runs steps 1-5; Claude Code records the results and the playing-along impressions here.
+
+2026-11-04 20:10 — Step 0.7 (addendum) — pre-flight P1
+Status: partial (P1 recorded; P2 still ❌; checklist still waiting for review)
+Did:
+- Recorded the off-laptop backup in docs/device.md and marked P1 ✅ (one copy) in docs/step-0.7-first-writes.md, on the user's word.
+Learned / measured:
+- Off-laptop copy: the user's USB thumb drive (kept unplugged), checked by the user; sha256 not re-read by Claude Code. No cloud copy. The user chose to go ahead with this one copy.
+Hardware touched: none
+Questions for the planning chat:
+- device.md asks for three copies (repo, another disk, cloud); there are two. Require the cloud copy before step 1?
+Next: P2 (a clean USB port + cable, read-only), then the review of docs/step-0.7-first-writes.md, then the user runs steps 1-5.

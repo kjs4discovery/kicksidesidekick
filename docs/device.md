@@ -54,7 +54,7 @@ Keep three copies: the repo's `backups/flash/`, another disk, and cloud storage.
 
 | File | Size (bytes) | sha256 | Made with | Date | Other copies |
 |------|--------------|--------|-----------|------|--------------|
-| `backups/flash/FM-1_015_full-flash_856014_2026-11-04.bin` (copy of run 1) | 1,048,576 | `794d72f01c293dc5d1c69ee4e54e4db956112bfe8734d0449fe4ea36e92f43f4` | see below | 2026-11-04 | another disk: _TBD_; cloud: _TBD_ |
+| `backups/flash/FM-1_015_full-flash_856014_2026-11-04.bin` (copy of run 1) | 1,048,576 | `794d72f01c293dc5d1c69ee4e54e4db956112bfe8734d0449fe4ea36e92f43f4` | see below | 2026-11-04 | another disk: **USB thumb drive** (the user's, kept unplugged; the user reports it checked, 2026-11-04; sha256 not re-read by Claude Code); cloud: **none** |
 | `backups/flash/fm1-recovery-20261104-152541/full-flash-before.bin` (run 1) | 1,048,576 | same | fm1_unbrick.py `backup` | 2026-11-04 15:25 | — |
 | `backups/flash/fm1-recovery-20261104-153009/full-flash-before.bin` (run 2) | 1,048,576 | same | fm1_unbrick.py `backup` | 2026-11-04 15:30 | — |
 
