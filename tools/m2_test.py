@@ -245,8 +245,9 @@ def test_song(i, c, rep):
     check(max(s["voices"][:nbars]) <= 24, f"voices at most {max(s['voices'][:nbars])} of 24 (bar index {busiest}); "
                                           f"CPU load at most {max(s['cpu'][:nbars])} %; longest EAS render "
                                           f"{s['render_max'] / s['budget'] * 100:.1f} % of a block")
-    play_from = int((PLAY_MS + 500) / 1000 * RATE)
-    check(rms(full["left"][play_from:play_from + RATE * 4]) > 50, "sound while playing")
+    count_in_ms = (bpb + c["pickup_beats"]) * 60000 / own_bpm(c) if c["pickup_beats"] else bpb * 60000 / own_bpm(c)
+    play_from = int((PLAY_MS + count_in_ms + 300) / 1000 * RATE)
+    check(rms(full["left"][play_from:play_from + RATE * 4]) > 50, "sound while playing (after the count-in)")
 
     # ---- tempo
     script = open_song(i) + press(OPEN_MS + 300, "ARP") + [f"{OPEN_MS + 400}:e0:-60"] + press(PLAY_MS, "PLAY") \
