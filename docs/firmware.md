@@ -27,6 +27,30 @@ Plan: docs/plan-M2.md (D020, D023). Controls: [controls.md](controls.md).
   list, pulls the whole file into RAM (512-byte reads), checks its CRC and runs `song_open` on it, and only then
   writes it (store.c). Sending a song that is there already replaces it (same slug).
 
+### Part 2: practice controls and fixes (items 1–7, 9, 13, 15, B)
+
+Controls and screens: [controls.md](controls.md) (mock-ups first, then the screens: `docs/step-M2/`).
+
+- **Tempo in BPM**, 30–250 (1 a click, 5 when turned quickly); each song opens at its own. The player's position
+  is now in units of 1/2,646,000 tick (44,100 frames × 60 s) and a frame adds ppq × BPM: still exact, no drift.
+  30 and 250 BPM tested on every song (no block hit the 128-events cap).
+- **Start point and loops** (PRESETS / ALGORITHM / SEQ): start from any section (its pickup kept) or bar; loop a
+  section, bars A–B, or the song. A loop moved while playing (or one the music is outside of) is jumped to at the
+  next bar line. `player_start(tick, count_in)`: the count-in ends where the music starts.
+- **Pause / go on** (PLAY), **stop** (HOME; again: the list).
+- **Count-in** louder (velocity 127 on beat 1, 104 on the others, the percussion channel at full volume during
+  it, the drums' own volume back after): 2.1x M1's peak in the emulator.
+- **Beat light**: PLAY's green LED flashes on every beat (bright on beat 1, the mid level on the others), count-in too.
+- **Splash**: the logo (`firmware/assets/tmp-logo.jpg` → `tools/logo_to_c.py`, 150×170, 8 colours, run-length:
+  4.4 KB) with the name and version, at least 3 s (the power-on checks come before it and are not delayed).
+- **The keys' octave**: OCT− / OCT+ (−3..+3), lit when shifted; a key held while the octave changes is released at
+  the note it played.
+- **Help** (GLO): every control and what it does; the CPU / voices line moved there. Every screen has a legend.
+- **No dimming** of a held-over chord in the bar strip.
+- **The "crackle" in Four Chords**: not clipping (every song at L2, MASTER 100 %: peaks 41–59 % of full scale, no
+  sample at full scale); the melody's GM 81 "Lead 1 (square)" put 3.8 % of its energy above 8 kHz (aliasing in
+  EAS's 22.05 kHz synth); clarinet (GM 72) 0.00 %. Four Chords' melody is now the clarinet (`tools/melody_check.py`).
+
 ## Milestone M1: song list, player, play screen (v0.2.0-m1, identity FM-1_46000200)
 
 Plays the five starter songs (`songs/`, format `fm1-song/1`, docs/song-format.md) with our own scheduler.

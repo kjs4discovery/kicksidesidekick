@@ -1,63 +1,78 @@
 /* Licence: TBD (see D017) */
-/* The screens and controls (M1: simple; step 1.6 designs the real ones). docs/controls.md is the map.
+/* The screens and controls. docs/controls.md is the map (M2), with mock-ups and the reasons.
  * Included by app.c, in fm1-base's unity build after the platform (gfx.c's cv_*, FONT_*, C_*; lcd.c; announce.c).
  *
- * Song list: SELECT turns the cursor, PLAY (or EDIT) opens the song.
- * Play screen: PLAY play/stop; FX SEL ENV LFO mute drums/bass/harmony/melody; K1..K4 their level (variant);
- *   SELECT tempo 50..120 %; ARP count-in on/off; SEQ loop off / song / section; HOME back to the list.
- * Both: MASTER volume, the keys play Electric Piano 1 on channel 16.
- * Left alone, for the platform's rescues: REC, OCT- and OCT+ (at power-on), and nothing is held at start-up. */
+ * Splash (>= 3 s, the logo: tools/logo_to_c.py), then the song list: SELECT turns the cursor, PLAY (or EDIT) opens.
+ * Play screen: PLAY play / pause / go on; HOME stop (back to the start point), stopped: the list; FX SEL ENV LFO mute
+ *   drums / bass / harmony / melody; K1..K4 their level; SELECT tempo (BPM); PRESETS the start point by section (in
+ *   LOOP BARS: bar A); ALGORITHM by bar (LOOP BARS: bar B); SEQ loop off / section / bars / song; ARP count-in.
+ * Everywhere: GLO the controls (help), OCT- / OCT+ the keys' octave, MASTER volume; the keys play Electric Piano 1
+ *   on channel 16. REC is not used (held at power-on: the update mode), nothing is held at start-up. */
 #include "synth.h"
 #include "player.h"
 #include "song.h"
+#include "logo_gen.h"
 
 static void ui_busy(const char *a, const char *b);
 #include "library.c"
 
 #define KEY_LOW 53                       /* key 0 is F3 (plat.h) */
 #define VELOCITY 100u
+#define OCT_MAX 3
 #define LIST_ROWS 5u
-#define LIST_ROW_H 38
+#define LIST_ROW_H 36
+#define SPLASH_MS 3000u                  /* the splash stays at least this long after power-on */
+#define FLASH_MS 110u                    /* the beat light's flash */
 
 /* the bands of the play screen, top to bottom */
 #define Y_TOP 0
 #define H_TOP 32
 #define Y_CHORD 32
-#define H_CHORD 80
+#define H_CHORD 74
 #define W_BIG 176                        /* the big chord's part of the chord band; the rest: next + countdown */
-#define Y_STRIP 112
-#define H_STRIP 52
-#define Y_CURSOR 164
+#define Y_STRIP 106
+#define H_STRIP 48                       /* the boxes (44) and the loop's line under them */
+#define Y_CURSOR 154
 #define H_CURSOR 6
-#define Y_LAYERS 170
-#define H_LAYERS 44
-#define Y_BOTTOM 214
-#define H_BOTTOM 26
+#define Y_LAYERS 160
+#define H_LAYERS 32
+#define Y_STATUS 192
+#define H_STATUS 22
+#define Y_LEGEND 214
+#define H_LEGEND 26
 #define BOX_W 56
+#define BOX_H 44
 #define BOX_STEP 60
+
+enum { V_LIST, V_PLAY, V_HELP };
 
 static const uint8_t LAYER_BUTTON[SONG_LAYERS] = {B_FX, B_SEL, B_ENV, B_LFO};
 static const uint8_t LAYER_ENC[SONG_LAYERS] = {EN_K1, EN_K2, EN_K3, EN_K4};
 static const char *const LAYER_NAME[SONG_LAYERS] = {"DRUMS", "BASS", "HARMONY", "MELODY"};
 static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "MELODY"};
-static const char *const LOOP_NAME[] = {"", "LOOP SONG", "LOOP SECT"};
+static const char *const LOOP_NAME[] = {"", "LOOP SECTION", "LOOP BARS", "LOOP SONG"};
 
 static struct {
-    int screen;                          /* 0 list, 1 play */
+    int view, back;                      /* V_*; back: the view the help returns to */
     uint32_t sel, top;                   /* the list's cursor and first row */
     const struct song *s;
     uint32_t keys, buttons;
+    uint8_t key_note[NKEYS];             /* the note each held key sent (the octave may change while it is held) */
+    int32_t oct;                         /* the keys' octave, -OCT_MAX..OCT_MAX */
     uint32_t muted;
     int loop;
+    uint32_t from_bar;                   /* the start point: a bar index; from_tick its first tick of music */
+    int32_t from_tick;
+    uint32_t a_bar, b_bar;               /* LOOP BARS */
+    uint32_t tempo_ms;                   /* the last tempo click (quick turns: bigger steps) */
     char msg[2][24];
     uint32_t msg_until;
-    uint8_t flash_ok;
-    uint8_t redraw;
+    uint8_t flash_ok, splash, redraw, flashing;
     uint32_t lib_seen;                   /* library.c lib_changes when the screen was last set up */
     /* what is on the screen */
     int32_t sh_chord, sh_count, sh_next, sh_left, sh_bar, sh_beat, sh_strip, sh_layers, sh_section;
     int sh_state;
-    uint32_t sh_top_key, sh_stats_ms, sh_list;
+    uint32_t sh_top_key, sh_stats_ms, sh_list, sh_status, sh_legend;
 } ui;
 
 /* -------------------------------------------------------------- the platform's calls --- */
@@ -98,6 +113,12 @@ static void num_cat(char *d, uint32_t v)
     text_cat(d, b + i);
 }
 
+static void snum_cat(char *d, int32_t v)
+{
+    text_cat(d, v < 0 ? "-" : v > 0 ? "+" : "");
+    num_cat(d, (uint32_t)(v < 0 ? -v : v));
+}
+
 void app_say(const char *a, const char *b)
 {
     uint32_t i;
@@ -110,6 +131,7 @@ void app_say(const char *a, const char *b)
     ui.msg[1][i] = 0;
     ui.msg_until = plat_ms() + 1300u;
     ui.sh_top_key = 0xFFFFFFFFu;
+    ui.sh_list = 0xFFFFFFFFu;
     if (ann_on()) {                      /* and to a screen reader (fm1-base announce.c) */
         t[0] = 0;
         text_cat(t, ui.msg[0]);
@@ -160,13 +182,52 @@ static void lcd_done(void)               /* the last blit has reached the LCD (i
 #endif
 }
 
+/* -------------------------------------------------------------------------- splash --- */
+/* the logo (logo_gen.h: tools/logo_to_c.py from firmware/assets/tmp-logo.jpg), its name and version under it. Called
+ * by the platform at power-on, before anything else of the app runs; the list comes SPLASH_MS after power-on */
+void app_splash(void)
+{
+    const uint8_t *p = LOGO_RLE, *end = LOGO_RLE + sizeof LOGO_RLE;
+    uint32_t y0 = 0, x = 0, y = 0, band;
+    int32_t ox = (240 - (int32_t)LOGO_W) / 2, oy = 12;
+    lcd_fill(0, 0, 240, 240, LOGO_BG);
+    while (y0 < LOGO_H) {                /* in bands the canvas can hold */
+        band = LOGO_H - y0 < 112u ? LOGO_H - y0 : 112u;
+        cv_begin(LOGO_W, band, LOGO_BG);
+        while (p < end && y < y0 + band) {
+            uint32_t c = *p >> 4, n = (*p & 15u) + 1u;
+            if ((*p & 15u) == 15u)
+                n = 16u + p[1], p++;
+            p++;
+            cv_rect((int32_t)x, (int32_t)(y - y0), (int32_t)n, 1, LOGO_PAL[c]);
+            x += n;
+            if (x >= LOGO_W)
+                x = 0, y++;
+        }
+        cv_blit((uint32_t)ox, (uint32_t)oy + y0);
+        y0 += band;
+    }
+    cv_begin(240, 40, LOGO_BG);
+    text_in(0, 240, 0, &FONT_B, APP_NAME, RGB(60, 50, 40));
+    text_in(0, 240, 22, &FONT_XS, "v" FW_VERSION, RGB(150, 136, 118));
+    cv_blit(0, (uint32_t)oy + LOGO_H + 6u);
+}
+
 /* ------------------------------------------------------------------- the song's facts --- */
 static uint32_t bar_ticks(void) { return ui.s->bar_ticks; }
+static uint32_t first_bar(void) { return song_section_first(ui.s, 0); }   /* the first bar of music (1: a pickup) */
+static uint32_t last_bar(void) { return ui.s->bar_count - 1u; }
 
+/* where section i's music starts: its first bar, minus the pickup into it (docs/song-format.md 3.3) */
 static uint32_t section_from(uint32_t i)
 {
     uint32_t t = song_section_first(ui.s, i) * bar_ticks(), lead = song_section_lead(ui.s, i);
     return t > lead ? t - lead : 0;
+}
+
+static uint32_t section_end(uint32_t i)
+{
+    return (song_section_first(ui.s, i) + song_section_bars(ui.s, i)) * bar_ticks();
 }
 
 static uint32_t section_at(int32_t tick)
@@ -177,27 +238,58 @@ static uint32_t section_at(int32_t tick)
     return i;
 }
 
-/* docs/song-format.md 3.3: a loop of sections runs from start - lead to end - lead of the first section's lead */
-static void loop_region(int mode, int32_t tick, uint32_t *from, uint32_t *to)
+static uint32_t bar_at(int32_t tick)
+{
+    uint32_t b = tick > 0 ? (uint32_t)tick / bar_ticks() : 0;
+    return b < first_bar() ? first_bar() : b > last_bar() ? last_bar() : b;
+}
+
+/* the start point at bar b: a section's first bar keeps its pickup; another bar starts on its beat 1 */
+static void set_from_bar(uint32_t b)
+{
+    uint32_t i;
+    b = b < first_bar() ? first_bar() : b > last_bar() ? last_bar() : b;
+    ui.from_bar = b;
+    ui.from_tick = (int32_t)(b * bar_ticks());
+    for (i = 0; i < ui.s->nsect; i++)
+        if (song_section_first(ui.s, i) == b)
+            ui.from_tick = (int32_t)section_from(i);
+}
+
+/* the loop's ticks (docs/song-format.md 3.3: a section loop runs from start - lead to end - lead) */
+static void loop_region(int mode, uint32_t *from, uint32_t *to)
 {
     const struct song *s = ui.s;
-    uint32_t i = mode == LOOP_SONG ? 0 : section_at(tick), last = mode == LOOP_SONG ? s->nsect - 1u : i;
+    uint32_t i = mode == LOOP_SONG ? 0 : section_at(ui.from_tick), last = mode == LOOP_SONG ? s->nsect - 1u : i;
     uint32_t lead = song_section_lead(s, i);
+    if (mode == LOOP_BARS) {
+        *from = ui.a_bar * bar_ticks();
+        *to = (ui.b_bar + 1u) * bar_ticks();
+        return;
+    }
     *from = section_from(i);
-    *to = (song_section_first(s, last) + song_section_bars(s, last)) * bar_ticks();
+    *to = section_end(last);
     *to = *to > lead ? *to - lead : *to;
-    if (mode == LOOP_SECTION && tick >= (int32_t)*to && i + 1u < s->nsect)   /* already past this one's end */
-        loop_region(mode, (int32_t)section_from(i + 1u), from, to);
 }
 
 static void set_loop(int mode)
 {
     uint32_t from = 0, to = 0;
-    int32_t t = player_state() == PL_STOPPED ? 0 : player_tick(PL_LEAD_BEAT_MS);
     ui.loop = mode;
     if (mode != LOOP_OFF)
-        loop_region(mode, t, &from, &to);
+        loop_region(mode, &from, &to);
     player_loop(mode, from, to);
+    ui.sh_strip = -1;
+}
+
+/* where PLAY starts from stopped: the loop's start, or the start point */
+static int32_t start_point(void)
+{
+    uint32_t from = 0, to = 0;
+    if (ui.loop == LOOP_OFF)
+        return ui.from_tick;
+    loop_region(ui.loop, &from, &to);
+    return (int32_t)from;
 }
 
 /* ------------------------------------------------------------------------ input --- */
@@ -212,20 +304,23 @@ static void open_song(uint32_t i)
     }
     ui.s = s;
     ui.muted = 0;
-    ui.loop = LOOP_OFF;
     player_load(ui.s);
     player_mute(0);
     for (r = 0; r < (int)SONG_LAYERS; r++)
         player_variant((uint32_t)r, 1);
-    player_loop(LOOP_OFF, 0, 0);
-    ui.screen = 1;
+    player_tempo(player_song_bpm(s));    /* every song opens at its own tempo */
+    set_from_bar(first_bar());
+    ui.from_tick = (int32_t)section_from(0);
+    set_loop(LOOP_OFF);
+    ui.view = V_PLAY;
     ui.redraw = 1;
 }
 
 static void lights(void)
 {
-    uint32_t lit = 0, dim = 0, l;
-    if (ui.screen == 1) {
+    uint32_t lit = 0, dim = 0, l, mid = 0;
+    int st = player_state();
+    if (ui.view == V_PLAY) {
         for (l = 0; l < SONG_LAYERS; l++) {
             if (!ui.s->layer[l].variants)
                 continue;
@@ -238,11 +333,33 @@ static void lights(void)
             lit |= 1u << B_ARP;
         if (ui.loop)
             lit |= 1u << B_SEQ;
-        if (player_state() != PL_STOPPED)
-            lit |= LED_PLAY_GREEN;
+        if (st == PL_PLAYING || st == PL_COUNT_IN) {   /* the beat light: a flash each beat, brighter on beat 1 */
+            const struct song *s = ui.s;
+            int32_t t = player_tick(PL_LEAD_BEAT_MS) + (int32_t)(s->bar_ticks * 2u);
+            uint32_t in_beat = (uint32_t)t % s->ppq, beat1 = (uint32_t)t % s->bar_ticks < s->ppq;
+            uint32_t ms = in_beat * 60000u / (s->ppq * player_tempo_of());
+            if (ms < FLASH_MS) {
+                if (beat1)
+                    lit |= LED_PLAY_GREEN;
+                else
+                    mid |= LED_PLAY_GREEN;
+            }
+            if (((lit | mid) & LED_PLAY_GREEN) && !ui.flashing) {   /* (counted for the tests) */
+                if (beat1)
+                    player_stats.flash_bars++;
+                else
+                    player_stats.flash_beats++;
+            }
+            ui.flashing = (uint8_t)(((lit | mid) & LED_PLAY_GREEN) != 0);
+        }
     }
-    dim |= 1u << B_PLAY;
+    dim |= 1u << B_PLAY | 1u << B_GLO;
+    if (ui.oct < 0)
+        lit |= 1u << B_OCTDN;
+    if (ui.oct > 0)
+        lit |= 1u << B_OCTUP;
     plat_lights(lit, ui.keys, dim, 0, 1);
+    plat_lights_mid(mid, 0);
 }
 
 static void input_list(uint32_t down)
@@ -256,15 +373,40 @@ static void input_list(uint32_t down)
         open_song(ui.sel);
 }
 
-static void input_play(uint32_t down)
+static void say_from(void)
+{
+    char t[24] = "BAR ";
+    num_cat(t, ui.from_bar + ui.s->first_bar_number);
+    app_say(ui.loop == LOOP_BARS ? "LOOP FROM" : "START", t);
+}
+
+static void input_play(uint32_t down, uint32_t now)
 {
     uint32_t l;
     int32_t d;
+    int st = player_state();
     if (down >> B_PLAY & 1u) {
-        int on = player_state() == PL_STOPPED;
-        if (on && ui.loop)
-            set_loop(ui.loop);           /* from the top: a section loop takes the first section */
-        player_play(on);
+        if (st == PL_STOPPED) {
+            player_start(start_point(), player_count_in_of());
+        } else if (st == PL_PAUSED) {     /* go on: count-in on, from the paused bar's beat 1; off, from right there */
+            int32_t p = player_tick(0), bt = (int32_t)bar_ticks();
+            if (player_count_in_of()) {
+                p = p / bt * bt;
+                if (p < (int32_t)ui.s->start_tick)
+                    p = (int32_t)ui.s->start_tick;
+            }
+            player_start(p, player_count_in_of());
+        } else {
+            player_pause();
+        }
+    }
+    if (down >> B_HOME & 1u) {
+        if (st == PL_STOPPED) {
+            ui.view = V_LIST;
+            ui.redraw = 1;
+            return;
+        }
+        player_play(0);                  /* stopped: back to the start point */
     }
     for (l = 0; l < SONG_LAYERS; l++) {
         if ((down >> LAYER_BUTTON[l] & 1u) && ui.s->layer[l].variants) {
@@ -283,46 +425,129 @@ static void input_play(uint32_t down)
         }
     }
     d = plat_enc(EN_SELECT);
-    if (d) {
-        player_tempo((uint32_t)clamp((int32_t)player_tempo_of() + 5 * d, PL_TEMPO_MIN, PL_TEMPO_MAX));
+    if (d) {                             /* tempo: 1 BPM a click; turned quickly, 5 */
+        int32_t step = (d > 1 || d < -1 || now - ui.tempo_ms < 90u) ? 5 : 1;
+        ui.tempo_ms = now;
+        player_tempo((uint32_t)clamp((int32_t)player_tempo_of() + step * d, PL_BPM_MIN, PL_BPM_MAX));
         ui.sh_top_key = 0xFFFFFFFFu;
+    }
+    d = plat_enc(EN_PRESET);
+    if (d) {
+        if (ui.loop == LOOP_BARS) {      /* A, by bar (B moves along to stay at or after A) */
+            ui.a_bar = (uint32_t)clamp((int32_t)ui.a_bar + d, (int32_t)first_bar(), (int32_t)last_bar());
+            if (ui.b_bar < ui.a_bar)
+                ui.b_bar = ui.a_bar;
+            set_from_bar(ui.a_bar);
+            set_loop(LOOP_BARS);
+        } else {                         /* the start point, by section */
+            int32_t i = clamp((int32_t)section_at(ui.from_tick) + d, 0, (int32_t)ui.s->nsect - 1);
+            set_from_bar(song_section_first(ui.s, (uint32_t)i));
+            if (ui.loop == LOOP_SECTION)
+                set_loop(LOOP_SECTION);
+            app_say("START", song_section_name(ui.s, (uint32_t)i));
+        }
+        if (ui.loop == LOOP_BARS)
+            say_from();
+        ui.sh_status = 0xFFFFFFFFu;
+    }
+    d = plat_enc(EN_ALGO);
+    if (d) {
+        if (ui.loop == LOOP_BARS) {      /* B, by bar */
+            char t[24] = "BAR ";
+            ui.b_bar = (uint32_t)clamp((int32_t)ui.b_bar + d, (int32_t)ui.a_bar, (int32_t)last_bar());
+            set_loop(LOOP_BARS);
+            num_cat(t, ui.b_bar + ui.s->first_bar_number);
+            app_say("LOOP TO", t);
+        } else {                         /* the start point, by bar */
+            uint32_t sec = section_at(ui.from_tick);
+            set_from_bar((uint32_t)clamp((int32_t)ui.from_bar + d, (int32_t)first_bar(), (int32_t)last_bar()));
+            if (ui.loop == LOOP_SECTION && section_at(ui.from_tick) != sec)
+                set_loop(LOOP_SECTION);
+            say_from();
+        }
+        ui.sh_status = 0xFFFFFFFFu;
     }
     if (down >> B_ARP & 1u) {
         player_count_in(!player_count_in_of());
         app_say("COUNT-IN", player_count_in_of() ? "ON" : "OFF");
     }
     if (down >> B_SEQ & 1u) {
-        set_loop((ui.loop + 1) % 3);
-        app_say("LOOP", ui.loop == LOOP_OFF ? "OFF" : ui.loop == LOOP_SONG ? "SONG" : "SECTION");
-    }
-    if (down >> B_HOME & 1u) {
-        player_play(0);
-        ui.screen = 0;
-        ui.redraw = 1;
+        int mode = ui.loop == LOOP_OFF ? LOOP_SECTION : ui.loop == LOOP_SECTION ? LOOP_BARS :
+                   ui.loop == LOOP_BARS ? LOOP_SONG : LOOP_OFF;
+        if (st == PL_PLAYING || st == PL_PAUSED) {   /* playing: the loop takes the bar / section playing */
+            set_from_bar(bar_at(player_tick(PL_LEAD_BEAT_MS)));
+            if (mode == LOOP_SECTION)
+                set_from_bar(song_section_first(ui.s, section_at(player_tick(PL_LEAD_BEAT_MS))));
+        }
+        if (mode == LOOP_BARS) {
+            ui.a_bar = ui.from_bar;
+            ui.b_bar = ui.a_bar + 3u > last_bar() ? last_bar() : ui.a_bar + 3u;
+        }
+        set_loop(mode);
+        app_say("LOOP", mode == LOOP_OFF ? "OFF" : mode == LOOP_SECTION ? "SECTION" : mode == LOOP_BARS ?
+                "BARS A-B" : "SONG");
     }
 }
 
 static void input(void)
 {
-    uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k;
+    uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k, now = plat_ms();
     for (k = 0; k < NKEYS; k++) {
         uint32_t bit = 1u << k;
-        uint8_t note = (uint8_t)(KEY_LOW + (int32_t)k);
-        if ((keys & bit) && !(ui.keys & bit))
+        if ((keys & bit) && !(ui.keys & bit)) {
+            uint8_t note = (uint8_t)(KEY_LOW + (int32_t)k + 12 * ui.oct);
+            ui.key_note[k] = note;
             synth_midi(0x90u | SYNTH_KEYS_CH, note, (uint8_t)VELOCITY);
-        else if (!(keys & bit) && (ui.keys & bit))
-            synth_midi(0x80u | SYNTH_KEYS_CH, note, 0);
+            player_stats.key_note_last = note;
+        } else if (!(keys & bit) && (ui.keys & bit)) {
+            synth_midi(0x80u | SYNTH_KEYS_CH, ui.key_note[k], 0);
+        }
     }
     ui.keys = keys;
     ui.buttons = btn;
-    if (ui.screen == 0)
+    if (ui.splash) {                     /* the splash is still up: only the keys */
+        lights();
+        return;
+    }
+    if (down & (1u << B_OCTDN | 1u << B_OCTUP)) {   /* the keys' octave (D021; held at power-on: fm1-base's) */
+        char t[16] = "OCTAVE ";
+        ui.oct = clamp(ui.oct + ((down >> B_OCTUP & 1u) ? 1 : 0) - ((down >> B_OCTDN & 1u) ? 1 : 0), -OCT_MAX, OCT_MAX);
+        player_stats.keys_octave = ui.oct;
+        snum_cat(t, ui.oct);
+        app_say("KEYS", ui.oct ? t : "OCTAVE 0");
+    }
+    if (ui.view == V_HELP) {             /* any button closes the help */
+        if (down & ~(1u << B_OCTDN | 1u << B_OCTUP)) {
+            ui.view = ui.back;
+            ui.redraw = 1;
+        }
+        lights();
+        return;
+    }
+    if (down >> B_GLO & 1u) {
+        ui.back = ui.view;
+        ui.view = V_HELP;
+        ui.redraw = 1;
+        lights();
+        return;
+    }
+    if (ui.view == V_LIST)
         input_list(down);
     else
-        input_play(down);
+        input_play(down, now);
     lights();
 }
 
 void app_input_only(void) { input(); }
+
+/* ------------------------------------------------------------------------ legend --- */
+static void draw_legend(int32_t y, const char *t)
+{
+    cv_begin(240, H_LEGEND, C_BLACK);
+    cv_rect(0, 1, 240, 1, C_LINE);
+    text_in(0, 240, 7, &FONT_XS, t, C_DIM);
+    cv_blit(0, (uint32_t)y);
+}
 
 /* ------------------------------------------------------------------------ list --- */
 static void draw_list_top(void)
@@ -335,7 +560,7 @@ static void draw_list_top(void)
         text_cat(t, ui.msg[0]);
         text_cat(t, " ");
         text_cat(t, ui.msg[1]);
-        cv_text(80, 6, &FONT_XS, t, C_AMB);
+        cv_text(70, 6, &FONT_XS, t, C_AMB);
     } else if (!ui.flash_ok) {
         cv_text(80, 6, &FONT_XS, "RAM ONLY", C_AMB);
     }
@@ -346,7 +571,7 @@ static void draw_list_top(void)
 /* nothing to list: why, and what to do (no crash, no blank screen) */
 static void draw_list_empty(void)
 {
-    cv_begin(240, 240 - H_TOP, C_BLACK);
+    cv_begin(240, 240 - H_TOP - H_LEGEND, C_BLACK);
     if (lib_state < 0) {
         text_in(0, 240, 30, &FONT_B, "NO SONG STORAGE", C_AMB);
         text_in(0, 240, 60, &FONT_XS, "The flash chip is not usable", C_GRAY);
@@ -359,6 +584,7 @@ static void draw_list_empty(void)
         text_in(0, 240, 130, &FONT_XS, "They stay here when it is off.", C_DIM);
     }
     cv_blit(0, H_TOP);
+    draw_legend(Y_LEGEND, "GLO: CONTROLS   KEYS: PLAY ALONG");
 }
 
 static void draw_list(void)
@@ -388,15 +614,15 @@ static void draw_list(void)
                 text_cat(t, "   ");
                 num_cat(t, s->beats_per_bar);
                 text_cat(t, "/4   ");
-                num_cat(t, (60000000u + s->tempo_us / 2u) / s->tempo_us);
+                num_cat(t, player_song_bpm(s));
                 text_cat(t, " BPM");
-                cv_text(10, 2, &FONT_B, s->title, sel ? C_WHITE : C_GRAY);
+                cv_text(10, 1, &FONT_B, s->title, sel ? C_WHITE : C_GRAY);
                 cv_text(10, 19, &FONT_XS, t, sel ? C_HI : C_DIM);
             } else {
                 char t[48] = "";
                 const struct song *pk = &peeked[order[i]];
                 text_cat(t, peek_err[order[i]] ? "(unreadable song)" : pk->title);
-                cv_text(10, 2, &FONT_B, t, sel ? C_WHITE : C_GRAY);
+                cv_text(10, 1, &FONT_B, t, sel ? C_WHITE : C_GRAY);
                 t[0] = 0;
                 text_cat(t, "SONG ERROR: ");
                 text_cat(t, song_error_name(err));
@@ -406,9 +632,63 @@ static void draw_list(void)
         }
         cv_blit(0, H_TOP + (int32_t)r * LIST_ROW_H);
     }
-    cv_begin(240, 240 - H_TOP - LIST_ROWS * LIST_ROW_H, C_BLACK);
-    cv_text(6, 2, &FONT_XS, "SELECT: CHOOSE   PLAY: OPEN", C_DIM);
-    cv_blit(0, H_TOP + LIST_ROWS * LIST_ROW_H);
+    draw_legend(Y_LEGEND, "SELECT: CHOOSE   PLAY: OPEN   GLO: ?");
+}
+
+/* -------------------------------------------------------------------------- help --- */
+/* every control: the encoders (left of the screen on the panel) left, K1..K4 and the buttons (right of it) right;
+ * what each does here (docs/controls.md). Two bands: the canvas holds 144 rows */
+static void draw_help(void)
+{
+    static const char *const ENC[5][2] = {{"MASTER", "volume"}, {"SELECT", "tempo (BPM)"},
+                                          {"PRESETS", "start: section / A"}, {"ALGORITHM", "start: bar / B"},
+                                          {"OCT- OCT+", "keys' octave"}};
+    static const char *const ENC_LIST[5][2] = {{"MASTER", "volume"}, {"SELECT", "choose a song"},
+                                               {"PRESETS", "-"}, {"ALGORITHM", "-"}, {"OCT- OCT+", "keys' octave"}};
+    static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX", "mute drums"}, {"SEL", "mute bass"},
+                                          {"ENV", "mute harmony"}, {"LFO", "mute melody"}, {"PLAY", "play / pause"},
+                                          {"HOME", "stop / list"}, {"SEQ", "loop"}, {"ARP", "count-in"}};
+    static const char *const BTN_LIST[9][2] = {{"PLAY", "open the song"}, {"EDIT", "open the song"},
+                                               {"keys", "play along"}, {"", ""}, {"", ""}, {"", ""}, {"", ""},
+                                               {"", ""}, {"", ""}};
+    const char *const (*e)[2] = ui.back == V_PLAY ? ENC : ENC_LIST;
+    const char *const (*b)[2] = ui.back == V_PLAY ? BTN : BTN_LIST;
+    uint32_t r, band;
+    char t[48] = "CPU ";
+    for (band = 0; band < 2u; band++) {  /* rows 0..119, 120..239 */
+        int32_t y0 = (int32_t)band * 120;
+        cv_begin(240, 120, C_BLACK);
+        cv_band(0, 120);
+        if (!band) {
+            cv_text(6, 2, &FONT_B, "CONTROLS", C_WHITE);
+            cv_text(234 - text_w(&FONT_XS, "any button: back"), 6, &FONT_XS, "any button: back", C_DIM);
+            cv_rect(0, 24, 240, 1, C_LINE);
+        }
+        for (r = 0; r < 5u; r++) {       /* the encoders, 2 lines each */
+            int32_t y = 30 + (int32_t)r * 30 - y0;
+            cv_text(6, y, &FONT_XS, e[r][0], C_GRAY);
+            cv_text(6, y + 13, &FONT_XS, e[r][1], C_HI);
+        }
+        for (r = 0; r < 9u; r++) {       /* the buttons, a line each */
+            int32_t y = 30 + (int32_t)r * 17 - y0;
+            cv_text(116, y, &FONT_XS, b[r][0], C_GRAY);
+            cv_text(152, y, &FONT_XS, b[r][1], C_HI);
+        }
+        cv_text(116, 184 - y0, &FONT_XS, "GLO", C_GRAY);
+        cv_text(152, 184 - y0, &FONT_XS, "this help", C_HI);
+        if (band) {
+            cv_rect(0, 200 - y0, 240, 1, C_LINE);
+            num_cat(t, plat_cpu_pct());
+            text_cat(t, "%   VOICES ");
+            num_cat(t, player_voices());
+            text_cat(t, "/");
+            num_cat(t, player_voices_max());
+            cv_text(6, 204 - y0, &FONT_XS, t, C_DIM);
+            cv_text(234 - text_w(&FONT_XS, "v" FW_VERSION), 204 - y0, &FONT_XS, "v" FW_VERSION, C_DIM);
+            cv_text(6, 220 - y0, &FONT_XS, ui.flash_ok ? "FM-1 Accompaniment" : "FM-1 Accompaniment  RAM ONLY", C_DIM);
+        }
+        cv_blit(0, (uint32_t)y0);
+    }
 }
 
 /* ------------------------------------------------------------------------ play --- */
@@ -425,15 +705,15 @@ static void draw_top(int32_t bar, int32_t beat, int st)
         cv_text(6, 16, &FONT_XS, t, C_WHITE);
     } else {
         num_cat(t, player_tempo_of());
-        text_cat(t, "%  ");
+        text_cat(t, " BPM  ");
         text_cat(t, s->key);
+        if (player_count_in_of())
+            text_cat(t, "  CNT");
         if (ui.loop) {
             text_cat(t, "  ");
             text_cat(t, LOOP_NAME[ui.loop]);
         }
-        if (player_count_in_of())
-            text_cat(t, "  CNT");
-        cv_text(6, 16, &FONT_XS, t, player_tempo_of() == 100u ? C_DIM : C_AMB);
+        cv_text(6, 16, &FONT_XS, t, player_tempo_of() == player_song_bpm(s) ? C_DIM : C_AMB);
     }
     t[0] = 0;
     if (st == PL_PLAYING) {
@@ -441,30 +721,48 @@ static void draw_top(int32_t bar, int32_t beat, int st)
         text_cat(t, ":");
         num_cat(t, (uint32_t)beat + 1u);
     } else {
-        text_cat(t, st == PL_COUNT_IN ? "IN" : "STOP");
+        text_cat(t, st == PL_COUNT_IN ? "IN" : st == PL_PAUSED ? "PAUSE" : "STOP");
     }
     cv_text(234 - text_w(&FONT_M, t), 4, &FONT_M, t, st == PL_PLAYING ? C_WHITE : C_GRAY);
     cv_blit(0, Y_TOP);
 }
 
-static void draw_big(int st, int32_t k, int32_t count)
+static void draw_big(int st, int32_t k, int32_t count, int32_t bar, int32_t beat)
 {
     const char *sym = k >= 0 ? song_cevt_symbol(ui.s, (uint32_t)k) : 0;
     cv_begin(W_BIG, H_CHORD, C_BLACK);
     if (st == PL_STOPPED) {
-        text_in(0, W_BIG, 10, &FONT_XS, ui.s->title, C_GRAY);
-        text_in(0, W_BIG, 32, &FONT_M, "PRESS PLAY", C_WHITE);
-        text_in(0, W_BIG, 60, &FONT_XS, "HOME: SONG LIST", C_DIM);
+        char t[48] = "from bar ";
+        num_cat(t, ui.from_bar + ui.s->first_bar_number);
+        text_cat(t, " (");
+        text_cat(t, song_section_name(ui.s, section_at(start_point())));
+        text_cat(t, ")");
+        text_in(0, W_BIG, 6, &FONT_XS, ui.s->title, C_GRAY);
+        text_in(0, W_BIG, 24, &FONT_M, "PRESS PLAY", C_WHITE);
+        text_in(0, W_BIG, 52, &FONT_XS, t, C_DIM);
+    } else if (st == PL_PAUSED) {
+        char t[24] = "PAUSED ", u[40] = "PLAY: on";
+        num_cat(t, (uint32_t)bar + ui.s->first_bar_number);
+        text_cat(t, ":");
+        num_cat(t, (uint32_t)beat + 1u);
+        text_cat(u, player_count_in_of() ? " (count-in, bar " : " (from here)");
+        if (player_count_in_of()) {
+            num_cat(u, (uint32_t)bar + ui.s->first_bar_number);
+            text_cat(u, ")");
+        }
+        text_in(0, W_BIG, 8, &FONT_M, t, C_WHITE);
+        text_in(0, W_BIG, 38, &FONT_XS, u, C_DIM);
+        text_in(0, W_BIG, 54, &FONT_XS, "HOME: stop", C_DIM);
     } else if (st == PL_COUNT_IN && count > 0) {
         char t[4] = "";
         num_cat(t, (uint32_t)count);
         text_in(0, W_BIG, 2, &FONT_XS, "COUNT-IN", C_DIM);
-        text2x((W_BIG - 2 * text_w(&FONT_L, t)) / 2, 14, &FONT_L, t, C_AMB);
+        text2x((W_BIG - 2 * text_w(&FONT_L, t)) / 2, 12, &FONT_L, t, C_AMB);
     } else if (sym) {
         if (2 * text_w(&FONT_L, sym) <= W_BIG - 4)
-            text2x((W_BIG - 2 * text_w(&FONT_L, sym)) / 2, 8, &FONT_L, sym, C_HI);
+            text2x((W_BIG - 2 * text_w(&FONT_L, sym)) / 2, 6, &FONT_L, sym, C_HI);
         else
-            text_in(0, W_BIG, 24, &FONT_L, sym, C_HI);
+            text_in(0, W_BIG, 22, &FONT_L, sym, C_HI);
     }
     cv_blit(0, Y_CHORD);
 }
@@ -481,7 +779,7 @@ static void draw_next(int st, int32_t next, int32_t left)
     if (left > 0) {                      /* the beats until the change, in the last bar before it */
         char t[8] = "IN ";
         num_cat(t, (uint32_t)left);
-        cv_text(8, 50, &FONT_M, t, C_WHITE);
+        cv_text(8, 48, &FONT_M, t, C_WHITE);
     }
     cv_blit(W_BIG, Y_CHORD);
 }
@@ -490,7 +788,7 @@ static void draw_next(int st, int32_t next, int32_t left)
 static int32_t strip_bar(int32_t b)
 {
     uint32_t from, to;
-    if (player_loop_of(&from, &to) && to > from) {
+    if (player_state() != PL_STOPPED && player_loop_of(&from, &to) && to > from) {
         int32_t bt = (int32_t)bar_ticks(), fb = (int32_t)from / bt, tb = ((int32_t)to + bt - 1) / bt;
         if (b >= tb && tb > fb)
             b = fb + (b - tb) % (tb - fb);
@@ -501,20 +799,26 @@ static int32_t strip_bar(int32_t b)
 static void draw_strip(int32_t bar)
 {
     const struct song *s = ui.s;
-    uint32_t i;
+    uint32_t i, from = 0, to = 0;
+    if (ui.loop)
+        loop_region(ui.loop, &from, &to);
     cv_begin(240, H_STRIP, C_BLACK);
     for (i = 0; i < 4u; i++) {
         int32_t b = strip_bar(bar + (int32_t)i), x = 2 + (int32_t)i * BOX_STEP;
         char t[8] = "";
         uint32_t k, k_end, t0, n = 0;
         if (b < 0) {
-            frame_rect(x, 0, BOX_W, H_STRIP, C_LINE);
+            frame_rect(x, 0, BOX_W, BOX_H, C_LINE);
             continue;
         }
-        frame_rect(x, 0, BOX_W, H_STRIP, i == 0 ? C_HI : C_DIM);
+        frame_rect(x, 0, BOX_W, BOX_H, i == 0 ? C_HI : C_DIM);
         num_cat(t, (uint32_t)b + s->first_bar_number);
         cv_text(x + 4, 1, &FONT_XS, t, C_DIM);
         t0 = (uint32_t)b * s->bar_ticks;
+        if (ui.loop && t0 + s->bar_ticks > from && t0 < to)   /* the loop's bars: a line under them */
+            cv_rect(x, BOX_H + 1, BOX_W + (t0 + s->bar_ticks < to && i < 3u ? BOX_STEP - BOX_W : 0), 3, C_AMB);
+        if (ui.loop == LOOP_BARS && ((uint32_t)b == ui.a_bar || (uint32_t)b == ui.b_bar))
+            cv_text(x + BOX_W - 12, 1, &FONT_XS, (uint32_t)b == ui.a_bar ? "A" : "B", C_HI);
         k = song_bar_chord(s, (uint32_t)b);
         k_end = k;                       /* the chord events inside the bar: k (sounding at beat 1) .. k_end */
         while (k_end + 1u < s->ncevt && song_cevt_tick(s, k_end + 1u) < t0 + s->bar_ticks)
@@ -526,11 +830,10 @@ static void draw_strip(int32_t bar)
             int32_t sx = x + 1 + (int32_t)(a * (BOX_W - 2) / s->bar_ticks);
             int32_t sw = (int32_t)((z - a) * (BOX_W - 2) / s->bar_ticks);
             const char *sym = song_cevt_symbol(s, k);
-            int held = a == 0 && !(song_bar_flags(s, (uint32_t)b) & 1u);   /* goes on from the bar before */
             const felucca_font_t *f = n == 1u && text_w(&FONT_M, sym) <= sw ? &FONT_M : &FONT_XS;
             if (a)
-                cv_rect(sx, 16, 1, H_STRIP - 20, C_DIM);
-            text_in(sx, sw, n == 1u ? 22 : 26, f, sym, held ? C_DIM : i == 0 ? C_WHITE : C_AMB);
+                cv_rect(sx, 16, 1, BOX_H - 20, C_DIM);
+            text_in(sx, sw, n == 1u ? 18 : 22, f, sym, i == 0 ? C_WHITE : C_AMB);   /* (M2: no dimming) */
         }
     }
     cv_blit(0, Y_STRIP);
@@ -556,55 +859,72 @@ static void draw_layers(void)
         int on = !(ui.muted >> l & 1u);
         char t[8] = "L";
         if (!ly->variants) {
-            frame_rect(x, 2, 55, H_LAYERS - 4, C_LINE);
-            text_in(x, 55, 6, &FONT_XS, LAYER_SHORT[l], C_DIM);
-            text_in(x, 55, 22, &FONT_XS, "-", C_DIM);
+            frame_rect(x, 1, 55, H_LAYERS - 2, C_LINE);
+            text_in(x, 55, 2, &FONT_XS, LAYER_SHORT[l], C_DIM);
+            text_in(x, 55, 16, &FONT_XS, "-", C_DIM);
             continue;
         }
         if (on)
-            cv_rect(x, 2, 55, H_LAYERS - 4, C_LINE);
+            cv_rect(x, 1, 55, H_LAYERS - 2, C_LINE);
         else
-            frame_rect(x, 2, 55, H_LAYERS - 4, C_AMB);
+            frame_rect(x, 1, 55, H_LAYERS - 2, C_AMB);
         num_cat(t, player_variant_of(l) > ly->variants ? ly->variants : player_variant_of(l));
-        text_in(x, 55, 5, &FONT_XS, LAYER_SHORT[l], on ? C_WHITE : C_AMB);
-        text_in(x, 55, 22, &FONT_XS, on ? t : "MUTE", on ? C_HI : C_AMB);
+        text_in(x, 55, 2, &FONT_XS, LAYER_SHORT[l], on ? C_WHITE : C_AMB);
+        text_in(x, 55, 16, &FONT_XS, on ? t : "MUTE", on ? C_HI : C_AMB);
     }
     cv_blit(0, Y_LAYERS);
 }
 
-static void draw_bottom(int32_t section)
+static void draw_status(int32_t section)
 {
     char t[40] = "";
-    cv_begin(240, H_BOTTOM, C_BLACK);
-    cv_rect(0, 0, 240, 1, C_LINE);
+    cv_begin(240, H_STATUS, C_BLACK);
     if (section >= 0)
-        cv_text(6, 6, &FONT_XS, song_section_name(ui.s, (uint32_t)section), C_GRAY);
-    if (!ui.flash_ok)
-        text_cat(t, "RAM ONLY ");
-    text_cat(t, "CPU ");
-    num_cat(t, plat_cpu_pct());
-    text_cat(t, "% V ");
-    num_cat(t, player_voices());
-    text_cat(t, "/");
-    num_cat(t, player_voices_max());
-    cv_text(234 - text_w(&FONT_XS, t), 6, &FONT_XS, t, ui.flash_ok ? C_DIM : C_AMB);
-    cv_blit(0, Y_BOTTOM);
+        cv_text(6, 4, &FONT_XS, song_section_name(ui.s, (uint32_t)section), C_GRAY);
+    if (ui.loop == LOOP_BARS) {
+        text_cat(t, "LOOP BARS ");
+        num_cat(t, ui.a_bar + ui.s->first_bar_number);
+        text_cat(t, "-");
+        num_cat(t, ui.b_bar + ui.s->first_bar_number);
+    } else if (ui.loop) {
+        text_cat(t, LOOP_NAME[ui.loop]);
+    } else if (ui.from_bar != first_bar()) {
+        text_cat(t, "START BAR ");
+        num_cat(t, ui.from_bar + ui.s->first_bar_number);
+    }
+    cv_text(234 - text_w(&FONT_XS, t), 4, &FONT_XS, t, C_HI);
+    cv_blit(0, Y_STATUS);
+}
+
+static const char *legend_play(int st)
+{
+    if (ui.loop == LOOP_BARS && st == PL_STOPPED)
+        return "PLAY  PRESETS: A  ALGO: B  SEQ  GLO: ?";
+    if (st == PL_STOPPED)
+        return "PLAY  PRESETS/ALGO: START  SEQ: LOOP  GLO: ?";
+    if (st == PL_PAUSED)
+        return "PLAY: GO ON   HOME: STOP   GLO: ?";
+    return "PLAY: PAUSE   HOME: STOP   SEQ: LOOP   GLO: ?";
 }
 
 static void frame_play(uint32_t now)
 {
     const struct song *s = ui.s;
     int st = player_state();
-    int32_t tc = player_tick(PL_LEAD_CHORD_MS), tb = player_tick(PL_LEAD_BEAT_MS);
+    int32_t tc = player_tick(PL_LEAD_CHORD_MS), tb = player_tick(PL_LEAD_BEAT_MS), from = player_play_from();
     int32_t k = -1, next = -1, left = 0, count = 0, bar = 0, beat = 0, section;
-    uint32_t from, to, top_key;
-    int looping = player_loop_of(&from, &to);
+    uint32_t lfrom, lto, top_key, status_key;
+    int looping = player_loop_of(&lfrom, &lto);
+    const char *leg;
     if (st == PL_STOPPED) {
-        uint32_t first = song_section_first(s, 0) * s->bar_ticks;
-        next = (int32_t)song_chord_at(s, first);
-        tb = (int32_t)s->start_tick;
+        int32_t sp = start_point();
+        next = (int32_t)song_chord_at(s, (uint32_t)(sp > (int32_t)s->start_tick ? sp : (int32_t)s->start_tick));
+        tb = sp;
+    } else if (st == PL_PAUSED) {
+        k = (int32_t)song_chord_at(s, tb > 0 ? (uint32_t)tb : 0);
+        next = (uint32_t)k + 1u < s->ncevt ? k + 1 : -1;
     } else {
-        if (tc >= (int32_t)s->start_tick || st == PL_PLAYING) {
+        if (tc >= from || st == PL_PLAYING) {
             uint32_t T;
             k = (int32_t)song_chord_at(s, tc > 0 ? (uint32_t)tc : 0);
             if ((uint32_t)k + 1u < s->ncevt) {
@@ -613,37 +933,41 @@ static void frame_play(uint32_t now)
             } else {
                 T = s->end_tick;
             }
-            if (looping && T >= to) {    /* the next change is the loop's jump */
-                next = (int32_t)song_chord_at(s, from);
-                T = to;
+            if (looping && T >= lto) {    /* the next change is the loop's jump */
+                next = (int32_t)song_chord_at(s, lfrom);
+                T = lto;
                 if (next == k)
                     next = -1;
             }
             if (next >= 0 && (int32_t)T > tb && (int32_t)T - tb <= (int32_t)s->bar_ticks)
                 left = ((int32_t)T - tb + (int32_t)s->ppq - 1) / (int32_t)s->ppq;
         } else {                         /* the count-in: beats left, the first chord next */
-            count = ((int32_t)s->start_tick - tc + (int32_t)s->ppq - 1) / (int32_t)s->ppq;
-            next = (int32_t)song_chord_at(s, s->start_tick);
+            count = (from - tc + (int32_t)s->ppq - 1) / (int32_t)s->ppq;
+            next = (int32_t)song_chord_at(s, (uint32_t)from);
             if (song_cevt_symbol(s, (uint32_t)next)[0] == 'N' && (uint32_t)next + 1u < s->ncevt)
                 next++;                  /* N.C. in the pickup: the first real chord */
         }
-        if (tb >= 0) {
-            bar = tb / (int32_t)s->bar_ticks;
-            beat = tb % (int32_t)s->bar_ticks / (int32_t)s->ppq;
-        }
     }
-    if (st == PL_COUNT_IN && tb < (int32_t)s->start_tick)
-        bar = (int32_t)s->start_tick / (int32_t)s->bar_ticks;   /* the strip waits on the first bar */
-    section = st == PL_STOPPED ? 0 : (int32_t)section_at(tb);
+    if (tb >= 0) {
+        bar = tb / (int32_t)s->bar_ticks;
+        beat = tb % (int32_t)s->bar_ticks / (int32_t)s->ppq;
+    }
+    if (st == PL_COUNT_IN && tb < from)
+        bar = from / (int32_t)s->bar_ticks;   /* the strip waits on the first bar */
+    if (st == PL_STOPPED)
+        bar = start_point() / (int32_t)s->bar_ticks;
+    section = (int32_t)section_at(st == PL_STOPPED ? start_point() : tb);
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
         ui.sh_top_key = 0xFFFFFFFFu;
     }
-    /* the chord first: it is what must not be late (player.h PL_LEAD_CHORD_MS; tools/m1_test.py checks) */
-    if (ui.redraw || st != ui.sh_state || k != ui.sh_chord || count != ui.sh_count) {
-        draw_big(st, k, count);
+    /* the chord first: it is what must not be late (player.h PL_LEAD_CHORD_MS; tools/m2_test.py checks) */
+    if (ui.redraw || st != ui.sh_state || k != ui.sh_chord || count != ui.sh_count ||
+        (st != PL_PLAYING && st != PL_COUNT_IN && ui.sh_status == 0xFFFFFFFFu)) {
+        draw_big(st, k, count, bar, beat);
         lcd_done();
-        if (k >= 0 && k < (int32_t)PL_STATS_CHORDS && st != PL_STOPPED && !player_stats.chord_drawn[k])
+        if (k >= 0 && k < (int32_t)PL_STATS_CHORDS && (st == PL_PLAYING || st == PL_COUNT_IN) &&
+            !player_stats.chord_drawn[k])
             player_stats.chord_drawn[k] = player_frames();
         ui.sh_chord = k;
         ui.sh_count = count;
@@ -653,16 +977,16 @@ static void frame_play(uint32_t now)
         ui.sh_next = next;
         ui.sh_left = left;
     }
-    top_key = (uint32_t)(bar * 16 + beat) ^ player_tempo_of() << 16 ^ (uint32_t)ui.loop << 24 ^
+    top_key = (uint32_t)(bar * 16 + beat) ^ player_tempo_of() << 16 ^ (uint32_t)ui.loop << 25 ^
               (uint32_t)player_count_in_of() << 27 ^ (uint32_t)st << 28;
     if (ui.redraw || top_key != ui.sh_top_key) {
         draw_top(bar, beat, st);
         ui.sh_top_key = top_key;
     }
-    if (ui.redraw || bar != ui.sh_strip || (int32_t)(looping ? to : 0) != ui.sh_bar) {
+    if (ui.redraw || bar != ui.sh_strip || (int32_t)(looping ? lto : 0) != ui.sh_bar) {
         draw_strip(bar);
         ui.sh_strip = bar;
-        ui.sh_bar = (int32_t)(looping ? to : 0);
+        ui.sh_bar = (int32_t)(looping ? lto : 0);
     }
     if (ui.redraw || beat != ui.sh_beat || st != ui.sh_state) {
         draw_cursor(beat, st);
@@ -674,10 +998,15 @@ static void frame_play(uint32_t now)
         ui.sh_layers = (int32_t)(ui.muted | player_variant_of(0) << 4 | player_variant_of(1) << 6 |
                                  player_variant_of(2) << 8 | player_variant_of(3) << 10);
     }
-    if (ui.redraw || section != ui.sh_section || now - ui.sh_stats_ms >= 500u) {
-        draw_bottom(section);
-        ui.sh_section = section;
-        ui.sh_stats_ms = now;
+    status_key = (uint32_t)section ^ (uint32_t)ui.loop << 8 ^ ui.from_bar << 10 ^ ui.a_bar << 20 ^ ui.b_bar << 26;
+    if (ui.redraw || status_key != ui.sh_status) {
+        draw_status(section);
+        ui.sh_status = status_key;
+    }
+    leg = legend_play(st);
+    if (ui.redraw || (uint32_t)(uintptr_t)leg != ui.sh_legend) {
+        draw_legend(Y_LEGEND, leg);
+        ui.sh_legend = (uint32_t)(uintptr_t)leg;
     }
     ui.sh_state = st;
 }
@@ -691,30 +1020,49 @@ static void ui_busy(const char *a, const char *b)
     text_in(0, 240, 46, &FONT_XS, b, C_GRAY);
     cv_blit(0, 80);
     lcd_done();
-    ui.screen = 0;
+    ui.view = V_LIST;
     ui.redraw = 1;
 }
 
 void app_ui_init(void)
 {
     ui.flash_ok = plat_data(PLAT_DATA_LO) != 0;   /* 0: the platform refused the chip (fm1-base main_fm1.c) */
-    lcd_fill(0, 0, 240, 240, C_BLACK);
+    ui.splash = plat_ms() < SPLASH_MS;   /* (after a restore or a resource install: no splash, straight back) */
+    if (!ui.splash)
+        lcd_fill(0, 0, 240, 240, C_BLACK);
     ui.redraw = 1;
     ui.sh_list = 0xFFFFFFFFu;
+    player_stats.key_note_last = 0xFFu;
+    player_stats.ui_view = 16u;
 }
 
 void app_frame(void)
 {
     uint32_t now = plat_ms();
+    if (ui.splash && now >= SPLASH_MS) { /* the splash has had its time: the list */
+        ui.splash = 0;
+        ui.redraw = 1;
+    }
     if (ui.lib_seen != lib_changes) {     /* songs sent or deleted: back to the list, from the top */
         ui.lib_seen = lib_changes;
-        ui.screen = 0;
+        ui.view = V_LIST;
         ui.sel = ui.top = 0;
         ui.redraw = 1;
     }
     input();
     ann_tick(now);
-    if (ui.screen == 0) {
+    player_stats.ui_view = (uint32_t)ui.view + (ui.splash ? 16u : 0u);
+    if (ui.splash)
+        return;
+    if (ui.view == V_HELP) {
+        if (ui.redraw || now - ui.sh_stats_ms >= 500u) {
+            draw_help();
+            ui.sh_stats_ms = now;
+        }
+        ui.redraw = 0;
+        return;
+    }
+    if (ui.view == V_LIST) {
         uint32_t key = ui.sel | (now < ui.msg_until) << 16;
         if (ui.redraw || key != ui.sh_list) {
             if (ui.redraw)
@@ -725,8 +1073,10 @@ void app_frame(void)
         ui.redraw = 0;
         return;
     }
-    if (ui.redraw)
+    if (ui.redraw) {
         lcd_fill(0, 0, 240, 240, C_BLACK);
+        ui.sh_status = 0xFFFFFFFEu;
+    }
     frame_play(now);
     ui.redraw = 0;
 }

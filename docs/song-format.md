@@ -164,21 +164,25 @@ player is unchanged.
 `EZ` streams together), 256 KiB per file (the FM-1's song store: 64 KiB), 3 variants per layer, 5 notes per
 voicing. The five starter songs are 15–32 KiB each in 1.0, 6–12 KiB in 1.1.
 
-## 3. What the device does with it (M1b)
+## 3. What the device does with it (M1b; M2)
 
 ### 3.1 Playback
 Events are sent to EAS on the layer's channel at the audio block where their tick falls. Position =
-ticks from samples played, computed from the start of the current tempo (no accumulated rounding), so tempo
-50..120 % does not drift.
+ticks from samples played, exact at any tempo (no accumulated rounding), so tempo changes do not drift. M2: the
+tempo in BPM, 30–250; a song's own tempo is its `tempo_us` rounded to whole BPM.
 
 ### 3.2 Count-in
 One bar of clicks, plus the empty beats of the pickup bar: the first note comes where the music says (for
-Amazing Grace in 3/4 with a 1-beat pickup: "1 2 3 1 2", the pickup on 3).
+Amazing Grace in 3/4 with a 1-beat pickup: "1 2 3 1 2", the pickup on 3). M2: the same from any start point: the
+clicks run from the bar before the start's bar up to the start (a section with a pickup: the pickup's beats are the
+last clicks' place).
 
 ### 3.3 Loops and pickups
 A loop of sections s..t runs from `start(s) − lead(s)` to `end(t) − lead(s)`: the lead-in of the first
 looped section is played at the top, and the same number of beats is cut from the end, exactly like a
 repeat with a pickup in printed music. Whole-song loop = all sections. Held notes are released at the jump.
+M2 adds a loop of bars A–B: from A's beat 1 to the end of B, no pickup. A loop the music is outside of (moved
+while playing) is jumped to at the next bar line.
 
 ## 4. On the FM-1: the song store (M2)
 

@@ -126,7 +126,7 @@ SONGS = {
                "chorus": "| C | D | G | Em |\n| C | D | G | G |"},
         ending=None,
         melody=FOUR_VERSE + FOUR_CHORUS + FOUR_VERSE + FOUR_END,
-        layers=dict(bass=34, harmony=5, melody=81),       # finger bass, e-piano 1, square lead
+        layers=dict(bass=34, harmony=5, melody=72),       # finger bass, e-piano 1, clarinet (M2: the square lead (81) aliased: the "crackle")
         style=dict(drums="pop", bass="eighths", harmony="eighths"),
         variants=dict(drums={1: "kick 1 and 3, snare 2 and 4, hi-hat on the beat",
                              2: "eighth-note hi-hat, extra kicks, a fill every 8 bars"},

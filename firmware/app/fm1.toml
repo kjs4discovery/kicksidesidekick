@@ -8,6 +8,8 @@ usb_product = "FM-1 Accompaniment"
 words = "words.tsv"
 font_full = ["L", "M"]         # chord names have lower case (Em, Bbmaj7)
 # M2: no songs in the image; they live in the flash's song store, sent from the laptop (tools/fm1song send; library.c)
+# The splash's logo: firmware/assets/tmp-logo.jpg (a placeholder: replace that one file) -> a palette and run-length rows
+gen = ["../../tools/logo_to_c.py ../assets/tmp-logo.jpg {gen}/logo_gen.h"]
 tagline = "a play-along band for the FM-1"
 licence = "TBD"
 credits = "Built on fm1-base and felucca-bsp (MPL-2.0). GM sounds: Sonivox EAS (Apache-2.0)."
