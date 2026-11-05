@@ -433,3 +433,17 @@ Hardware touched: none
 Questions for the planning chat: none
 Next: the user runs step-M1-install.md steps 1–2, pasting each step's output; Claude Code reads (--info, lsusb,
 kernel log) between steps and records.
+
+2026-11-05 06:58 — Step M1 install, step 1 —
+Status: done
+Did:
+- The user ran step-M1-install steps 1.1–1.4 (--info, sha256sum, install, --info) and reported FM-1_46000200.
+- Claude Code read back (read-only): --info, lsusb, kernel log. docs/device.md "Currently installed" updated.
+Learned / measured:
+- --info: `FM-1_46000200  [running]  port: FM-1 Accompaniment:FM-1 Accompaniment MIDI 1 24:0`; lsusb 1209:0001.
+- Kernel log, port 1-2, no -110 anywhere: prototype (1209:0001) disconnect 06:55:09 → update loader "Felucca
+  Update" 1209:0002 at 06:55:10 → disconnect 06:56:03 (~53 s of loader, Step 0.7: ~55 s) → M1 enumerated 06:56:04
+  (< 1 s). bcdDevice 3.d0 for both the prototype and M1.
+Hardware touched: WRITE (M1 package to the app area via our update loader, run by the user); then read-only by Claude Code
+Questions for the planning chat: none
+Next: step 2, the on-unit checks (no command), user reports observations; Claude Code records them.
