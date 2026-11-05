@@ -6,7 +6,7 @@
 #include "plat.h"
 
 #define APP_NAME "FM-1 Accompaniment"
-#define FW_VERSION "0.3.4-m3p4"          /* ours (M3 part builds 0.3.N-m3pN, the whole M3 0.4.0-m3) */
+#define FW_VERSION "0.3.5-m3p5"          /* ours (M3 part builds 0.3.N-m3pN, the whole M3 0.4.0-m3) */
 #define APP_SPLASH_RGB RGB(64, 160, 220)
 #define APP_SPLASH                       /* our splash: the logo (ui.c app_splash; tools/logo_to_c.py) */
 #define APP_BLOCK 256u                   /* frames per audio block: 5.8 ms at 44.1 kHz; one EAS buffer (synth.h) */

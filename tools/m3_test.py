@@ -481,25 +481,7 @@ def test_practice(all_songs, rep):
     want = (c["sections"][0]["first_bar"] + 3) * bt
     check(r2["stats"]["start_from"] == want, f"ALGORITHM +3, PLAY: starts at bar 4 (tick {r2['stats']['start_from']}, "
                                              f"expected {want}) (prac-from-bar.png)")
-    # loop bars A-B: SEQ twice (section, bars) from bar 3 (ALGO +2); B moved to A+1 (ALGO -2 in bars mode)
-    ab = o + [f"{OPEN_MS + 300}:e1:2"] + press(OPEN_MS + 400, "SEQ") + press(OPEN_MS + 600, "SEQ") \
-        + [f"{OPEN_MS + 800}:e1:-2"] + press(OPEN_MS + 1000, "ARP")
-    a_bar = c["sections"][0]["first_bar"] + 2
-    loop_ms = 2 * 2 * bt * 60000 / (c["ppq"] * own_bpm(c))
-    r3 = run("prac-loop-bars", int(PLAY_MS + loop_ms + 1500), ab + press(PLAY_MS, "PLAY"))
-    st = r3["stats"]
-    check(st["start_from"] == a_bar * bt and st["loops"] >= 2 and st["loop_from"] == a_bar * bt
-          and st["loop_to"] == (a_bar + 2) * bt and a_bar * bt <= st["last_tick"] < (a_bar + 2) * bt,
-          f"LOOP BARS 3-4 (SEQ twice, ALGORITHM moves B): starts at bar 3, {st['loops']} jumps from tick "
-          f"{st['loop_to']} back to {st['loop_from']} (expected {(a_bar + 2) * bt} -> {a_bar * bt}) (prac-loop-bars.png)")
-    # a section loop moved while playing: PRESETS +1 -> the next section, jumped to at the next bar line
-    r4 = run("prac-loop-move", PLAY_MS + 6000, o + press(OPEN_MS + 300, "ARP") + press(PLAY_MS, "PLAY")
-             + press(PLAY_MS + 1500, "SEQ") + [f"{PLAY_MS + 2500}:e6:1"])
-    st = r4["stats"]
-    s1_from, s1_to = section_from(c, 1), section_from(c, 1) + c["sections"][1]["bars"] * bt
-    check(st["loops"] >= 1 and st["loop_from"] == s1_from and s1_from <= st["last_tick"] < s1_to,
-          f"a section loop moved to section 2 while playing section 1: jumped there ({st['loops']} jump, now tick "
-          f"{st['last_tick']} in {s1_from}..{s1_to})")
+    # (M3: the loops are part 3's: tools/m3_test.py --only part3; the per-song run sets one while playing)
     # pause and go on: count-in on (from the paused bar's beat 1) and off (from right there)
     pz = o + press(PLAY_MS, "PLAY") + press(PLAY_MS + 6000, "PLAY")
     r5 = run("prac-paused", PLAY_MS + 10000, pz)
@@ -637,14 +619,16 @@ def test_views(all_songs, rep):
             k = chord_at(c, t + lead)
             want.add(key_bits(c["chord_events"][k]["voicing"][lvl], oct))
         return want
-    check(st["lit_keys"] in voicing_bits(v1) and st["lit_keys"],
+    keys1 = st["lit_keys"] | st["mid_keys"]                # (M3: bright at an attack, the middle level between)
+    check(keys1 in voicing_bits(v1) and keys1,
           f"harmony muted: the keys lit = the chord's level-1 voicing (bits {st['lit_keys']:#09x})")
     oc = run("view-keys-oct", PLAY_MS + 9000, o + press(OPEN_MS + 100, "OCTUP") + press(OPEN_MS + 200, "ENV")
              + press(PLAY_MS, "PLAY"))
-    check(oc["stats"]["lit_keys"] in voicing_bits(oc, 1) and oc["stats"]["lit_keys"] != 0,
+    keys2 = oc["stats"]["lit_keys"] | oc["stats"]["mid_keys"]
+    check(keys2 in voicing_bits(oc, 1) and keys2 != 0,
           "with OCT+ the lit keys move down an octave, where those notes now are under the hands")
     bs = run("view-bass-lights", PLAY_MS + 9000, o + press(OPEN_MS + 200, "SCL") + press(PLAY_MS, "PLAY"))
-    bits = bin(bs["stats"]["lit_keys"]).count("1")
+    bits = bin(bs["stats"]["lit_keys"] | bs["stats"]["mid_keys"]).count("1")
     check(bits == 1 and bs["stats"]["note_on_last"][1] == 0,
           f"bass muted (harmony playing): one key lit, the bass note ({bs['stats']['lit_keys']:#09x}); the bass "
           f"layer sent nothing (view-chord-cue.png: BASS name and the rhythm cue)")
@@ -984,7 +968,28 @@ def test_part4(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3, "part4": test_part4}
+def test_part5(all_songs, rep):
+    """M3 part 5: Happy Birthday (its full run is the per-song test); here the list and the pickup"""
+    lines, st, check = checker("Part 5: Happy Birthday")
+    slugs = [c["slug"] for c in all_songs]
+    i = slugs.index("happy-birthday")
+    c = all_songs[i]
+    bt = 3 * c["ppq"]
+    mel = sorted(e[0] for e in c["layers"]["melody"]["variants"][1] if e[1] == 144)
+    check(len(all_songs) == 9 and c["pickup_beats"] == 1 and mel[:2] == [2 * c["ppq"], 2 * c["ppq"] + c["ppq"] // 2]
+          and c["bar_count"] == 17, f"9 songs; Happy Birthday: 3/4, a one-beat pickup of two eighths (melody at ticks "
+          f"{mel[:2]}), 16 bars + the pickup bar, {own_bpm(c)} BPM")
+    r = run("p5-list", 4300, [f"3600:e0:{i}"])
+    r2 = run("p5-open", PLAY_MS + 7000, open_song(i) + press(OPEN_MS + 200, "LFO") + press(PLAY_MS, "PLAY"))
+    s = r2["stats"]
+    check(s["part"] == 3 and s["start_from"] == 2 * c["ppq"],
+          f"opened from the list (p5-list.png), melody muted, played from the pickup (tick {s['start_from']}; "
+          f"p5-open.png)")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3, "part4": test_part4, "part5": test_part5}
 
 
 def main():
@@ -1033,7 +1038,7 @@ def main():
             reports["flash"] = []
             futs["flash"] = pool.submit(test_flash, all_songs[0], reports["flash"])
         for name, fn in PART_TESTS.items():
-            if only and name in only:
+            if want(name):                  # (the full suite: every part's checks too)
                 reports[name] = []
                 futs[name] = pool.submit(fn, all_songs, reports[name])
         for k, f in futs.items():

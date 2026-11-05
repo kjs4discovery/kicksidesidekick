@@ -837,3 +837,42 @@ Questions for the planning chat:
 - The settings are a second kind of flash write by our firmware (2 sectors at 0xFC000, fm1-base's store, A/B
   copies). It will be explained in the install checklist like the song store; OK?
 Next: Part 5 (Happy Birthday), then the early install point.
+
+2026-11-05 18:55 — Milestone M3, Part 5 (Happy Birthday) and the EARLY INSTALL POINT —
+Status: done (emulator); committed; early checklist written; the full suite passed on its build
+Note on times: the LOG times of Parts 2–4 (18:35, 19:05, 19:55) were estimates and ran ahead of the clock. The real
+order and the commits are right. From this entry on, the times are read from the system clock.
+Did:
+- songs/make_songs.py: **Happy Birthday to You**, the melody of "Good Morning to All" (Mildred J. Hill and Patty
+  Hill, 1893, public domain).
+  - Our own arrangement: G major, 3/4, 104 BPM, a one-beat pickup of two eighths, two 8-bar verses, no lyrics.
+  - All four layers with :1 / :2 (drums: the plain beat with a backbeat / the full waltz). Flute melody (0 % of
+    its energy above 8 kHz), piano, acoustic bass.
+  - Chords G | D7 | D7 | G | G7 | C | G . D7 | G. tools/fm1song validate: ok. Marked "check before publishing" (from
+    memory).
+- tools/m3_test.py: the M2-era practice and view checks are adapted to M3 (the A–B loops are part 3's, the key
+  lights count bright or middle), Part 5's checks are added, and every part's checks run in the full suite.
+- **Early install point:** docs/step-M3-early-install.md, for install over M2. It covers:
+  - sending the 9 songs (3 updated, 1 new);
+  - the settings save, explained as the new kind of write (0xFC000–0xFDFFF, fm1-base's A/B store; stock never
+    uses it);
+  - on-unit checks ordered part by part and layer by layer;
+  - fallback M2.
+Learned / measured:
+- Release build build/step-M3/part5/fm1acc-0.3.5-m3p5.fwsc: FM-1_46000305, sha256
+  becbc129d639e9645279429589dfb3816713e968961cc44e594d981aef71501d. Firmware source = Part 4's (a37ae26) with
+  version 0.3.5.
+- **The full emulator suite on that exact package: 219 checks, ALL PASS** (build/step-M3/part5/report.md). It
+  covers:
+  - all 9 songs to the end on time, with the chord on screen before its sound;
+  - the store (power cuts, damaged files, stalled transfer);
+  - flash ids 856014 / b36014 / unknown;
+  - every check of parts 1–5.
+- Happy Birthday plays from its pickup (tick 960) with the melody muted (p5-open.png).
+- The suite takes about 60 minutes with 4 jobs, because the full-song runs at the songs' own tempos dominate.
+Choices (with reasons):
+- 104 BPM in 3/4 (a sing-along tempo); the pickup as two even eighths (D-D), the simplest common form.
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M3-early-install.md. It is optional: the final M3 checklist follows at the end of Part 9.
+Next: Part 6 (guitar chord diagrams, bass tab); work on Parts 6–8 is already under way in the tree.
