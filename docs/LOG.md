@@ -668,3 +668,57 @@ Questions for the planning chat:
   read-only)?
 - The three new melodies are from memory: check them against public-domain scores before publishing.
 Next: STOP. The user and the planning chat review; then the user runs the checklist.
+
+2026-11-05 17:55 — Milestone M3, Part 1 (bugs and housekeeping) —
+Status: done (emulator), except the CLAUDE.md rule text (blocked, below); committed; tested release build kept
+Did:
+- 1. **No L1 drums on Greensleeves and Oh! Susanna.** The player was fine: the emulator played their level 1 (drums
+  alone: rms 419 / 600, as loud as Amazing Grace's 454). The cause was the song data. M2's new level 1 for these
+  songs was a kick and a soft hi-hat, with no snare (Greensleeves: pedal hi-hat, velocity 44–56), so it was lost under
+  the band. Fix in songs/make_songs.py: level 1 is now the plain beat with a backbeat (4/4: kick on 1 and 3, snare on
+  2 and 4; 3/4: kick on 1, light snare on 2 and 3; closed hi-hat on every beat). Level 2 is unchanged (busier).
+  Danny Boy had the same level 1 and gets the same fix.
+- 2. **Loops.**
+  - Several A marks: the strip repeats a loop's bars after its end and drew A on every copy. Marks are now drawn only
+    on the bars in song order.
+  - "START BAR" left on with the loop off: setting A (PRESETS) and starting LOOP BARS moved the start point. They
+    no longer do, so with the loop off the start point is the one set before.
+  - Part 3 redesigns loops.
+- 4. **Count-in in the keyboard and chart views:** the count (big, amber) and the first chord replace the view
+  while it counts in.
+- 5. **Beat light:** a full flash on every beat, 220 ms on beat 1 and 110 ms on the others. M2's mid level for
+  beats 2.. was not visible on the real LED.
+- 6. **Housekeeping:**
+  - docs/step-M2-install.md step 2: `songs/*/`, with a dated note. Also songs/README.md, controls.md and the
+    empty-list screen.
+  - docs/step-M2-part2-install.md marked SUPERSEDED (HANDOFF 12:50).
+  - `fm1song send` skips anything that is not a song folder (song.yaml + song.mid) or a .fm1s file, with
+    "PATH: skipped (...)". With nothing left to send it exits 2 before looking for an FM-1. New pytest test.
+  - 3 (bass muted shows the harmony): in Part 2, as planned.
+- New tools/m3_test.py, grown from m2_test.py:
+  - `--only` takes a list;
+  - each part's checks are a group (part1, ...).
+  - The full suite runs at the early install point and at the end, as planned.
+Learned / measured:
+- Part 1 checks (tools/m3_test.py --only part1): ALL PASS.
+  - Drums alone at L1: Greensleeves rms 691, Oh! Susanna 1056 (Amazing Grace 454).
+  - Beat light: 4 beat-1 and 9 other flashes in 8 s at 96 BPM.
+  - Loop off after LOOP BARS: PLAY at the earlier start (bar 3).
+  - Count-in drawn over the keyboard view.
+- pytest 72 pass; tools/store_test.sh ALL PASS.
+- Release build build/step-M3/part1/fm1acc-0.3.1-m3p1.fwsc: identity FM-1_46000301, sha256
+  ddb63c4f1ba89f53a70eddfca81a7454425310be6ec171f0333c13be5003d877, Part 1 checks ALL PASS on that file. Image
+  395,472 B.
+- `firmware/build.sh --release X.Y.Z` writes `fm1acc-X.Y.Z.fwsc`; plain `fm1acc.fwsc` stays the dev build
+  (FM-1_4600). Copy the versioned file.
+Choices (with reasons):
+- Part builds 0.3.N-m3pN (identity FM-1_460003NN); the whole M3 will be 0.4.0-m3. Same scheme as M2.
+Hardware touched: none
+Questions for the planning chat:
+- **CLAUDE.md not updated:** Claude Code's permission check refused the edit (self-modification). Please make the
+  change or allow it. Proposed text:
+  - In the "NEVER run" list, after "any web installer": "and `tools/fm1song.sh send` and `delete` (they write the
+    FM-1's song area; the user runs them)".
+  - In the read-only list: "`tools/fm1song.sh list` (a SysEx question that writes nothing)".
+  Until then Claude Code keeps treating all three as user-run.
+Next: Part 2 ("follow your part" for all four layers, blinking in rhythm, the cue on the right).

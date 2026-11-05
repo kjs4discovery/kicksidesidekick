@@ -442,3 +442,59 @@ The user will start it with a short prompt. Commit and keep a tested build per p
 docs/plan-M2.md now has an EARLY INSTALL POINT: after Part 2, write
 docs/step-M2-part2-install.md, log it, and continue. The user's weekly usage may run
 out; this makes sure an installable build with parts 1-2 exists.
+
+---
+
+## 2026-11-05 12:50 — from the planning chat — REVIEW of Milestone M2: final checklist APPROVED
+
+Excellent work: all five parts, 175 checks, the store's power-cut testing, the crackle
+diagnosis (aliasing on GM 81, not clipping).
+
+- **docs/step-M2-install.md: approved as written.** The early part-2 checklist is not
+  needed (the whole build is done); mark it superseded.
+- **Both harmony and bass muted → harmony wins:** accepted for now; the user decides
+  after testing.
+- **CLAUDE.md rules** (update after the install, not during it):
+  - `fm1song send` and `fm1song delete` write the FM-1's flash (song area): add them to
+    the list of commands only the user runs.
+  - `fm1song list` (a SysEx question, writes nothing): allowed for Claude Code as a
+    read-only command, like `--info`; say before running it.
+- **The three new melodies (from memory):** fine for testing; keep "check before
+  publishing" until checked against public-domain scores.
+
+### Current step
+- [x] M2 built and reviewed
+- [ ] M2 install: steps 1-3 run by the user
+
+---
+
+## 2026-11-05 12:45 — from the planning chat — checklist bug in M2 step 2b (no harm done)
+
+`tools/fm1song.sh send songs/*` also matched songs/make_songs.py (and README.md): the
+tool refused it ("does not compile: nothing sent"), correct behaviour. The user is
+checking with `list` and, if needed, sending `songs/*/` (folders only).
+After the install (not now): fix docs/step-M2-install.md to `songs/*/`, and make
+`fm1song send` skip non-song arguments (not a folder with song.yaml + song.mid, and
+not a .fm1s) with a one-line "skipped" note instead of an error. Record in LOG.
+
+---
+
+## 2026-11-05 17:40 — from the planning chat — Milestone M3 planned: docs/plan-M3.md
+
+The user tested M2 (notes reviewed by the planning chat; they're in the vault).
+M3 = one build (D024, D025): bugs, "follow your part" for all four layers with blinking
+in rhythm, loops redesigned (A–B only), screen polish, louder count-in beep, inversion
+label, a small settings screen, a MIDI import tool + Happy Birthday, guitar chord
+diagrams, bass tab, scrolling views (melody display, simplified notation per
+docs/m3-design/notation-mock.png, drum grid), song folders, guide volume. Early
+install point after Part 5. The user will start it with a short prompt.
+- The CLAUDE.md rule updates from 12:50 and the `songs/*/` fix are Part 1 item 6.
+
+---
+
+## 2026-11-05 17:45 — from the planning chat — M3 changes before you start
+
+- The MIDI import tool moved out of M3 (to M4: the user wants to think it through).
+  Part 5 is now just Happy Birthday; the early install point stays after Part 5.
+- Testing: fast checks after each part; the FULL emulator suite only on builds offered
+  for install (early install point and the end). docs/plan-M3.md is updated.

@@ -25,7 +25,8 @@ static void ui_busy(const char *a, const char *b);
 #define LIST_ROWS 5u
 #define LIST_ROW_H 36
 #define SPLASH_MS 3000u                  /* the splash stays at least this long after power-on */
-#define FLASH_MS 110u                    /* the beat light's flash */
+#define FLASH_MS 110u                    /* the beat light's flash on beats 2.. (M3: full brightness, every beat) */
+#define FLASH_BAR_MS 220u                /* and on beat 1: longer */
 #define CUE_MS 140u                      /* the rhythm cue's flash at each attack */
 #define KEYMODE_MS 4000u                 /* the KEY mode ends this long after its last use */
 #define W_CUE 34                         /* the rhythm cue's part of the chord band, left of the big chord */
@@ -540,12 +541,9 @@ static void lights(void)
             int32_t t = player_tick(PL_LEAD_BEAT_MS) + (int32_t)(s->bar_ticks * 2u);
             uint32_t in_beat = (uint32_t)t % s->ppq, beat1 = (uint32_t)t % s->bar_ticks < s->ppq;
             uint32_t ms = in_beat * 60000u / (s->ppq * player_tempo_of());
-            if (ms < FLASH_MS) {
-                if (beat1)
-                    lit |= LED_PLAY_GREEN;
-                else
-                    mid |= LED_PLAY_GREEN;
-            }
+            if (ms < (beat1 ? FLASH_BAR_MS : FLASH_MS))   /* (M2's mid level for beats 2.. was not visible on the
+                                                             * unit: the user saw one flash a bar) */
+                lit |= LED_PLAY_GREEN;
             if (((lit | mid) & LED_PLAY_GREEN) && !ui.flashing) {   /* (counted for the tests) */
                 if (beat1)
                     player_stats.flash_bars++;
@@ -582,7 +580,7 @@ static void input_list(uint32_t down)
 static void say_from(void)
 {
     char t[24] = "BAR ";
-    num_cat(t, ui.from_bar + ui.s->first_bar_number);
+    num_cat(t, (ui.loop == LOOP_BARS ? ui.a_bar : ui.from_bar) + ui.s->first_bar_number);
     app_say(ui.loop == LOOP_BARS ? "LOOP FROM" : "START", t);
 }
 
@@ -672,7 +670,6 @@ static void input_play(uint32_t down, uint32_t now)
             ui.a_bar = (uint32_t)clamp((int32_t)ui.a_bar + d, (int32_t)first_bar(), (int32_t)last_bar());
             if (ui.b_bar < ui.a_bar)
                 ui.b_bar = ui.a_bar;
-            set_from_bar(ui.a_bar);
             set_loop(LOOP_BARS);
         } else {                         /* the start point, by section */
             int32_t i = clamp((int32_t)section_at(ui.from_tick) + d, 0, (int32_t)ui.s->nsect - 1);
@@ -709,13 +706,14 @@ static void input_play(uint32_t down, uint32_t now)
     if (down >> B_SEQ & 1u) {
         int mode = ui.loop == LOOP_OFF ? LOOP_SECTION : ui.loop == LOOP_SECTION ? LOOP_BARS :
                    ui.loop == LOOP_BARS ? LOOP_SONG : LOOP_OFF;
+        uint32_t at = ui.from_bar;
         if (st == PL_PLAYING || st == PL_PAUSED) {   /* playing: the loop takes the bar / section playing */
-            set_from_bar(bar_at(player_tick(PL_LEAD_BEAT_MS)));
+            at = bar_at(player_tick(PL_LEAD_BEAT_MS));
             if (mode == LOOP_SECTION)
                 set_from_bar(song_section_first(ui.s, section_at(player_tick(PL_LEAD_BEAT_MS))));
         }
-        if (mode == LOOP_BARS) {
-            ui.a_bar = ui.from_bar;
+        if (mode == LOOP_BARS) {         /* (A and B only: the start point stays where it was) */
+            ui.a_bar = at;
             ui.b_bar = ui.a_bar + 3u > last_bar() ? last_bar() : ui.a_bar + 3u;
         }
         set_loop(mode);
@@ -815,7 +813,7 @@ static void draw_list_empty(void)
         text_in(0, 240, 24, &FONT_B, "NO SONGS YET", C_WHITE);
         text_in(0, 240, 56, &FONT_XS, "Send songs from the computer,", C_GRAY);
         text_in(0, 240, 72, &FONT_XS, "with this FM-1 on USB:", C_GRAY);
-        text_in(0, 240, 98, &FONT_XS, "tools/fm1song.sh send songs/*", C_HI);
+        text_in(0, 240, 98, &FONT_XS, "tools/fm1song.sh send songs/*/", C_HI);
         text_in(0, 240, 130, &FONT_XS, "They stay here when it is off.", C_DIM);
     }
     cv_blit(0, H_TOP);
@@ -1113,7 +1111,9 @@ static void draw_strip(int32_t bar)
         t0 = (uint32_t)b * s->bar_ticks;
         if (ui.loop && t0 + s->bar_ticks > from && t0 < to)   /* the loop's bars: a line under them */
             cv_rect(x, BOX_H + 1, BOX_W + (t0 + s->bar_ticks < to && i < 3u ? BOX_STEP - BOX_W : 0), 3, C_AMB);
-        if (ui.loop == LOOP_BARS && ((uint32_t)b == ui.a_bar || (uint32_t)b == ui.b_bar))
+        if (ui.loop == LOOP_BARS && b == bar + (int32_t)i && ((uint32_t)b == ui.a_bar || (uint32_t)b == ui.b_bar))
+            /* (only on the bars in song order: the strip repeats a loop's bars after its end, and M2 drew A on each
+             * copy: several A marks at once) */
             cv_text(x + BOX_W - 12, 1, &FONT_XS, (uint32_t)b == ui.a_bar ? "A" : "B", C_HI);
         k = song_bar_chord(s, (uint32_t)b);
         k_end = k;                       /* the chord events inside the bar: k (sounding at beat 1) .. k_end */
@@ -1190,6 +1190,24 @@ static void draw_keys_view(int st, int32_t k, int32_t next, int32_t left, uint32
     }
     cv_text(6, y0 + 78, &FONT_XS, part() == PART_BASS ? "bass muted: its note amber" :
             player_variant_of(L_HARM) >= 2u ? "harmony L2: these keys (inversions)" : "harmony L1: these keys", C_DIM);
+    cv_blit(0, Y_CHORD);
+}
+
+/* the count-in over a whole view (M3: the keyboard and chart views had none after a pause): the beats left, big,
+ * and the first chord */
+static void draw_count_view(int32_t count, int32_t next)
+{
+    char t[24] = "";
+    cv_begin(240, Y_LAYERS - Y_CHORD, C_BLACK);
+    num_cat(t, (uint32_t)count);
+    text_in(0, 240, 4, &FONT_XS, "COUNT-IN", C_DIM);
+    text2x((240 - 2 * text_w(&FONT_L, t)) / 2, 20, &FONT_L, t, C_AMB);
+    if (next >= 0) {
+        t[0] = 0;
+        text_cat(t, "first ");
+        text_cat(t, chord_name((uint32_t)next));
+        text_in(0, 240, 100, &FONT_B, t, C_GRAY);
+    }
     cv_blit(0, Y_CHORD);
 }
 
@@ -1392,9 +1410,11 @@ static void frame_play(uint32_t now)
     }
     if (ui.pview != PV_CHORD) {          /* the keyboard and chart views: the chord band, strip and cursor's place */
         view_key = (uint32_t)(k + 1) ^ (uint32_t)(next + 1) << 11 ^ (uint32_t)left << 22 ^ bass_now << 25 ^
-                   (uint32_t)st << 29 ^ (uint32_t)(ui.pview == PV_CHART ? bar : 0) << 3;
+                   (uint32_t)st << 29 ^ (uint32_t)(ui.pview == PV_CHART ? bar : 0) << 3 ^ (uint32_t)count << 18;
         if (ui.redraw || view_key != ui.sh_view) {
-            if (ui.pview == PV_KEYS)
+            if (st == PL_COUNT_IN && count > 0)
+                draw_count_view(count, next);
+            else if (ui.pview == PV_KEYS)
                 draw_keys_view(st, k, next, left, ui.muted >> L_BASS & 1u ? bass_now : 0xFFu);
             else
                 draw_chart_view(bar, section);

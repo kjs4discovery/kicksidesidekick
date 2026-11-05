@@ -29,7 +29,7 @@ layers:
   drums:
     channel: 10
     variants:
-      1: just the beat, kick on 1 and pedal hi-hat on every beat
+      1: the plain beat, kick on 1, light snare on 2 and 3, hi-hat on every beat
       2: the full waltz, rim clicks, eighth hi-hats, a crash at each section, a fill every 4 bars
   bass:
     channel: 3

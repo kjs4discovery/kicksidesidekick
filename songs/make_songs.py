@@ -218,7 +218,7 @@ SONGS = {
         melody=GREEN_PICKUP + GREEN_VERSE + GREEN_REFRAIN + GREEN_VERSE,
         layers=dict(bass=33, harmony=25, melody=69),      # acoustic bass, nylon guitar, oboe
         style=dict(drums="waltz", bass="root-fifth", harmony="waltz"),
-        variants=dict(drums={1: "just the beat, kick on 1 and pedal hi-hat on every beat",
+        variants=dict(drums={1: "the plain beat, kick on 1, light snare on 2 and 3, hi-hat on every beat",
                              2: "the full waltz, rim clicks, eighth hi-hats, a crash at each section, a fill every 4 bars"},
                       bass={1: "root note, once per chord", 2: "root on beat 1, fifth on beat 3"},
                       harmony={1: "root-position triads, held", 2: "inversions, waltz rhythm (oom-pah-pah)"},
@@ -243,7 +243,7 @@ SONGS = {
                + DANNY_A[:-3] + [("C4", 4)],                                           # A3, the end
         layers=dict(bass=33, harmony=1, melody=72),       # acoustic bass, piano, clarinet
         style=dict(drums="ballad", bass="root-fifth", harmony="arpeggio"),
-        variants=dict(drums={1: "just the beat, a soft kick on 1 and hi-hat on every beat",
+        variants=dict(drums={1: "the plain beat, kick on 1 and 3, snare on 2 and 4, hi-hat on every beat",
                              2: "a ballad groove, rim on 2 and 4, eighth hi-hats, a fill every 4 bars"},
                       bass={1: "the chord's bass note (for a slash chord the note after the slash), once per chord",
                             2: "bass note on 1, fifth on 3"},
@@ -264,7 +264,7 @@ SONGS = {
                          + [("E4", .5), ("E4", .5), ("D4", .5), ("D4", .5), ("C4", 2)], 2),
         layers=dict(bass=33, harmony=26, melody=66),      # acoustic bass, steel guitar, alto sax
         style=dict(drums="train", bass="two-beat", harmony="eighths"),
-        variants=dict(drums={1: "just the beat, kick on 1 and 3 and hi-hat on every beat",
+        variants=dict(drums={1: "the plain beat, kick on 1 and 3, snare on 2 and 4, hi-hat on every beat",
                              2: "a train beat, snare on 2 and 4 with ghost notes, eighth hi-hats, a fill every 4 bars"},
                       bass={1: "root note, once per chord", 2: "root and fifth on 1 and 3 (two-beat)"},
                       harmony={1: "root-position triads, held", 2: "inversions, straight-eighth strum"},
@@ -452,12 +452,14 @@ def arrange(s):
 def contrast_drums(s, style, level, b, t0, section_start):
     """the new songs' drums (M2): level 1 the plain pulse, level 2 a full groove with fills; (tick, len, drum, vel)"""
     bpb, out = s["bpb"], []
-    if level == 1:
-        out.append((t0, 60, KICK, 70))
-        if bpb == 4:
-            out.append((t0 + 2 * PPQ, 60, KICK, 60))
-        for k in range(bpb):
-            out.append((t0 + k * PPQ, 60, PEDAL_HAT if style == "waltz" else HAT, 46 if k else 56))
+    if level == 1:                   # M3: the plain beat, with its backbeat (M2's kick and soft hi-hat alone were lost
+        for k in range(bpb):         # under the band: the user heard no drums at level 1)
+            tk = t0 + k * PPQ
+            if k == 0 or (bpb == 4 and k == 2):
+                out.append((tk, 60, KICK, 88 if k == 0 else 80))
+            else:
+                out.append((tk, 60, SNARE, 62 if style == "waltz" else 80))
+            out.append((tk, 60, HAT, 64 if k == 0 else 56))
         return out
     bar_no = b + 1 - (1 if s["pickup"] else 0)
     fill = bar_no % 4 == 0

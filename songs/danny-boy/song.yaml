@@ -30,7 +30,7 @@ layers:
   drums:
     channel: 10
     variants:
-      1: just the beat, a soft kick on 1 and hi-hat on every beat
+      1: the plain beat, kick on 1 and 3, snare on 2 and 4, hi-hat on every beat
       2: a ballad groove, rim on 2 and 4, eighth hi-hats, a fill every 4 bars
   bass:
     channel: 3

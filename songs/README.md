@@ -14,7 +14,7 @@ Each folder is one song in format `fm1-song/1` (docs/song-format.md): `song.yaml
 | danny-boy | Londonderry Air (Danny Boy) (M2) | C, 4/4, slow (66 BPM), slash chords (C/E, C/G, D7/F#, G/F) | `make_songs.py` |
 | oh-susanna | Oh! Susanna (M2) | D, 4/4, fast (150 BPM) | `make_songs.py` |
 
-**On the FM-1 (M2):** songs are no longer built into the firmware: send them with `tools/fm1song.sh send songs/*`
+**On the FM-1 (M2):** songs are no longer built into the firmware: send them with `tools/fm1song.sh send songs/*/`
 (the FM-1 on USB, running FM-1 Accompaniment M2). **Drums, level 1 vs 2:** the three M2 songs make level 1 just
 the pulse (kick and hi-hat) and level 2 a full groove with fills: 2.2–3.6 times the drum hits of level 1, 7 drum
 sounds instead of 3 (the M1 songs: 1.5–1.8 times; they stay as they are for now, D004 decides their future).

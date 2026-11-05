@@ -1,4 +1,4 @@
-# Controls (M2)
+# Controls (M2; M3 changes at the end)
 
 The FM-1's panel, as M2 uses it. M1's map (2026-11-04) was the start; M2 adds what the user asked for after testing
 M1 (D020: tempo in BPM, loops you can find, pause, the keys' octave) and the planning chat's rule from M1's lesson
@@ -31,7 +31,7 @@ delayed.
 | keys | Electric Piano 1 on channel 16; OCT− / OCT+ their octave |
 | MASTER | volume |
 
-No songs stored: the list says how to send them (`tools/fm1song.sh send songs/*`). A song that fails its check
+No songs stored: the list says how to send them (`tools/fm1song.sh send songs/*/`). A song that fails its check
 when opened stays in the list with `SONG ERROR <reason> (send it again)`.
 
 ## Play screen
@@ -111,3 +111,18 @@ That is a proposal (plan-M2 G asked for one): one rule for the rhythm cue and th
 - GLO ("global") is the help: one press shows every control where it is on the panel.
 - EDIT ("edit what you see") changes the view; SAVE was free and the key is a setting you set and keep for the song
   (the legend says `SAVE: KEY`). A shift (hold GLO + turn) was rejected: GLO opens the help on its press.
+
+## M3 (docs/plan-M3.md), part by part
+
+### Part 1: bug fixes
+
+- **Beat light:** PLAY flashes at full brightness on every beat, for 220 ms on beat 1 and 110 ms on the others.
+  M2's mid-level flash on beats 2.. was not visible on the unit.
+- **Loop marks:** the strip repeats a loop's bars after its end (it shows the bars as they will be heard). The A and
+  B marks are now drawn only on the bars in song order, so there is one A and one B.
+- **Start bar after a loop:** setting LOOP BARS (A and B) no longer moves the start point. With the loop off, PLAY
+  starts where the start point was set before, and the bottom line says so only if it was set.
+- **Count-in in the keyboard and chart views:** the count replaces the view while it counts in, as the chord view
+  does.
+
+![count-in over the keyboard view](step-M3/p1-keys-countin.png) ![one A, one B](step-M3/p1-loop-marks.png)

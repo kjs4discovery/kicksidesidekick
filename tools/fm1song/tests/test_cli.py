@@ -28,3 +28,13 @@ def test_validate_reports_bar_beat(tmp_path, capsys):
 def test_missing_file(tmp_path, capsys):
     assert main(["validate", str(tmp_path)]) == 1
     assert "song.yaml not found" in capsys.readouterr().err
+
+
+def test_send_skips_non_songs(tmp_path, capsys):
+    # songs/* also matches make_songs.py and README.md: skipped with a note, and nothing at all to send -> exit 2
+    # before any FM-1 is looked for (no device is touched)
+    (tmp_path / "notes.txt").write_text("x")
+    (tmp_path / "empty").mkdir()
+    assert main(["send", str(tmp_path / "notes.txt"), str(tmp_path / "empty")]) == 2
+    out = capsys.readouterr()
+    assert out.out.count("skipped") == 2 and "no songs to send" in out.err

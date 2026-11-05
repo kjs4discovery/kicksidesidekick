@@ -168,6 +168,9 @@ def cmd_send(args):
     blobs = []
     for path in args.songs:               # every song checked on the laptop first: nothing is sent if one fails
         p = Path(path)
+        if not (p.is_dir() and (p / "song.yaml").is_file() and (p / "song.mid").is_file()) and p.suffix != ".fm1s":
+            print(f"{path}: skipped (not a song folder with song.yaml and song.mid, nor a .fm1s file)", file=args.out)
+            continue                      # (songs/* also matches make_songs.py and README.md)
         try:
             if args.no_validate:
                 blob = p.read_bytes()
@@ -179,6 +182,9 @@ def cmd_send(args):
             print(f"{path}: does not compile: nothing sent", file=sys.stderr)
             return 2
         blobs.append((path, blob))
+    if not blobs:
+        print("no songs to send", file=sys.stderr)
+        return 2
     device, dev = _device(args)
     status = 0
     for path, blob in blobs:

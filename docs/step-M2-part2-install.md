@@ -1,6 +1,7 @@
 # Milestone M2, parts 1–2 — install on the FM-1 (early checklist)
 
-**Status: PREPARED, WAITING FOR REVIEW** by the planning chat and the user (docs/plan-M2.md: the early install
+**Status: SUPERSEDED** (2026-11-05, the planning chat: the whole M2 was built and its final checklist,
+[step-M2-install.md](step-M2-install.md), approved; this early one is not needed). Was: prepared, waiting for review by the planning chat and the user (docs/plan-M2.md: the early install
 point, so that an installable build with parts 1–2 exists even if the work stops later). Nothing has been
 installed or sent. Claude Code ran no device command while preparing it (the FM-1 was not plugged in). **The user
 runs every device command**, one at a time, in their own terminal, pasting each step's output to Claude Code

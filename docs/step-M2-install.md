@@ -1,5 +1,9 @@
 # Milestone M2 — install on the FM-1 (checklist)
 
+> 2026-11-05 (M3 Part 1): step 2 now sends `songs/*/` (folders only); `songs/*` also matched
+> songs/make_songs.py and README.md, which `fm1song send` refused (HANDOFF 12:45). `fm1song send` now skips
+> such arguments with a one-line "skipped" note.
+
 **Status: PREPARED, WAITING FOR REVIEW** by the planning chat and the user. This is the final M2 checklist (parts
 1–5); it replaces the early one ([step-M2-part2-install.md](step-M2-part2-install.md)) unless the user has already
 run that (then step 1 installs over 0.2.2-m2p2 instead of M1: the same command, the same checks). Nothing has been
@@ -55,7 +59,7 @@ checklist ([step-M1-install.md](step-M1-install.md)); what differs is spelled ou
 | P5 | Flash IDs | ✅ | Emulator with 0x856014 and 0xB36014: same screens, sound, songs stored; unknown 0xC84017: `NO SONG STORAGE`, keys sound, a send refused, no crash. Loader: unchanged (P3). |
 | P6 | Unit state before step 1 | (check) | `--info` must print `FM-1_46000200  [running]` (M1). |
 | P7 | Fallback package | ✅ | M1, known good on this unit: `build/step-M1/fm1acc-0.2.0-m1.fwsc`, sha256 `bf8f640f8137efc278fa17f6bcd7c21791eb1adbd68a7b7299c22f851804ff25` (its songs are built in: it works whatever is in the song store). |
-| P8 | The songs to send | ✅ | `songs/*` (8 songs, format 1.1, ~78 KB; Four Chords' melody is now the clarinet; 3 new songs). The laptop checks each before anything is sent. |
+| P8 | The songs to send | ✅ | `songs/*/` (8 songs, format 1.1, ~78 KB; Four Chords' melody is now the clarinet; 3 new songs). The laptop checks each before anything is sent. |
 
 ## Rules for every step (as M1's)
 
@@ -107,7 +111,7 @@ P7, from there), ROM download mode after four → path B.
    fine, it will be erased where songs go).
 2. Send the eight songs (writes the song store only; a few seconds):
    ```bash
-   tools/fm1song.sh send songs/*
+   tools/fm1song.sh send songs/*/
    ```
    expect eight lines `songs/<name>: stored (<n> bytes; <k> song(s) on the FM-1, <f> sectors free)`. The FM-1
    shows `RECEIVING SONG` / `STORING SONG` / `SONG STORED` and then the list.
