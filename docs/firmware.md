@@ -1,9 +1,51 @@
 # Our firmware
 
-**Emulator only so far. Nothing has been installed on the FM-1.** Step 0.7's checklist for the first writes:
-[step-0.7-first-writes.md](step-0.7-first-writes.md) (waiting for review).
+**On the FM-1 now: the Step 0.7 prototype (v0.1.0-proto, FM-1_4600), installed by the user (docs/device.md).**
+M1's firmware (v0.2.0-m1, below) has run in the emulator only; its install checklist is
+[step-M1-install.md](step-M1-install.md) (waiting for review).
 
-## Step 0.7: the song-playing PROTOTYPE (v0.1.0-proto, identity FM-1_4600)
+## Milestone M1: song list, player, play screen (v0.2.0-m1, identity FM-1_4600)
+
+Plays the five starter songs (`songs/`, format `fm1-song/1`, docs/song-format.md) with our own scheduler.
+Controls: [controls.md](controls.md).
+
+| File | What |
+|---|---|
+| `firmware/app/song.c/.h` | the compiled-song parser: standalone C, every bound checked at `song_open`, accessors that read in place. Fuzzed on the laptop under ASan/UBSan (`make fuzz`, tools/song_fuzz.c); `song_fuzz --diff` checks it accepts exactly what tools/fm1song's reader accepts |
+| `firmware/app/player.c/.h` | the player (D017: our code): per-block scheduler, mutes, variants, tempo, count-in, loops; stats in RAM for the tests |
+| `firmware/app/ui.c` | song list and play screen (simple; step 1.6 designs the real ones) |
+| `firmware/app/synth.c` | EAS behind a queue; one MIDI stream for the song and the keys; calls `player_block` before each render |
+| `tools/songs_to_c.py` | build step (`fm1.toml gen`): compiles every song folder and writes `build/gen/songs_gen.h` |
+| `tools/m1_test.py` | headless emulator tests (`make m1-test`): docs/step-M1-emulator-report.md |
+
+How it works:
+- **Songs in the build.** The compiled `.fm1s` files are `const` arrays in the app image (the flash, read in
+  place through the cache, as Step 0.7's MIDI file was). Chosen over the resource region or the data area because
+  it needs no new flash layout and no write path, and the package's own checks cover the songs; the cost is a
+  rebuild to change songs, which `fm1song send` (step 1.7) removes. 113 KB for the five songs; the image is
+  484 KB of the app slot's ~581 KB. The list peeks at each song's header and META when it is drawn; `song_open`
+  (CRC and every check) runs when a song is opened, not at boot. A song that fails shows `SONG ERROR <reason>`.
+- **Timing.** `player_block` runs in the audio interrupt before each EAS render (256 frames, 5.8 ms) and sends
+  every event whose tick falls before the block's end, at the block's start (≤ one block early, as EAS's own file
+  player). The position is a 64-bit count in units of 1/(tempo_us × 441) tick, advanced by 256 × ppq × tempo% ×
+  100 per block: exact at 44.1 kHz, so tempo changes (50–120 %) never drift. All 64-bit multiplies are in a
+  `noinline` helper (felucca-bsp docs/CPU.md: inlined beside loads they can corrupt a register on this CPU; the
+  build's check confirms none is inlined).
+- **Mutes, variants, loops, stop.** Each layer's sounding notes are tracked (128-bit set); a mute, a variant
+  change, a loop jump or a stop sends exactly their note-offs (and sustain off). A muted layer's note-ons are
+  skipped, its controllers still sent; unmuting resumes at the next note.
+- **Count-in** (ARP, default on): wood-block clicks for one bar plus the pickup bar's empty beats.
+- **Loops** (SEQ: off / song / section): docs/song-format.md 3.3; the screen maps positions past the loop end
+  back to its start, so the chord, the countdown and the bar strip show what will be heard.
+- **Chord timing.** The big chord is drawn `PL_LEAD_CHORD_MS` (100 ms) ahead of the sound, first in the frame,
+  and the frame waits for its DMA to finish before logging it; the beat cursor and countdown use 30 ms. The
+  tests check every chord change was on the LCD before the block that played it.
+
+Fallback diagnostic, unchanged: `make hello` (the Step 0.6 hello world).
+
+## Step 0.7: the song-playing PROTOTYPE (v0.1.0-proto, identity FM-1_4600) — history
+
+Replaced in M1 (code removed; in git at 98fc08c). Kept here as the record of what is installed now.
 
 Plays the built-in `songs/amazing-grace` with Sonivox EAS's MIDI file player; four layers mutable; the chord
 chart from `song.yaml` on the screen. Prototype code, for Phase 1 to replace: `firmware/app/proto_*.c|h`,
@@ -38,7 +80,7 @@ How it works:
 - **Chord timing:** the screen runs `PP_LEAD_MS` (80 ms) ahead of the parser's position, to cover a UI frame,
   a blit in progress and the big chord's LCD transfer (~0.32 ms a row); the chord is drawn and sent first.
 
-Tests (`make proto-test`, ~10 min headless): `docs/step-0.7-emulator-report.md`.
+Tests (then `make proto-test`, removed in M1): `docs/step-0.7-emulator-report.md`.
 
 Fallback diagnostic: `make hello` → `build/hello/fm1acc-hello.fwsc`, the Step 0.6 hello world built from commit
 4629478's source (identity FM-1_7100).
@@ -55,7 +97,7 @@ shown large ("C4"), and a small keyboard lights the held keys.
 
 | Path | What | Licence |
 |---|---|---|
-| `firmware/app/` | our app: `app.c` (screen, keys), `synth.c` (EAS behind a queue), `eas/` (our EAS configuration, host layer, small headers), `fm1.toml` (build settings), `words.tsv` (screen reader) | TBD (D017) |
+| `firmware/app/` | our app: `app.c` (includes `ui.c`: screens, controls), `song.c` (parser), `player.c` (scheduler), `synth.c` (EAS behind a queue), `eas/` (our EAS configuration, host layer, small headers), `fm1.toml` (build settings), `words.tsv` (screen reader) | TBD (D017) |
 | `firmware/vendor/` | fm1-base + felucca-bsp, Sonivox EAS: see `firmware/vendor/README.md` (commits, licences, our patch) | MPL-2.0, Apache-2.0 |
 | `firmware/build.sh` | runs fm1-base's `tools/build.py` on `firmware/app` with the toolchain in `third_party/jieli` | TBD |
 | `tools/emu.sh`, `Makefile` | build + emulator in one step | TBD |

@@ -133,3 +133,38 @@ def test_fuzz_yaml():
             song_from_data(data, mid)
         except SongError:
             pass
+
+
+def test_device_parser_agrees(blobs, tmp_path):
+    """the C parser (firmware/app/song.c, via build/fuzz/song_fuzz --diff) accepts exactly what this reader accepts"""
+    import subprocess
+    from conftest import ROOT
+    exe = ROOT / "build/fuzz/song_fuzz"
+    if not exe.exists():
+        pytest.skip("build tools/song_fuzz first (tools/song_fuzz.sh)")
+    rng = random.Random(4)
+    files, expect = [], {}
+    for k in range(1500):
+        b = mutate(rng, rng.choice(blobs))
+        if k % 4:
+            b = fix_crc(b) if len(b) >= 16 else b
+        if k % 8 == 0 and len(b) >= 12:         # the size field follows the length
+            b = fix_crc(b[:8] + struct.pack("<I", len(b)) + b[12:])
+        p = tmp_path / f"m{k}.fm1s"
+        p.write_bytes(b)
+        files.append(str(p))
+        try:
+            read_compiled(b)
+            expect[str(p)] = True
+        except SongError:
+            expect[str(p)] = False
+    for b in blobs:
+        p = tmp_path / f"seed{len(files)}.fm1s"
+        p.write_bytes(b)
+        files.append(str(p))
+        expect[str(p)] = True
+    out = subprocess.run([str(exe), "--diff"] + files, capture_output=True, text=True, check=True).stdout
+    got = {line.split(" ", 1)[1]: line.split(" ", 1)[0] == "0" for line in out.splitlines()}
+    differ = [f for f in files if got[f] != expect[f]]
+    assert not differ, [(f, expect[f]) for f in differ[:5]]
+    assert sum(expect.values()) > len(blobs)       # some mutants are valid, so the comparison means something

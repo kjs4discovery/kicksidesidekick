@@ -3,12 +3,13 @@
  * the main loop puts messages in a single-producer, single-consumer ring, and each render drains it into EAS's
  * MIDI stream before rendering. EAS runs at 22.05 kHz (the wt_200k_G sound set's rate); each output block is
  * twice that many frames, filled by linear interpolation.
- * PROTOTYPE (Step 0.7): the built-in song's player (proto_player.c) shares the synth: the live stream joins the
- * song's, and the player's hooks run around each render. */
+ * The song player (player.c) sends its events into the same MIDI stream from player_block, before each render. */
 #include "synth.h"
 #include "eas.h"
+#include "eas_data.h"
+#include "eas_synth.h"
 #include "plat.h"
-#include "proto_player.h"
+#include "player.h"
 
 uint32_t fw_eas_pool_used(void);          /* eas/eas_host_fw.c */
 uint32_t fw_eas_pool_size(void);
@@ -17,7 +18,7 @@ uint32_t fw_eas_pool_size(void);
 #define QLEN 64u                          /* queued messages (a power of two) */
 
 static EAS_DATA_HANDLE eas;
-static EAS_HANDLE stream, song;
+static EAS_HANDLE stream;
 static volatile uint8_t ready;
 static volatile uint8_t panic_req;
 
@@ -43,9 +44,9 @@ int synth_init(void)
         return -1;                        /* built for another rate or channel count than this file expects */
     if (EAS_Init(&eas) != EAS_SUCCESS)
         return -2;
-    song = pp_open(eas);                  /* PROTOTYPE: the song's stream (0: none; the keys play anyway) */
-    if (EAS_OpenMIDIStream(eas, &stream, song) != EAS_SUCCESS)   /* on the song's synth: one set of voices */
+    if (EAS_OpenMIDIStream(eas, &stream, 0) != EAS_SUCCESS)   /* one stream: the song's layers and the keys */
         return -3;
+    player_stats.budget = SYNTH_BLOCK * 1000000u / 44100u * PLAT_TICKS_PER_US;   /* one block, ticks24 */
     synth_send_now(0xC0u | SYNTH_KEYS_CH, GM_ELECTRIC_PIANO_1, 0);   /* the keys' channel: Electric Piano 1 */
     ready = 1;
     return 0;
@@ -68,7 +69,7 @@ void synth_midi(uint8_t status, uint8_t d1, uint8_t d2)
 void synth_panic(void)
 {
     panic_req = 1;
-    pp_panic();
+    player_panic();
 }
 
 void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
@@ -93,7 +94,7 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     }
     q_tail = t;
     t0 = plat_ticks24();
-    pp_before();
+    player_block(n);
     if (EAS_Render(eas, pcm, (EAS_I32)EAS_FRAMES, &got) != EAS_SUCCESS || got != (EAS_I32)EAS_FRAMES) {
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
@@ -109,5 +110,5 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         prev_l = l;
         prev_r = r;
     }
-    pp_after(plat_ticks24() - t0);
+    player_after(plat_ticks24() - t0, eas->pVoiceMgr ? (uint32_t)eas->pVoiceMgr->activeVoices : 0u);
 }

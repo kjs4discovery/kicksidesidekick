@@ -6,7 +6,7 @@
 #include "plat.h"
 
 #define APP_NAME "FM-1 Accompaniment"
-#define FW_VERSION "0.1.0-proto"         /* ours; APP_VERSION is fm1-base's build tag ("DEV", or a release's) */
+#define FW_VERSION "0.2.0-m1"            /* ours; APP_VERSION is fm1-base's build tag ("DEV", or a release's) */
 #define APP_SPLASH_RGB RGB(64, 160, 220)
 #define APP_BLOCK 256u                   /* frames per audio block: 5.8 ms at 44.1 kHz; one EAS buffer (synth.h) */
 
