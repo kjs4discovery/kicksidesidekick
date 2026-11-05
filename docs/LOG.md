@@ -296,3 +296,14 @@ Hardware touched: none
 Questions for the planning chat:
 - device.md asks for three copies (repo, another disk, cloud); there are two. Require the cloud copy before step 1?
 Next: P2 (a clean USB port + cable, read-only), then the review of docs/step-0.7-first-writes.md, then the user runs steps 1-5.
+
+2026-11-04 20:15 — Step 0.7 (addendum) — P2 USB port test 1
+Status: partial (P2 still ❌)
+Did:
+- Read-only, by Claude Code: kernel log, lsusb, fm1_install.py --info (vendored), after the user moved the FM-1 from port 1-2 to port 1-1 (same cable).
+Learned / measured:
+- Port 1-1: `new full-speed USB device` at 3769.48 s, `device descriptor read/64, error -110` at 3785.52 s, device found at 3785.74 s: ~16 s, the same -110 as on port 1-2. lsusb `4c4a:c755 FM-1`; --info `FM-1_015 [running]`.
+- Same failure on two ports with the same cable: the cable (or the FM-1's own USB start-up) is the likelier cause than the port.
+Hardware touched: read-only
+Questions for the planning chat: none yet
+Next: the user tries another data cable (on 1-1, then 1-2); Claude Code reads the same three checks.
