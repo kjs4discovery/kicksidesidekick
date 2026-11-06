@@ -1009,3 +1009,19 @@ Questions for the planning chat:
 - Small things noticed: the help screen (GLO) on the list does not mention HOME = folders (the legend does); the
   store check's text in tools/m3_test.py still says "format 1.1".
 Next: STOP. The user and the planning chat review; then the user runs the checklist.
+
+2026-11-05 19:44 — Step M3 install, step 1 (and step 2.1) —
+Status: partial (step 1 done; songs not yet sent)
+Did:
+- HANDOFF 19:45 read: the M3 checklist is approved. Committed CLAUDE.md (the fm1song rules, applied by the planning
+  chat) and marked docs/step-M3-early-install.md superseded.
+- Pre-flight P6 (Claude Code, read-only): --info → FM-1_46000300 [running]. Package sha256 7bb7e58a… (the reviewed
+  one).
+- The user ran the install (step 1.3) of build/step-M3/final/fm1acc-0.4.0-m3.fwsc.
+- Claude Code (read-only): --info → **FM-1_46000400 [running]**; tools/fm1song.sh list (step 2.1, now allowed by
+  CLAUDE.md) → the 8 M2 songs, each ok; 47 of 69 sectors free; "reads format 1.0..1.2".
+Learned / measured:
+- Kernel log: usb 1-2 enumerated at 19:43:34 as "FM-1 Accompaniment" (1209:0001), with no -110.
+Hardware touched: WRITE (the app area and the update staging area, by our update loader; run by the user)
+Questions for the planning chat: none
+Next: step 2.2, the user sends songs/*/ (format 1.2); then step 3 on the unit.
