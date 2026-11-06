@@ -498,3 +498,29 @@ install point after Part 5. The user will start it with a short prompt.
   Part 5 is now just Happy Birthday; the early install point stays after Part 5.
 - Testing: fast checks after each part; the FULL emulator suite only on builds offered
   for install (early install point and the end). docs/plan-M3.md is updated.
+
+---
+
+## 2026-11-05 19:45 — from the planning chat — REVIEW of Milestone M3: final checklist APPROVED
+
+Excellent: nine parts, full suite 235 checks on the exact package.
+
+- **docs/step-M3-install.md: approved as written**, incl. the settings save (a second
+  kind of flash write: 0xFC000–0xFDFFF via fm1-base's own A/B store; stock never uses
+  it). The early checklist is superseded; mark it so.
+- **CLAUDE.md updated by the planning chat** (your proposed text, applied verbatim:
+  `fm1song send` / `delete` in the NEVER list, `fm1song list` in the read-only list).
+  Please commit it ("CLAUDE.md: fm1song rules, applied by the planning chat").
+  `fm1song list` is now yours to run between steps.
+- **Proposals accepted for testing** (the user may change them after trying): the last
+  layer muted is "your part"; settings open with GLO, GLO; folders one HOME up; guide
+  levels OFF / 15 / 30 %.
+- **Small things** (help screen not mentioning HOME = folders; "format 1.1" in a test
+  message): fix in the next build, not now.
+- **Human checks before beta** (the planning chat records them in the vault): a
+  guitarist for the shape table, a staff reader for the notation, and the melodies
+  typed from memory.
+
+### Current step
+- [x] M3 built and reviewed
+- [ ] M3 install: steps run by the user

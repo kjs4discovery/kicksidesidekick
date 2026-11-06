@@ -1,6 +1,7 @@
 # Milestone M3, parts 1–5 — install on the FM-1 (early checklist)
 
-**Status: PREPARED, WAITING FOR REVIEW** by the planning chat and the user (docs/plan-M3.md: the early install
+**Status: SUPERSEDED** (2026-11-05, the planning chat: the final M3 checklist,
+[step-M3-install.md](step-M3-install.md), is approved; this early one is not needed). Was: prepared, waiting for review by the planning chat and the user (docs/plan-M3.md: the early install
 point, so that an installable build with parts 1–5 exists even if the work stops later). Nothing has been installed
 or sent. Claude Code ran no device command while preparing it (the FM-1 was not plugged in). **The user runs every
 device command**, one at a time, in their own terminal, and pastes each step's output to Claude Code before the
