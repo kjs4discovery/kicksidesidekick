@@ -334,3 +334,22 @@ Built: ![folders](step-M3/p8-folders.png) ![Folk](step-M3/p8-folk.png) ![Other](
 - **Help on the list** now says `HOME folders`.
 
 ![song loop](step-M4/m4p1-song-loop.png) ![help on the list](step-M4/m4p1-help-list.png)
+
+### Part 2: "your part" chosen on purpose (D027)
+
+- **Hold a layer button (FX drums, SEL bass, ENV harmony, LFO melody) for about a second:** that layer becomes your
+  part. The top line (`BASS - YOURS`), the big name, the rhythm cue, the key lights and the views follow it,
+  **muted or not**. A song opens with the harmony as your part. This replaces M3's "the last one muted".
+- **Press a layer button:** its volume cycles **FULL → QUIET → MUTED → FULL**.
+  - QUIET plays the layer at the quiet level (setting: 25 % or 50 %, default 50 %). M3's guide volume became this,
+    and it works for any layer, not only your part.
+  - A press is acted on when the button is released, and only if it was not held.
+- **Layer boxes:** the level and FULL or QUIET (QUIET on a darker fill), or MUTE (an amber frame). Your part has an
+  amber bar on top and a double frame.
+- **Settings:** "Quiet level" 25 % / 50 % and the new "Key lights" ON / OFF (blinking stays a separate setting). There
+  are now 7 rows.
+- Drums as your part: no key lights.
+
+Mock-up: ![your part and the volumes](step-M4/mock-p2-yours.png)
+
+Built: ![harmony yours, QUIET, the others muted](step-M4/m4p2-quiet.png) ![bass held: yours, playing](step-M4/m4p2-hold-bass.png)

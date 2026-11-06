@@ -36,8 +36,8 @@ static const struct song *volatile want_song;
 static volatile uint32_t song_req, song_done, play_req, play_done, loop_req, loop_done;
 static volatile uint8_t play_cmd, countin_want = 1, start_countin;   /* play_cmd: 0 stop, 1 start, 2 pause */
 static volatile uint8_t countin_bars_want = 1, beep_vol_want = 127;
-static volatile uint8_t guide_layer = 0xFFu, guide_q8;   /* M3: your part plays quietly instead of muted: its
-                                                           * velocities x guide_q8 / 256 */
+static volatile uint8_t quiet_mask, quiet_q8;   /* M4 (D027): the layers set to QUIET play their velocities x
+                                                  * quiet_q8 / 256 (M3's guide for your part, now for any layer) */
 static volatile int32_t start_want;
 static volatile uint32_t mute_want, tempo_want = 120;
 static volatile uint8_t var_want[SONG_LAYERS] = {1, 1, 1, 1};
@@ -127,15 +127,15 @@ void player_tempo(uint32_t b)
 }
 
 void player_count_in(int on) { countin_want = (uint8_t)(on != 0); }
-/* the guide at pct % of the part's loudness: EAS's gain goes about with the velocity squared, so the velocities are
- * scaled by the square root (30 % -> x 0.55, 15 % -> x 0.39; a plain 30 % of the velocity sounded at 9 %) */
-void player_guide(uint32_t layer, uint32_t pct)
+/* QUIET at pct % of a layer's loudness: EAS's gain goes about with the velocity squared, so the velocities are scaled
+ * by the square root (50 % -> x 0.71, 25 % -> x 0.5; a plain 30 % of the velocity sounded at 9 %, M3) */
+void player_quiet(uint32_t layers, uint32_t pct)
 {
     uint32_t want = (pct > 100u ? 100u : pct) * 65536u / 100u, q = 0;
     while ((q + 1u) * (q + 1u) <= want && q < 255u)
         q++;
-    guide_q8 = (uint8_t)(pct ? (q ? q : 1u) : 0u);
-    guide_layer = (uint8_t)(layer < SONG_LAYERS ? layer : 0xFFu);
+    quiet_q8 = (uint8_t)(pct ? (q ? q : 1u) : 0u);
+    quiet_mask = (uint8_t)(layers & ((1u << SONG_LAYERS) - 1u));
 }
 
 void player_count_in_bars(uint32_t bars) { countin_bars_want = (uint8_t)(bars >= 2u ? 2u : 1u); }
@@ -250,11 +250,11 @@ static void dispatch(uint32_t l, const struct song_event *e)
     case 0x90u: {
         uint32_t vel = e->d2;
         if (mute_cur >> l & 1u) {
-            if (l != guide_layer || !guide_q8) {
-                player_stats.notes_skipped[l]++;
-                return;
-            }
-            vel = vel * guide_q8 / 256u;  /* the guide: your part, quietly (M3 part 8) */
+            player_stats.notes_skipped[l]++;
+            return;
+        }
+        if ((quiet_mask >> l & 1u) && quiet_q8) {   /* QUIET (M4, D027) */
+            vel = vel * quiet_q8 / 256u;
             vel = vel ? vel : 1u;
             player_stats.notes_guided++;
         }

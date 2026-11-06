@@ -1051,3 +1051,32 @@ Choices (with reasons):
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 2 (your part chosen by holding a layer button; press cycles FULL / QUIET / MUTED).
+
+2026-11-06 10:49 — Milestone M4, Part 2 ("your part" chosen on purpose, FULL / QUIET / MUTED; D027) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "M4 Part 2"; mock-up first: docs/step-M4/mock-p2-yours.png):
+- **Choosing your part:** hold a layer button 900 ms to make it your part. The lights, views, cue and top line follow
+  it whether or not it is muted. A song opens with the harmony.
+- **Volume:** a short press (acted on at release) cycles FULL → QUIET → MUTED.
+- **Player:** player_quiet(mask, %) replaces M3's player_guide. Any QUIET layer's velocities are scaled by the
+  square root of the level.
+- **Settings:** "Quiet level" 25 / 50 % (default 50), and "Key lights" ON / OFF (new). 7 rows of 26 px.
+- **tools/m4_test.py:**
+  - M3's tests press a layer to mean "mute it and make it yours"; m3_presses() turns that into a hold plus two
+    presses. PLAY_MS moves to OPEN_MS + 1800 to make room.
+  - New m4p2 group. M3's part2 group (the last-muted rule) and part 8's guide check are retired.
+Learned / measured:
+- Release build build/step-M4/part2/fm1acc-0.4.2-m4p2.fwsc: FM-1_46000402, sha256
+  7b5160b4ea541209ba7a3a5dee9d153fce3aed2451fa9badab1e8429a8e9b06f. Checks m4p1, m4p2, views, part4 and the Amazing
+  Grace full run on it: ALL PASS (42).
+  - The harmony alone: FULL rms 698, QUIET 50 % 337, QUIET 25 % 177, MUTED 0, FULL again 698.
+  - The keys light with nothing muted (harmony by default), and with bass held as your part while it plays.
+- Count-in beep at the new default MEDIUM: peak 4424 (HIGH was 7725; M2's click 362).
+Choices (with reasons):
+- Hold time 900 ms ("~1 s"). The press acts on release, so a hold never also changes the volume.
+- QUIET 50 % sounds at about half the level: rms 337 against 698.
+- A saved M3 setting in the sixth slot (guide OFF / 15 / 30) is read as the quiet level 25 / 50 %, or the default
+  when out of range. It is harmless, and noted here.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 3 (harmony notation, drums: grid + drum notation only, hide views).

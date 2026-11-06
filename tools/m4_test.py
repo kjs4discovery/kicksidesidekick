@@ -49,7 +49,9 @@ FLASH = {}                                     # the prepared flash images: "emp
 LCD = (370, 42, 850, 522)                      # the LCD in fm1-live's panel image (shown 2x)
 RATE = 44100
 BLOCK = 256
-OPEN_MS, PLAY_MS = 3400, 4600                  # after the splash (3 s): open the song, then PLAY
+OPEN_MS, PLAY_MS = 3400, 5200                  # after the splash (3 s): open the song, then PLAY (M4: room for a hold)
+LAYERS_BTN = ("FX", "SCL", "ENV", "LFO")         # the layer buttons: drums, bass, harmony, melody
+HOLD = 1000                                      # a hold that makes a layer your part (the firmware: 900 ms)
 STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIIIi4I3I")   # PL_STATS_TEMPOS 64
 STATS4 = struct.Struct("<8I")                  # version 4 (M3): part key_flashes mid_keys loop_step settings saves
                                                # notes_guided folder
@@ -77,9 +79,48 @@ def press(ms, name):
     return [f"{ms}:{name}", f"{ms + 100}:{name}^"]
 
 
+def m3_presses(script):
+    """M3's tests press a layer button to mute it and make it your part. M4 (D027): hold it (your part), then press it
+    twice (FULL -> QUIET -> MUTED). An EDIT during that is moved after it (the views follow the part)"""
+    out, busy = [], []
+    for ev in sorted(script, key=lambda e: int(e.split(":")[0])):
+        t, rest = ev.split(":", 1)
+        t = int(t)
+        if rest in LAYERS_BTN:
+            out += [f"{t}:{rest}", f"{t + HOLD}:{rest}^", f"{t + HOLD + 60}:{rest}", f"{t + HOLD + 120}:{rest}^",
+                    f"{t + HOLD + 180}:{rest}", f"{t + HOLD + 240}:{rest}^"]
+            busy.append((t, t + HOLD + 300))
+            continue
+        if rest.rstrip("^") in LAYERS_BTN and rest.endswith("^"):
+            continue                                 # (its release is in the expansion)
+        if rest.rstrip("^") == "EDIT":
+            for a, b in busy:
+                if a <= t < b:
+                    t = b + (t - a)
+        out.append(f"{t}:{rest}")
+    return sorted(out, key=lambda e: int(e.split(":")[0]))
+
+
+def press_raw(ms, name):
+    return [f"{ms}:{name}!", f"{ms + 100}:{name}^!"]
+
+
+def hold(ms, name):
+    """M4: hold a layer button (your part)"""
+    return [f"{ms}:{name}!", f"{ms + HOLD}:{name}^!"]
+
+
+def tap(ms, name, n=1):
+    """M4: press a layer button n times (its volume: FULL -> QUIET -> MUTED -> FULL)"""
+    return [x for k in range(n) for x in (f"{ms + 150 * k}:{name}!", f"{ms + 150 * k + 70}:{name}^!")]
+
+
 def run(name, ms, script, flash_id=None, flash="songs", host=None, cut=None, pkg=None):
     """one emulator run. flash: a prepared image's name ("songs", "empty"), a path, or None (a blank chip); host: a
-    command playing the laptop over USB (FM1_USB_HOST; the run ends soon after it does); cut: FM1_FLASH_CUT"""
+    command playing the laptop over USB (FM1_USB_HOST; the run ends soon after it does); cut: FM1_FLASH_CUT. Layer
+    presses written M3's way are translated (m3_presses); events marked "!" (hold, tap) are M4's own"""
+    script = m3_presses([e for e in script if not e.endswith("!")]) + [e[:-1] for e in script if e.endswith("!")]
+    script = sorted(script, key=lambda e: int(e.split(":")[0]))
     d = OUT / "runs"
     d.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "FM1_BENCH_KEYS": ",".join(script), "FM1_BENCH_WAV": str(d / f"{name}.raw"),
@@ -922,10 +963,10 @@ def test_part4(all_songs, rep):
           f"count-in beep (square lead, C6 / G5, 70 ms): peak {p3}, rms {r3:.0f}; M2's wood-block clicks: peak {p2}, "
           f"rms {r2:.0f}" + (f" ({r3 / r2:.1f}x the energy level)" if r2 else ""))
     # settings: blink off, count-in 2 bars, volume LOW; saved; kept over a restart (the same flash)
-    sc, t = settings_script(OPEN_MS + 200, [(0, 1), (1, 1), (2, 1)])
+    sc, t = settings_script(OPEN_MS + 200, [(0, 1), (1, 1), (2, -1)])   # (M4: from MEDIUM, the new default)
     r1 = run("p4-settings", t + 600, open_song(g) + sc)
     run("p4-settings-screen", t - 300, open_song(g) + sc[:-2])
-    want = 0 | 1 << 4 | 0 << 8 | 1 << 12
+    want = 0 | 1 << 4 | 0 << 8 | 1 << 12 | 1 << 20 | 1 << 24    # (M4: quiet 50 %, key lights on)
     r2b = run("p4-settings-restart", PLAY_MS + 3000, open_song(g) + ["1500:pot:4096"] + press(PLAY_MS, "PLAY"),
               flash=r1["flash"])
     s2 = r2b["stats"]
@@ -937,7 +978,7 @@ def test_part4(all_songs, rep):
           f"count-in 2 bars: PLAY from tick {s2['start_from']} counts in from {s2['start_tick']} (two bars before "
           f"its bar)")
     lo = rms(r2b["left"][int((PLAY_MS + 50) / 1000 * RATE):int((PLAY_MS + 1500) / 1000 * RATE)])
-    check(lo < r3 * 0.85, f"count-in volume LOW: rms {lo:.0f} (HIGH: {r3:.0f})")
+    check(lo < r3 * 0.85, f"count-in volume LOW: rms {lo:.0f} (MEDIUM, the default: {r3:.0f})")
     # blink off: the keys steady (no middle level)
     r = run("p4-blink-off", PLAY_MS + 7000, open_song(g) + sc + press(t + 300, "ENV") + press(t + 500, "ARP")
             + press(PLAY_MS + 1500, "PLAY"))
@@ -1117,23 +1158,7 @@ def test_part8(all_songs, rep):
                 host=f"{SEND} send --emu-pipe {ROOT}/songs/happy-birthday")
         check("sending 1.1" in r["out"] and "stored" in r["out"] and "NOT stored" not in r["out"],
               "fm1song send to an M2 FM-1 (it reads up to 1.1): sent as 1.1 without the category, stored")
-    # the guide: your part (harmony, muted) plays at 30 % instead of silent
-    g = [c["slug"] for c in all_songs].index("amazing-grace")
-    sc, t = settings_script(OPEN_MS + 200, [(5, 2)])
-    base = open_song(g) + ["1500:pot:4096"] + press(OPEN_MS + 100, "SCL") + press(OPEN_MS + 150, "FX") \
-        + press(OPEN_MS + 170, "LFO")
-    on = run("p8-guide-off", PLAY_MS + 8000, base + sc + press(t + 400, "ARP") + press(PLAY_MS + 1000, "PLAY"))
-    gd = run("p8-guide", PLAY_MS + 8000, base + sc + press(t + 300, "ENV") + press(t + 400, "ARP")
-             + press(PLAY_MS + 1000, "PLAY"))
-    mu = run("p8-guide-none", PLAY_MS + 8000, base + press(OPEN_MS + 300, "ENV") + press(OPEN_MS + 400, "ARP")
-             + press(PLAY_MS + 1000, "PLAY"))
-    seg = lambda r: rms(r["left"][int((PLAY_MS + 2500) / 1000 * RATE):])
-    a, b, c = seg(on), seg(gd), seg(mu)
-    s = gd["stats"]
-    check(s["notes_guided"] > 0 and s["notes_skipped"][2] == 0 and mu["stats"]["notes_skipped"][2] > 0
-          and c < b < a and (s["settings"] >> 20) & 15 == 2,
-          f"guide 30 % (setting), harmony muted: its notes sent quietly ({s['notes_guided']} guided, none skipped); "
-          f"harmony alone: rms {a:.0f} full, {b:.0f} as a guide, {c:.0f} muted with no guide (p8-guide.png: GUIDE)")
+    # (M3's guide volume became M4's QUIET: tools/m4_test.py m4p2)
     rep += lines
     return st["ok"]
 
@@ -1167,7 +1192,61 @@ def test_m4p1(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS.update({"m4p1": test_m4p1})
+def test_m4p2(all_songs, rep):
+    """M4 part 2 (D027): your part chosen by holding its button, followed muted or not; a press cycles FULL / QUIET /
+    MUTED; settings: the quiet level, key lights on / off"""
+    lines, st, check = checker("M4 part 2: your part chosen on purpose, FULL / QUIET / MUTED")
+    slugs = [c["slug"] for c in all_songs]
+    g, d = slugs.index("amazing-grace"), slugs.index("danny-boy")
+    cd = all_songs[d]
+    O = OPEN_MS
+    lead = lambda c, ms: int(ms / 1000 * c["ppq"] * own_bpm(c) / 60)
+    r = run("m4p2-default", PLAY_MS + 6000, open_song(g) + press_raw(O + 200, "ARP") + press_raw(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    check(s["part"] == 2 and (s["lit_keys"] | s["mid_keys"]) and s["notes_skipped"][2] == 0 and s["key_flashes"] > 0,
+          f"a song opens with the harmony as your part: its keys light (and blink, {s['key_flashes']} flashes) while "
+          f"it plays at FULL (nothing muted) (m4p2-default.png)")
+    r = run("m4p2-hold-bass", PLAY_MS + 6000, open_song(d) + hold(O + 100, "SCL") + press_raw(O + 1300, "ARP")
+            + press_raw(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    note = min(last_attack_notes(cd, "bass", 1, s["last_tick"] + lead(cd, 30)) or [0])
+    check(s["part"] == 1 and (s["lit_keys"] | s["mid_keys"]) == key_bits([note]) and s["notes_skipped"][1] == 0 and
+          s["notes_on"][1] > 0, f"hold SEL (bass) 1 s: your part = bass, not muted: it plays and its note's key lights "
+          f"({note}) (m4p2-hold-bass.png)")
+    # harmony alone (drums, bass, melody muted: three presses... two each) at FULL, QUIET, MUTED, and FULL again
+    base = open_song(g) + ["1500:pot:4096"] + press_raw(O + 100, "ARP")
+    for b, t0 in (("FX", O + 200), ("SCL", O + 500), ("LFO", O + 800)):
+        base += tap(t0, b, 2)
+    seg = lambda r: rms(r["left"][int((PLAY_MS + 1500) / 1000 * RATE):])
+    runs = {n: run(f"m4p2-{n}", PLAY_MS + 7000, base + (tap(O + 1100, "ENV", k) if k else []) + press_raw(PLAY_MS, "PLAY"))
+            for n, k in (("full", 0), ("quiet", 1), ("muted", 2), ("full-again", 3))}
+    lv = {n: seg(x) for n, x in runs.items()}
+    sq, sm, sf = runs["quiet"]["stats"], runs["muted"]["stats"], runs["full-again"]["stats"]
+    check(lv["muted"] < lv["quiet"] < lv["full"] and abs(lv["full-again"] - lv["full"]) < 0.1 * lv["full"] and
+          sq["notes_guided"] > 0 and sq["notes_skipped"][2] == 0 and sm["notes_skipped"][2] > 0 and
+          sf["notes_guided"] == 0 and sm["part"] == 2,
+          f"press ENV: QUIET (rms {lv['quiet']:.0f}), again: MUTED ({lv['muted']:.0f}), again: FULL "
+          f"({lv['full-again']:.0f}; at first {lv['full']:.0f}); the harmony stays your part (m4p2-quiet.png)")
+    sc, t = settings_script(O + 100, [(5, -1)])     # (the settings first: a layer button closes the help)
+    b25 = open_song(g) + ["1500:pot:4096"] + sc + press_raw(t + 150, "ARP")
+    for k, bt in enumerate(("FX", "SCL", "LFO")):
+        b25 += tap(t + 300 + 300 * k, bt, 2)
+    r = run("m4p2-quiet25", PLAY_MS + 8000, b25 + tap(t + 1300, "ENV", 1) + press_raw(PLAY_MS + 1000, "PLAY"))
+    q25 = rms(r["left"][int((PLAY_MS + 2500) / 1000 * RATE):])
+    check(q25 < lv["quiet"] and (r["stats"]["settings"] >> 20) & 15 == 0,
+          f"setting Quiet level 25 %: rms {q25:.0f} (50 %, the default: {lv['quiet']:.0f})")
+    sc, t = settings_script(O + 100, [(6, 1)])
+    r = run("m4p2-lights-off", PLAY_MS + 6000, open_song(g) + sc + press_raw(PLAY_MS + 800, "PLAY"))
+    check(not (r["stats"]["lit_keys"] | r["stats"]["mid_keys"]), "setting Key lights OFF: no key lights")
+    r = run("m4p2-drums", PLAY_MS + 5000, open_song(g) + hold(O + 100, "FX") + press_raw(PLAY_MS, "PLAY"))
+    check(r["stats"]["part"] == 0 and not (r["stats"]["lit_keys"] | r["stats"]["mid_keys"]),
+          "hold FX: your part = drums; no key lights (the beat light is enough)")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS.update({"m4p1": test_m4p1, "m4p2": test_m4p2})
+del PART_TESTS["part2"]                          # (M3's "the last muted is yours": replaced by m4p2)
 
 
 def main():
