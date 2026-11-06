@@ -335,6 +335,27 @@ def classify_bass(notes, chart, bpb):
     return 4
 
 
+# --------------------------------------------------------------------------------------------- loudness
+def loudness(notes, length):
+    """a model of how loud a part sounds (M5): EAS's amplitude grows with the velocity squared and notes add up in
+    power, so: sqrt(mean over time of the sum of (velocity / 127) ** 4 of the notes sounding), a note counted for at
+    most a beat (they decay)"""
+    if not notes or length <= 0:
+        return 0.0
+    e = sum((v / 127) ** 4 * min(e2 - s, PPQ) for s, e2, p, v in notes)
+    return (e / length) ** 0.5
+
+
+def match_loudness(notes, ref, length):
+    """the part's velocities scaled so its loudness model equals ref's (the generated level it replaces): loudness
+    goes with the velocity squared, so the factor is the square root of the ratio"""
+    a, b = loudness(notes, length), loudness(ref, length)
+    if a <= 0 or b <= 0:
+        return notes, 1.0
+    k = (b / a) ** 0.5
+    return [(s, e, p, max(1, min(127, round(v * k)))) for s, e, p, v in notes], k
+
+
 # --------------------------------------------------------------------------------------------- the whole import
 def events_of(imp):
     return sum(2 * len(v) for v in imp.tracks.values())
@@ -450,16 +471,19 @@ def build(midi, title, slug, roles=None, style=None, report=None, eighths=False,
         if q[layer]:
             own = (classify_harmony if layer == "harmony" else classify_bass)(q[layer], chart, bpb)
         for lv in range(1, top + 1):
-            if lv == own:
-                tracks[f"{layer}:{lv}"] = q[layer]
+            if lv == own:                # as loud as the level it replaces (M5: the file parts were up to 5x louder)
+                tracks[f"{layer}:{lv}"], k = match_loudness(q[layer], gen[f"{layer}:{lv}"], nbars * bar)
                 levels[layer][lv] = "from the file"
+                rep.append(f"{layer}: the file's part at level {lv} scaled to the generated level's loudness "
+                           f"(velocity x {k:.2f})")
             else:
                 tracks[f"{layer}:{lv}"] = gen[f"{layer}:{lv}"]
                 levels[layer][lv] = "generated: " + arr.LEVEL_TEXT[layer][lv]
         rep.append(f"{layer}: " + (f"the file's part resembles level {own} and is that level" if own else
                                    "no part in the file: all levels generated"))
     if q["drums"]:
-        d2 = q["drums"]
+        d2, k = match_loudness(q["drums"], gen["drums:2"], nbars * bar)
+        rep.append(f"drums: the file's drums scaled to the generated groove's loudness (velocity x {k:.2f})")
         beat_hits = [(s, e, p, v) for s, e, p, v in d2 if s % PPQ == 0 and p in (35, 36, 37, 38, 40, 42, 44, 46)]
         d1 = [(s, s + GRID, 36 if p in (35, 36) else 38 if p in (37, 38, 40) else 42, v) for s, e, p, v in beat_hits]
         d3 = list(d2)

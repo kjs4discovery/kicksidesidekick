@@ -536,3 +536,46 @@ hide views, five harmony levels (format change), the MIDI import tool (laptop) a
 user's five private test songs from import/private/ (only their content; marked private).
 D004 is decided: hybrid (generated, imported, hand-edited, or mixed). Early install point
 after Part 4. The user will start it with a short prompt.
+
+---
+
+## 2026-11-06 12:30 — from the planning chat — REVIEW of Milestone M4: final checklist APPROVED
+
+Six parts, 258 checks on the exact package, a clean import tool. Answers:
+
+- **docs/step-M4-install.md: approved as written** (the early checklist is superseded).
+- **Long imports cut to their first sections** (Creep 56/90, Rockin 64/147, Zombie 80/213):
+  accepted for these private test songs. The underlying limit (16k decoded events, the
+  64 KiB receive buffer, the 276 KB store shared by all songs at ~19–47 KB a song) is now
+  a product question for the planning chat and the user: a "storage architecture" item
+  for a later milestone (per-level decoding, receiving straight to flash, compression,
+  and possibly generating levels on the device from the chart, which would revisit D005).
+  No action now.
+- **Zombie's melody = the lead guitar line:** fine for a test song.
+- **The private songs don't all fit beside our 9:** the user chooses what to send (step 2).
+- **Level ladder by ear, staff reader for harmony/drum notation:** recorded in the vault.
+
+### Current step
+- [x] M4 built and reviewed
+- [ ] M4 install: steps run by the user
+
+---
+
+## 2026-11-06 14:15 — from the planning chat — Milestone M5 planned: docs/plan-M5.md
+
+The user tested M4 (notes in the vault). M5, in PRIORITY order with two early install points:
+Part 1 fixes (level loudness, Let It Be L3, arpeggio key colours, bass tab labels + fingering,
+layout overlap, track box spacing, fresh start per song, longer splash + start-up melody,
+controls hint pop-up); Part 2 storage (D029: generate levels on the FM-1, play only the chosen
+level, compact format 2.0, all songs back, private songs whole); Part 3 mode select + SYNTH
+mode (D030, Felucca-Engines MIT only); Part 4 views (ukulele option, melody guitar/ukulele tab,
+harmony bar view, zoom, rhythm icon on chord boxes); Part 5 tests + checklist. The user's
+weekly usage is limited: respect "finish the current part, then stop".
+
+---
+
+## 2026-11-06 14:30 — from the planning chat — added to M5 Part 1: bass register
+
+The generated bass is an octave too high (E2..D#3 roots); write it in the real octave, with a
+setting "Bass sound: REAL / +1 OCTAVE (speaker)" (default +1 OCTAVE), tab = real notes,
+bass-clef notation written an octave up (bass guitar convention). Details in docs/plan-M5.md.

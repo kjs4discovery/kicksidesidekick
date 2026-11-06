@@ -1,4 +1,4 @@
-# Controls (M2; M3 and M4 changes at the end)
+# Controls (M2; M3, M4 and M5 changes at the end)
 
 The FM-1's panel, as M2 uses it. M1's map (2026-11-04) was the start; M2 adds what the user asked for after testing
 M1 (D020: tempo in BPM, loops you can find, pause, the keys' octave) and the planning chat's rule from M1's lesson
@@ -407,3 +407,36 @@ Built: ![harmony notation L1](step-M4/m4p3-harm-notation1.png) ![L2](step-M4/m4p
     chord around it at the middle level (darker in the keyboard view).
 
 ![L5: the note played and the chord around it](step-M4/m4p4-l5.png) ![L4 on the keyboard](step-M4/m4p4-l4-keys.png)
+
+## M5 (docs/plan-M5.md), part by part
+
+### Part 1: fixes from the M4 test
+
+- **Equal loudness across levels:**
+  - every layer was measured alone at each level in every song;
+  - the generated harmony L4/L5 and bass L1 get higher velocities, because they were about 0.7x the others;
+  - imported songs' own parts are scaled to the loudness of the level they take, because they were up to 5x louder;
+  - all levels of a layer are now within 1.6x of each other (docs/LOG M5 Part 1 has the numbers).
+- **Let It Be L3** is the file's piano alone. The organ, merged in before, held every chord, so it sounded like L1.
+- **Harmony L4/L5 lights:** every note the arpeggio or broken chord plays in the chord now shows on the keys:
+  bright for the note played, the middle level for the rest.
+- **Bass in its real octave:**
+  - the generated bass roots are now E1–D#2 (they were an octave up), so the tab sits on the E and A strings;
+  - setting **"Bass sound: REAL / +1 OCTAVE"** (default +1 OCTAVE, for the small speaker; REAL on headphones);
+  - the tab shows the real notes; the bass-clef notation is written an octave up, as bass guitar music is.
+- **Bass tab fingering:** a hand covers 4 frets. A note inside the position is played there, on the nearest string,
+  and a shift costs by its length, so 2 on E then 2 on A, not 2 then 7 on E. The tab labels were right (G at the
+  top); with the bass an octave down, the notes now sit where a player expects.
+- **Top line:** the bar:beat / STOP / PAUSE label comes first, and the second line ends before it (no overlap).
+- **Track boxes:** "L1" and "FULL" apart, in two colours.
+- **A song opens fresh every time:** its first view, its key, its tempo.
+- **Splash:** 4 s, with a start-up melody of our own: C5 E5 G5 B5, then a held E6, on electric piano with a little
+  reverb, softer than a song.
+- **Controls hint:**
+  - before a song's play screen: "PRESS: its volume / HOLD: make it YOUR PART"; any button closes it;
+  - shown 10 times, then off by itself. Setting **"Controls hint"** turns it on again;
+  - the stopped legend alternates with "FX-LFO press volume | hold your part".
+- **Settings:** 10 rows now, scrolling 8 at a time. M4's saved settings are kept: the record grew at its end.
+
+![the controls hint](step-M5/m5p1-hint.png) ![the bass tab](step-M5/m5p1-tab.png)
+![bass notation](step-M5/m5p1-bass-notation.png) ![L5 lights](step-M5/m5p1-l5.png)

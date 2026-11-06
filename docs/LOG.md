@@ -1262,3 +1262,64 @@ Questions for the planning chat:
   - the level ladder should be judged by ear;
   - a staff reader should check the harmony and drum notation.
 Next: STOP. The user and the planning chat review; then the user runs the checklist.
+
+2026-11-06 16:08 — Milestone M5, Part 1 (fixes from the M4 test) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "M5 Part 1"):
+- **Equal loudness:** every layer was measured alone at every level in every song, 12 s from the first bar, before
+  and after (tools/m5_test.py level_loudness).
+  - Generated levels: harmony L4/L5 velocities 58/48 → 70/58 (arpeggio 70/56), bass L1 84 → 97.
+  - Imported parts: scaled to the loudness of the generated level they replace (importer.match_loudness, a model
+    where amplitude goes with velocity squared).
+- **Let It Be:** the harmony is the file's piano alone; it was piano + organ, and the organ held every chord.
+- **Bass in its real octave:** generated roots E1–D#2 (tools/fm1song/arrange.py).
+  - Setting "Bass sound: REAL / +1 OCTAVE", default +1 OCTAVE. The player sounds the bass layer +12 and releases
+    its notes when the setting changes.
+  - The bass-clef notation is written an octave up.
+  - The bass tab chooses a hand position: 4 frets, the nearest string, a shift costing by its length, open strings
+    free. The position comes from the 8 notes before, so a note never changes as the view scrolls.
+  - The tab labels were already right (G at the top). The user saw the D/G strings because the bass was an octave
+    high.
+- **Harmony L4/L5 lights:** every note the harmony plays in the chord lights (the octave notes of the arpeggio
+  were missing).
+- **Top line:** the label is laid out first and the second line ends before it (no overlap).
+- **Track boxes:** "L1" and "FULL" apart, in two colours.
+- **Fresh start per song:** the view; the key and tempo were already reset.
+- **Splash:** 4 s, plus a start-up melody: our own motif C5 E5 G5 B5 → E6 on electric piano, reverb send 70,
+  channel volume 80, velocity 84/70.
+- **Controls hint pop-up:** before a song's play screen, up to 10 times, then off; setting "Controls hint"; the
+  stopped legend alternates with the short form.
+- **Settings:** the record grew at its end (v2[8], hint_count). **An M4 record is read**, with the new fields set
+  to their defaults (no reset this time). 10 rows, scrolling.
+- **tools/m5_test.py** (from m4_test.py):
+  - OPEN_MS 4400 / PLAY_MS 6200 for the 4 s splash, and early literal times moved.
+  - The test flash has the controls hint turned off; a copy with it on is kept for the hint checks.
+  - The new m5p1 group.
+Learned / measured:
+- **Level loudness, before (M4 build) → after (Part 1 build),** RMS per level:
+  - generated songs: harmony L4/L5 were 0.70x of L1–L3 and bass L1 0.75x of L2–L4. Now every layer of all 9 songs
+    is within 1.6x (worst Danny Boy harmony 1.40);
+  - Let It Be harmony L3 3538 → 723 (the others about 740);
+  - Creep bass L3 4231 → 1913 (1660–1733);
+  - Rockin bass L4 5528 → 2051 (1950–2537);
+  - True Colors harmony L3 1041 → 231 (about 580): now too soft;
+  - Zombie harmony L3 651 → 236 (about 395), bass L4 1085 (about 2100): too soft.
+  - The loudness model is approximate for strummed guitar parts. Within 2.5x everywhere, against up to 5x before.
+- m5p1 on the dev build: ALL PASS.
+  - The splash is still up at 3.9 s, and the melody plays its 5 notes.
+  - The hint shows 10 times, then is off.
+  - View, key and tempo reset when a song opens again.
+  - The bass is written 28..46; it sounds 48 (+1 octave) or 36 (REAL).
+  - L5 lights 4 keys.
+- Release build build/step-M5/part1/fm1acc-0.5.1-m5p1.fwsc: FM-1_46000501, sha256
+  34104a5b22fecce8124200b8592a2019586ca1d09378a2b9b3ddce1631f929fb. pytest 78 pass.
+Choices (with reasons):
+- **Loudness:** fixed velocity factors for generated levels, and a per-part scale at import. These are things the
+  device's generator (Part 2) can repeat exactly; a whole-level normalization pass on the device would not be.
+- **Start-up melody:** our own rising major-7th motif (the plan's suggestion).
+- **Controls hint:** saving its count writes the settings sectors at most 10 times.
+Hardware touched: none
+Questions for the planning chat:
+- The private songs' file parts are now within 2.5x but some are softer than the rest. Is that good enough for test
+  songs, or worth a measured calibration later?
+Next: Part 2 (storage: generate levels on the FM-1, play only the chosen level, format 2.0, store packing).

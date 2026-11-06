@@ -41,7 +41,7 @@ static volatile uint8_t quiet_mask, quiet_q8;   /* M4 (D027): the layers set to 
 static volatile int32_t start_want;
 static volatile uint32_t mute_want, tempo_want = 120;
 static volatile uint8_t var_want[SONG_LAYERS] = {1, 1, 1, 1};
-static volatile int8_t transpose_want;
+static volatile int8_t transpose_want, bass_oct_want;   /* bass_oct: M5, the bass layer this far up (sound only) */
 static volatile int loop_mode_want;
 static volatile uint32_t loop_from_want, loop_to_want;
 
@@ -55,7 +55,7 @@ static int32_t music_from;                /* the count-in ends here: clicks belo
 static uint32_t idx[SONG_LAYERS];
 static uint8_t var_cur[SONG_LAYERS] = {1, 1, 1, 1};
 static uint32_t mute_cur;
-static int32_t transpose_cur;
+static int32_t transpose_cur, bass_oct_cur;
 static uint32_t active[SONG_LAYERS][4];   /* notes sounding, per layer */
 static int loop_mode;
 static int32_t loop_from, loop_to;
@@ -129,6 +129,8 @@ void player_tempo(uint32_t b)
 void player_count_in(int on) { countin_want = (uint8_t)(on != 0); }
 /* QUIET at pct % of a layer's loudness: EAS's gain goes about with the velocity squared, so the velocities are scaled
  * by the square root (50 % -> x 0.71, 25 % -> x 0.5; a plain 30 % of the velocity sounded at 9 %, M3) */
+void player_bass_octave(int32_t semis) { bass_oct_want = (int8_t)(semis > 12 ? 12 : semis < 0 ? 0 : semis); }
+
 void player_quiet(uint32_t layers, uint32_t pct)
 {
     uint32_t want = (pct > 100u ? 100u : pct) * 65536u / 100u, q = 0;
@@ -236,7 +238,7 @@ static void seek_all(int32_t tick)
 /* the note as sent: transposed, except on the percussion channel (its notes are drums, not pitches) */
 static uint32_t pitch(uint32_t l, uint32_t n)
 {
-    int32_t t = (int32_t)n + transpose_cur;
+    int32_t t = (int32_t)n + transpose_cur + (l == 1u ? bass_oct_cur : 0);   /* (layer 1: the bass) */
     if (song->layer[l].channel == CLICK_CH)
         return n;
     return (uint32_t)(t < 0 ? t + 12 * ((11 - t) / 12) : t > 127 ? t - 12 * ((t - 116) / 12) : t);
@@ -509,6 +511,7 @@ static void requests(uint32_t f0)
     }
     if (state == PL_STOPPED || state == PL_PAUSED) {
         transpose_cur = transpose_want;
+        bass_oct_cur = bass_oct_want;
         player_stats.transpose = transpose_cur;
         mute_cur = mute_want;
         for (l = 0; l < SONG_LAYERS; l++)
@@ -523,6 +526,11 @@ static void requests(uint32_t f0)
                 release(l);
         transpose_cur = transpose_want;
         player_stats.transpose = transpose_cur;
+    }
+    if (bass_oct_want != bass_oct_cur) {  /* the bass sound's octave: its sounding notes end now */
+        if (song->layer[1].variants && song->layer[1].channel != CLICK_CH)
+            release(1);
+        bass_oct_cur = bass_oct_want;
     }
     m = mute_want & ~mute_cur;            /* newly muted: their notes off now */
     for (l = 0; l < SONG_LAYERS; l++)

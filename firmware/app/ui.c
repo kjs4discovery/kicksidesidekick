@@ -25,7 +25,12 @@ static void ui_busy(const char *a, const char *b);
 #define OCT_MAX 3
 #define LIST_ROWS 5u
 #define LIST_ROW_H 36
-#define SPLASH_MS 3000u                  /* the splash stays at least this long after power-on */
+#define SPLASH_MS 4000u                  /* the splash stays at least this long after power-on (M5: +1 s) */
+/* the start-up melody (M5, the user's wish; our own motif): a rising C major 7th arpeggio and a held 9th, on electric
+ * piano with a little reverb, on channel 13 (no song is loaded yet), quieter than the count-in at MEDIUM */
+#define TUNE_CH 12u
+static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 180}, {1140, 83, 180},
+                                    {1320, 86, 1400}};   /* {start ms, note, length ms} */
 #define FLASH_MS 110u                    /* the beat light's flash on beats 2.. (M3: full brightness, every beat) */
 #define FLASH_BAR_MS 220u                /* and on beat 1: longer */
 #define CUE_MS 140u                      /* the rhythm cue's flash at each attack */
@@ -53,7 +58,7 @@ static void ui_busy(const char *a, const char *b);
 #define BOX_H 44
 #define BOX_STEP 60
 
-enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET };
+enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT };
 /* the play screen's views (EDIT); PV_CHORD: the part's main view (the chord, or your part's note or hit) */
 enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_ROLL, PV_NOTATION, PV_GRID, PV_DNOTE, PV_N };
 static const uint8_t VIEWS[SONG_LAYERS][8] = {   /* each part's views in EDIT's order (PV_N ends a list) */
@@ -79,22 +84,30 @@ static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "M
 /* the settings (M3 part 4): kept in fm1-base's settings store (plat_store, OBJ_SETTINGS: 0xFC000 / 0xFD000, two
  * copies, the newer valid one wins; the stock firmware never uses these sectors) */
 #define SET_MAGIC 0x31534D46u            /* "FMS1" */
-enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_QUIET, S_LIGHTS, S_VIEWS, S_N };
+enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_QUIET, S_LIGHTS, S_VIEWS, S_BASS_OCT, S_HINT,
+       S_N };
 struct settings {
     uint32_t magic, version;
-    uint8_t v[8];                        /* S_* values (the rest 0) */
+    uint8_t v[8];                        /* S_* values 0..7 */
     uint8_t hide[4];                     /* M4: views hidden from EDIT, per layer (bit: PV_*; the main view is bit 0) */
     uint8_t hide2[4];                    /* (bits 8..: PV_DNOTE) */
+    uint8_t v2[8];                       /* M5: S_* values 8.. */
+    uint8_t hint_count, pad[3];          /* M5: times the controls hint was shown */
 };
+#define SET_SIZE_M4 24u                  /* M4's record: read too, the M5 fields then get their defaults */
+#define SV(i) (*((uint32_t)(i) < 8u ? &ui.set.v[(i)] : &ui.set.v2[(uint32_t)(i) - 8u]))
+#define HINT_TIMES 10u                   /* the controls hint shows itself this many times, then stays off */
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
                                           "Note names (notation)", "Scrolling views show", "Quiet level",
-                                          "Key lights", "Views (hide some)"};
-static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1};   /* how many values each has (Views: a screen) */
+                                          "Key lights", "Views (hide some)", "Bass sound", "Controls hint"};
+static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2};   /* how many values each has (Views: a screen) */
 static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
                                             {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}, {"25 %", "50 %", ""},
-                                            {"OFF", "ON", ""}, {">", "", ""}};
+                                            {"OFF", "ON", ""}, {">", "", ""}, {"REAL", "+1 OCTAVE", ""},
+                                            {"OFF", "ON", ""}};
 /* (M4: count-in volume MEDIUM, the user's note; the quiet level 50 %, "half volume") */
-static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0};
+/* (M5: the bass +1 octave on the small speaker; the controls hint on) */
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0, 1, 1};
 static const uint8_t QUIET_PCT[2] = {25, 50};   /* a layer set to QUIET (D027: M3's guide volume became this) */
 #define HOLD_MS 900u                     /* a layer button held this long: your part (D027); shorter: its volume */
 enum { VOL_FULL, VOL_QUIET, VOL_MUTED };
@@ -135,7 +148,7 @@ static struct {
                                               * between attacks, the next chord */
     char msg[2][24];
     uint32_t msg_until;
-    uint8_t flash_ok, splash, redraw, flashing, flash_keys, blink;
+    uint8_t flash_ok, splash, redraw, flashing, flash_keys, blink, tune_on, tune_off;
     uint32_t lib_seen;                   /* library.c lib_changes when the screen was last set up */
     /* what is on the screen */
     int32_t sh_chord, sh_count, sh_next, sh_left, sh_bar, sh_beat, sh_strip, sh_layers, sh_section;
@@ -146,28 +159,36 @@ static struct {
 /* ------------------------------------------------------------------------ settings --- */
 static void settings_apply(void)
 {
-    ui.blink = ui.set.v[S_BLINK] != 0;
-    player_count_in_bars(ui.set.v[S_COUNT_BARS] ? 2u : 1u);
-    player_count_in_volume(COUNT_VOL[ui.set.v[S_COUNT_VOL] % 3u]);
-    player_stats.settings = ui.set.v[0] | (uint32_t)ui.set.v[1] << 4 | (uint32_t)ui.set.v[2] << 8 |
-                            (uint32_t)ui.set.v[3] << 12 | (uint32_t)ui.set.v[4] << 16 | (uint32_t)ui.set.v[5] << 20 |
-                            (uint32_t)ui.set.v[6] << 24;
+    ui.blink = SV(S_BLINK) != 0;
+    player_bass_octave(SV(S_BASS_OCT) ? 12 : 0);
+    player_count_in_bars(SV(S_COUNT_BARS) ? 2u : 1u);
+    player_count_in_volume(COUNT_VOL[SV(S_COUNT_VOL) % 3u]);
+    player_stats.settings = SV(0) | (uint32_t)SV(1) << 4 | (uint32_t)SV(2) << 8 |
+                            (uint32_t)SV(3) << 12 | (uint32_t)SV(4) << 16 | (uint32_t)SV(5) << 20 |
+                            (uint32_t)SV(6) << 24 | (uint32_t)SV(8) << 28;
 }
 
 static void settings_load(void)
 {
     uint32_t i;
-    if (plat_store_load(OBJ_SETTINGS, &ui.set, sizeof ui.set) != (int)sizeof ui.set || ui.set.magic != SET_MAGIC) {
+    int n = plat_store_load(OBJ_SETTINGS, &ui.set, sizeof ui.set);
+    if ((n != (int)sizeof ui.set && n != (int)SET_SIZE_M4) || ui.set.magic != SET_MAGIC) {
         ui.set.magic = SET_MAGIC;        /* none yet (or not ours): the defaults */
-        ui.set.version = 2;                /* (M4: the hidden views; an M3 copy is a different size: the defaults) */
         ui.set.hide[0] = ui.set.hide[1] = ui.set.hide[2] = ui.set.hide[3] = 0;
         ui.set.hide2[0] = ui.set.hide2[1] = ui.set.hide2[2] = ui.set.hide2[3] = 0;
         for (i = 0; i < 8u; i++)
-            ui.set.v[i] = i < S_N ? SET_DEFAULT[i] : 0;
+            SV(i) = SET_DEFAULT[i];
+        n = (int)SET_SIZE_M4;
     }
+    if (n == (int)SET_SIZE_M4) {         /* M4's record (or the defaults above): the M5 fields' defaults */
+        for (i = 8; i < 16u; i++)
+            SV(i) = i < S_N ? SET_DEFAULT[i] : 0;
+        ui.set.hint_count = 0;
+    }
+    ui.set.version = 3;                  /* (M5) */
     for (i = 0; i < S_N; i++)            /* (a value out of range: the default) */
-        if (ui.set.v[i] >= SET_COUNT[i])
-            ui.set.v[i] = SET_DEFAULT[i];
+        if (SV(i) >= SET_COUNT[i])
+            SV(i) = SET_DEFAULT[i];
     settings_apply();
 }
 
@@ -708,7 +729,8 @@ static void open_song(uint32_t i)
     ui.s = s;
     ui.muted = 0;
     ui.mine = L_HARM;
-    ui.pview = (int)view_ok(L_HARM, ui.pv_of[L_HARM]);   /* (the harmony's last view, if not hidden) */
+    ui.pv_of[0] = ui.pv_of[1] = ui.pv_of[2] = ui.pv_of[3] = 0;   /* M5: fresh, as at a first visit (the user) */
+    ui.pview = (int)view_ok(L_HARM, PV_CHORD);
     player_stats.view = (uint32_t)ui.pview;
     ui.vol[0] = ui.vol[1] = ui.vol[2] = ui.vol[3] = VOL_FULL;
     ui.hold_done = 0;
@@ -726,6 +748,14 @@ static void open_song(uint32_t i)
     set_loop(LOOP_OFF);
     ui.loop_step = 0;
     ui.view = V_PLAY;
+    if (SV(S_HINT) && ui.set.hint_count < HINT_TIMES) {   /* M5: the controls hint first, up to 10 times */
+        ui.view = V_HINT;
+        if (++ui.set.hint_count >= HINT_TIMES)
+            SV(S_HINT) = 0;              /* (then off by itself; the setting turns it on again) */
+        ui.set_dirty = 1;
+        settings_save();
+        player_stats.hints++;
+    }
     ui.redraw = 1;
 }
 
@@ -1110,6 +1140,15 @@ static void input(void)
         lights();
         return;
     }
+    if (ui.view == V_HINT) {             /* any button: the play screen */
+        if (down & ~(1u << B_OCTDN | 1u << B_OCTUP)) {
+            ui.view = V_PLAY;
+            ui.redraw = 1;
+            ui.hold_done = 0xFu;         /* (the button that closed it does nothing else when released) */
+        }
+        lights();
+        return;
+    }
     if (ui.view == V_VIEWSET) {          /* SELECT a view; ALGORITHM, PLAY or EDIT shows / hides it; GLO, HOME: back */
         int32_t d = plat_enc(EN_SELECT), v = plat_enc(EN_ALGO);
         uint32_t nrows = 0, l, i, rl = 0, rv = 0, shown = 0;
@@ -1155,7 +1194,7 @@ static void input(void)
         }
         if (v) {
             uint32_t r = ui.set_row, n = SET_COUNT[r];
-            ui.set.v[r] = (uint8_t)(((int32_t)ui.set.v[r] + v % (int32_t)n + (int32_t)n) % (int32_t)n);
+            SV(r) = (uint8_t)(((int32_t)SV(r) + v % (int32_t)n + (int32_t)n) % (int32_t)n);
             ui.set_dirty = 1;
             settings_apply();
             ui.redraw = 1;
@@ -1419,6 +1458,25 @@ static void draw_help(void)
 /* ---------------------------------------------------------------------- settings --- */
 #define SET_ROW_H 22                     /* (8 rows above the legend) */
 
+/* the controls hint (M5): before a song's play screen, what a layer button does; up to HINT_TIMES times */
+static void draw_hint(void)
+{
+    lcd_fill(0, 0, 240, 240, C_BLACK);
+    cv_begin(240, 144, C_BLACK);
+    frame_rect(8, 4, 224, 136, C_HI);
+    text_in(0, 240, 12, &FONT_B, "THE LAYER BUTTONS", C_WHITE);
+    text_in(0, 240, 34, &FONT_XS, "FX drums  SEL bass  ENV harm  LFO melody", C_GRAY);
+    text_in(0, 240, 60, &FONT_B, "PRESS: its volume", C_HI);
+    text_in(0, 240, 78, &FONT_XS, "FULL > QUIET > MUTE > FULL", C_GRAY);
+    text_in(0, 240, 100, &FONT_B, "HOLD: make it YOUR PART", C_HI);
+    text_in(0, 240, 118, &FONT_XS, "(the keys, views and cue follow it)", C_GRAY);
+    cv_blit(0, 40);
+    cv_begin(240, 24, C_BLACK);
+    text_in(0, 240, 2, &FONT_XS, "Settings > Controls hint: off", C_DIM);
+    cv_blit(0, 186);
+    draw_legend(Y_LEGEND, "any button|close");
+}
+
 /* the Views screen (M4): every part's views, each SHOWN or HIDDEN from EDIT; 8 rows a page */
 static void draw_viewset(void)
 {
@@ -1458,18 +1516,18 @@ static void draw_settings(void)
             ui.flash_ok ? "saved when you leave" : "RAM ONLY: not kept", ui.flash_ok ? C_DIM : C_AMB);
     cv_rect(0, 31, 240, 1, C_LINE);
     cv_blit(0, 0);
-    for (i = 0; i < S_N; i++) {
+    for (i = ui.set_row >= 8u ? ui.set_row - 7u : 0; i < S_N && i < (ui.set_row >= 8u ? ui.set_row + 1u : 8u); i++) {
         int sel = i == ui.set_row;
+        uint32_t row = i - (ui.set_row >= 8u ? ui.set_row - 7u : 0);
         cv_begin(240, SET_ROW_H, C_BLACK);
         if (sel)
             cv_rect(2, 1, 236, SET_ROW_H - 2, C_LINE);
         cv_text(10, (SET_ROW_H - 16) / 2, &FONT_B, SET_NAME[i], sel ? C_WHITE : C_GRAY);
-        cv_text(230 - text_w(&FONT_B, SET_VAL[i][ui.set.v[i]]), (SET_ROW_H - 16) / 2, &FONT_B, SET_VAL[i][ui.set.v[i]],
+        cv_text(230 - text_w(&FONT_B, SET_VAL[i][SV(i)]), (SET_ROW_H - 16) / 2, &FONT_B, SET_VAL[i][SV(i)],
                 sel ? C_HI : C_AMB);
-        cv_blit(0, 32 + i * SET_ROW_H);
+        cv_blit(0, 32 + row * SET_ROW_H);
     }
-    if (32 + S_N * SET_ROW_H < 214)
-        lcd_fill(0, 32 + S_N * SET_ROW_H, 240, 214 - (32 + S_N * SET_ROW_H), C_BLACK);
+    lcd_fill(0, 32 + 8 * SET_ROW_H, 240, 214 - (32 + 8 * SET_ROW_H), C_BLACK);
     draw_legend(Y_LEGEND, "SELECT row|ALGO change|GLO back");
 }
 
@@ -1478,6 +1536,16 @@ static void draw_top(int32_t bar, int32_t beat, int st)
 {
     char t[48] = "";
     const struct song *s = ui.s;
+    char lab[16] = "";
+    int32_t lab_x;
+    if (st == PL_PLAYING) {              /* the label on the right first: the two lines stop before it */
+        num_cat(lab, (uint32_t)bar + s->first_bar_number);
+        text_cat(lab, ":");
+        num_cat(lab, (uint32_t)beat + 1u);
+    } else {
+        text_cat(lab, st == PL_COUNT_IN ? "IN" : st == PL_PAUSED ? "PAUSE" : "STOP");
+    }
+    lab_x = 234 - text_w(&FONT_M, lab);
     cv_begin(240, H_TOP, C_BLACK);
     cv_text(6, 1, &FONT_XS, s->title, C_GRAY);
     if (plat_ms() < ui.msg_until) {
@@ -1534,15 +1602,8 @@ static void draw_top(int32_t bar, int32_t beat, int st)
         cv_rect(4, 15, text_w(&FONT_XS, k) + 8, 16, C_HI);
         cv_text(8, 16, &FONT_XS, k, C_BLACK);
     }
-    t[0] = 0;
-    if (st == PL_PLAYING) {
-        num_cat(t, (uint32_t)bar + s->first_bar_number);
-        text_cat(t, ":");
-        num_cat(t, (uint32_t)beat + 1u);
-    } else {
-        text_cat(t, st == PL_COUNT_IN ? "IN" : st == PL_PAUSED ? "PAUSE" : "STOP");
-    }
-    cv_text(234 - text_w(&FONT_M, t), 4, &FONT_M, t, st == PL_PLAYING ? C_WHITE : C_GRAY);
+    cv_rect(lab_x - 6, 0, 240 - lab_x + 6, H_TOP - 1, C_BLACK);   /* (anything longer ends under a clear edge) */
+    cv_text(lab_x, 4, &FONT_M, lab, st == PL_PLAYING ? C_WHITE : C_GRAY);
     cv_blit(0, Y_TOP);
 }
 
@@ -1579,7 +1640,8 @@ struct pinfo {
     char big[24], next[24], small[24];   /* the main view: the name now, the next one, a line under it */
     uint8_t now[SONG_VOICING_NOTES], nx[SONG_VOICING_NOTES];   /* the keys now and next (as sounded) */
     uint32_t nnow, nnx;
-    uint8_t ctx[SONG_VOICING_NOTES];     /* M4: L4, L5: the chord around the note played (shown darker) */
+    uint8_t ctx[10];                     /* M4: L4, L5: the chord around the note played (shown darker); M5: every
+                                          * note the harmony plays in this chord */
     uint32_t nctx;
     uint32_t cue;                        /* bits 0..3 the cue's kind (0: none), bit 4: an attack just now */
 };
@@ -2103,7 +2165,7 @@ static void draw_guitar_view(int st, const struct pinfo *pi, int32_t k, int32_t 
 
 static void scroll_setup(int view)
 {
-    uint32_t zoom = ui.set.v[S_ZOOM] ? 2u : 1u;
+    uint32_t zoom = SV(S_ZOOM) ? 2u : 1u;
     int st = view == PV_NOTATION || view == PV_DNOTE;
     ui.sc_x0 = st ? 84 : NOW_X;
     ui.sc_span = (int32_t)(st ? (uint32_t)(240 - 84) * ui.s->ppq / 36u * zoom :
@@ -2161,6 +2223,53 @@ static void scroll_now_line(int32_t y0, int32_t y1)
     cv_rect(ui.sc_x0 - 1, y0, 2, y1 - y0, C_AMB);
 }
 
+/* where a bass player plays note k of stream st (M5, the user's note): a hand covers 4 frets; a note inside the
+ * hand's position is played there (the nearest string), an open string costs nothing, a shift costs by its length.
+ * The position comes from the 8 notes before, so a note always gets the same string and fret, wherever the view
+ * starts. *s, *f: the string (0 E .. 3 G) and fret */
+static void bass_fingering(const struct song_stream *st, uint32_t k, uint32_t *s, uint32_t *f)
+{
+    static const uint8_t OPEN[4] = {28, 33, 38, 43};   /* E1 A1 D2 G2 */
+    struct song_event e;
+    uint32_t j = k, back = 0, pos = 0, ps = 0;
+    while (j > 0 && back < 8u) {         /* back to 8 notes before */
+        song_event_get(st, --j, &e);
+        if (e.status == 0x90u)
+            back++;
+    }
+    for (; j <= k; j++) {
+        uint32_t n, c, best = 0xFFFFFFFFu, bs = 0, bf = 0;
+        song_event_get(st, j, &e);
+        if (e.status != 0x90u)
+            continue;
+        n = moved(e.d1);
+        while (n < OPEN[0])
+            n += 12u;                    /* (below the low E: an octave up) */
+        while (n > OPEN[3] + 15u)
+            n -= 12u;
+        for (c = 0; c < 4u; c++) {
+            uint32_t fr, cost;
+            if (n < OPEN[c] || n - OPEN[c] > 15u)
+                continue;
+            fr = n - OPEN[c];
+            if (fr == 0u)
+                cost = 2u;               /* an open string */
+            else if (pos && fr >= pos && fr <= pos + 3u)
+                cost = 0u;               /* inside the hand */
+            else
+                cost = pos ? 10u + 4u * (fr > pos ? fr - pos : pos - fr) : fr;   /* (no position yet: low frets) */
+            cost += c > ps ? c - ps : ps - c;   /* the nearest string */
+            if (cost < best)
+                best = cost, bs = c, bf = fr;
+        }
+        if (bf && (!pos || bf < pos || bf > pos + 3u))
+            pos = bf > 3u && pos && bf > pos ? bf - 3u : bf;   /* the hand moves to cover it */
+        ps = bs;
+        *s = bs;
+        *f = bf;
+    }
+}
+
 /* the bass tab (M3 part 6): 4 strings (G top, E bottom), the bass part at its level as fret numbers on the string
  * it is played on (first position: the highest string with a fret 0..4; above that the G string), a line for how
  * long it lasts, its name under the tab; played dim, sounding white, coming amber */
@@ -2194,11 +2303,12 @@ static void draw_tab_view(int32_t now, const struct pinfo *pi)
                 continue;
             n = moved(e.d1);
             end = note_end(st, k, e.d1, e.tick);
-            while (n < OPEN[0])
-                n += 12u;                /* (below the low E: an octave up) */
-            for (s = 3; s > 0 && n < OPEN[s]; s--)   /* the highest string it is on: the lowest fret */
-                ;
-            f = (int32_t)(n - OPEN[s]);
+            {
+                uint32_t uf;
+                bass_fingering(st, k, &s, &uf);   /* (M5: a hand position; the real notes, E and A strings) */
+                f = (int32_t)uf;
+                n = OPEN[s] + uf;
+            }
             x = scroll_x((int32_t)e.tick, now);
             xe = scroll_x((int32_t)end, now);
             if (xe < x0 || x >= 240)
@@ -2718,7 +2828,8 @@ static void draw_notation_view(int32_t now, const struct pinfo *pi)
             x = scroll_x((int32_t)e.tick, now) + 10;
             if (x < ST_CLIP + 4 || x > 236)
                 continue;
-            step = staff_step(n, bass, &acc);
+            step = staff_step(bass ? n + 12u : n, bass, &acc);   /* (M5: the bass written an octave up, as bass
+                                                               * guitar music is) */
             y = bot - step * ST_SP / 2;
             c = (int32_t)end <= now ? C_DIM : (int32_t)e.tick <= now ? C_HI : C_WHITE;
             for (i = -2; i >= step; i -= 2)  /* ledger lines below and above */
@@ -2730,7 +2841,7 @@ static void draw_notation_view(int32_t now, const struct pinfo *pi)
             draw_head(x, y, q >= 4u, c);
             if (q == 3u || q == 6u)
                 cv_rect(x + 8, y - 1, 3, 3, c);
-            if (ui.set.v[S_NOTE_NAMES]) {
+            if (SV(S_NOTE_NAMES)) {
                 char nm[4] = "";
                 text_cat(nm, names()[n % 12u]);
                 cv_text(x - text_w(&FONT_XS, nm) / 2, bot + 26, &FONT_XS, nm, c == C_WHITE ? C_GRAY : c);
@@ -2880,9 +2991,15 @@ static void draw_layers(void)
             frame_rect(x + 1, 4, 53, H_LAYERS - 6, C_HI);
         }
         num_cat(t, player_variant_of(l) > ly->variants ? ly->variants : player_variant_of(l));
-        text_cat(t, ui.vol[l] == VOL_QUIET ? " QUIET" : " FULL");
         text_in(x, 55, 3, &FONT_XS, LAYER_SHORT[l], l == mine ? C_HI : on ? C_WHITE : C_AMB);
-        text_in(x, 55, 16, &FONT_XS, on ? t : "MUTE", !on ? C_AMB : ui.vol[l] == VOL_QUIET ? C_GRAY : C_HI);
+        if (!on) {
+            text_in(x, 55, 16, &FONT_XS, "MUTE", C_AMB);
+        } else {                         /* M5: the level and the volume apart, in two colours */
+            const char *vtx = ui.vol[l] == VOL_QUIET ? "QUIET" : "FULL";
+            int32_t w = text_w(&FONT_XS, t) + 5 + text_w(&FONT_XS, vtx), x0 = x + (55 - w) / 2;
+            cv_text(x0, 16, &FONT_XS, t, C_HI);
+            cv_text(x0 + text_w(&FONT_XS, t) + 5, 16, &FONT_XS, vtx, ui.vol[l] == VOL_QUIET ? C_DIM : C_GRAY);
+        }
     }
     cv_blit(0, Y_LAYERS);
 }
@@ -2951,6 +3068,8 @@ static const char *legend_play(int st)
                "PLAY pause|SEQ set A-B|EDIT view|GLO help" : "PLAY pause|EDIT view|SEQ loop|GLO help";
     if (ui.loop == LOOP_BARS && st == PL_STOPPED)
         return "PLAY from A|SEQ loop off|EDIT view|GLO help";
+    if (st == PL_STOPPED && (plat_ms() / 3000u) & 1u)   /* M5: the layer buttons, in short, every other 3 s */
+        return "FX-LFO press volume|hold your part";
     if (st == PL_STOPPED)
         return ui.loop == LOOP_SONG ? "PLAY|PRESETS/ALGO start|SEQ set A-B|GLO help" :
                "PLAY|PRESETS/ALGO start|SEQ loop|GLO help";
@@ -2987,10 +3106,25 @@ static void part_info(struct pinfo *pi, int st, int32_t tb, int32_t k, int32_t n
             pi->nnow = voicing(kc, pi->now);
         if (st != PL_STOPPED && harm_broken()) {   /* L4, L5: the note just played; the chord around it darker */
             uint8_t a[SONG_VOICING_NOTES];
-            uint32_t na = attack_notes(L_HARM, tb, 0, a, SONG_VOICING_NOTES, &at);
-            for (i = 0; i < pi->nnow; i++)
-                pi->ctx[i] = pi->now[i];
-            pi->nctx = pi->nnow;
+            uint32_t na = attack_notes(L_HARM, tb, 0, a, SONG_VOICING_NOTES, &at), t0, t1, kk, j;
+            const struct song_stream *hs = layer_stream(L_HARM);
+            struct song_event he;
+            t0 = song_cevt_tick(ui.s, kc);
+            t1 = kc + 1u < ui.s->ncevt ? song_cevt_tick(ui.s, kc + 1u) : ui.s->end_tick;
+            pi->nctx = 0;
+            for (kk = hs ? song_seek(hs, t0) : 0; hs && kk < hs->count && pi->nctx < 10u; kk++) {
+                uint8_t m;
+                song_event_get(hs, kk, &he);
+                if (he.tick >= t1)
+                    break;
+                if (he.status != 0x90u)
+                    continue;
+                m = (uint8_t)moved(he.d1);
+                for (j = 0; j < pi->nctx && pi->ctx[j] != m; j++)
+                    ;
+                if (j == pi->nctx)
+                    pi->ctx[pi->nctx++] = m;
+            }
             for (i = 0, pi->nnow = 0; i < na; i++)
                 pi->now[pi->nnow++] = (uint8_t)moved(a[i]);
         }
@@ -3089,7 +3223,7 @@ static void frame_play(uint32_t now)
     /* the key lights: your part's keys, bright at each attack, darker between (M3: blinking in its rhythm); the next
      * chord dim in the last bar before it. The drums: none (the beat light is enough) */
     ui.lit_keys = ui.mid_keys = ui.dim_keys = 0;
-    if (ui.set.v[S_LIGHTS] && pi.part != L_DRUMS && st != PL_STOPPED) {   /* (M4: muted or not; the setting) */
+    if (SV(S_LIGHTS) && pi.part != L_DRUMS && st != PL_STOPPED) {   /* (M4: muted or not; the setting) */
         uint32_t keys = 0;
         for (i = 0; i < pi.nnow; i++)
             keys |= key_bit(pi.now[i]);
@@ -3111,7 +3245,7 @@ static void frame_play(uint32_t now)
         uint32_t l, q = 0;
         for (l = 0; l < SONG_LAYERS; l++)
             q |= (uint32_t)(ui.vol[l] == VOL_QUIET) << l;
-        player_quiet(q, QUIET_PCT[ui.set.v[S_QUIET] % 2u]);
+        player_quiet(q, QUIET_PCT[SV(S_QUIET) % 2u]);
     }
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
@@ -3246,9 +3380,31 @@ void app_ui_init(void)
     player_stats.ui_view = 16u;
 }
 
+/* the start-up melody: each note on and off at its time (while the splash shows) */
+static void splash_tune(uint32_t now)
+{
+    if (ui.tune_on == 0 && ui.tune_off == 0) {   /* the sound: electric piano, a little reverb, softer than a song */
+        synth_midi(0xB0u | TUNE_CH, 121u, 0);
+        synth_midi(0xC0u | TUNE_CH, 4u, 0);
+        synth_midi(0xB0u | TUNE_CH, 7u, 80u);
+        synth_midi(0xB0u | TUNE_CH, 91u, 70u);
+    }
+    while (ui.tune_on < 5u && now >= TUNE[ui.tune_on][0]) {
+        synth_midi(0x90u | TUNE_CH, (uint8_t)TUNE[ui.tune_on][1], ui.tune_on == 4u ? 70u : 84u);
+        ui.tune_on++;
+        player_stats.splash_notes++;
+    }
+    while (ui.tune_off < ui.tune_on && now >= TUNE[ui.tune_off][0] + TUNE[ui.tune_off][2]) {
+        synth_midi(0x80u | TUNE_CH, (uint8_t)TUNE[ui.tune_off][1], 0);
+        ui.tune_off++;
+    }
+}
+
 void app_frame(void)
 {
     uint32_t now = plat_ms();
+    if (ui.splash || ui.tune_off < ui.tune_on)
+        splash_tune(now);
     if (ui.splash && now >= SPLASH_MS) { /* the splash has had its time: the list */
         ui.splash = 0;
         ui.redraw = 1;
@@ -3264,6 +3420,12 @@ void app_frame(void)
     player_stats.ui_view = (uint32_t)ui.view + (ui.splash ? 16u : 0u);
     if (ui.splash)
         return;
+    if (ui.view == V_HINT) {
+        if (ui.redraw)
+            draw_hint();
+        ui.redraw = 0;
+        return;
+    }
     if (ui.view == V_VIEWSET) {
         if (ui.redraw)
             draw_viewset();

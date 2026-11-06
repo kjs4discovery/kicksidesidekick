@@ -11,6 +11,8 @@
 #   bass     L1 root held    L2 rhythmic root    L3 root-fifth    L4 walking / more motion
 #   drums    L1 the pulse    L2 a groove         L3 the groove with fills and crashes
 # The rhythm of each level comes from the song's style (its metre and feel): see STYLES.
+# Loudness (M5): the levels of a layer sound about equally loud (measured in the emulator, docs/LOG M5 Part 1):
+# harmony L4, L5 (single notes) and bass L1 (held) have higher velocities than the busier levels.
 from . import chords as ch
 from .errors import Diagnostics
 from .source import parse_chart_text
@@ -98,7 +100,7 @@ class _Out:
 
 def _bass_root(c):
     pc = c.bass if c.bass is not None else c.root
-    return 36 + pc if pc >= 4 else 48 + pc          # E2..D#3
+    return 24 + pc if pc >= 4 else 36 + pc          # E1..D#2: the bass's real octave (M5; M4 wrote it an octave up)
 
 
 def _broken(v):
@@ -158,11 +160,11 @@ def harmony(bars, bpb, style, swing, final_bar):
             lo, mid, hi = _broken(v2)                # L4: broken chords, in eighths
             seq = [lo, mid, hi, mid, hi, mid] if bpb % 3 == 0 else [lo, hi, mid, hi]
             for k in range(length * 2):
-                out[4].note(start + k * PPQ // 2, PPQ // 2 + 40, seq[(beat * 2 + k) % len(seq)], 58 if k % 2 == 0 else 48)
+                out[4].note(start + k * PPQ // 2, PPQ // 2 + 40, seq[(beat * 2 + k) % len(seq)], 70 if k % 2 == 0 else 58)
             pool = _arp_pool(v2)                     # L5: up and down the pool, in eighths
             cyc = pool + pool[-2:0:-1]
             for k in range(length * 2):
-                out[5].note(start + k * PPQ // 2, PPQ // 2 + 60, cyc[k % len(cyc)], 58 if k % 2 == 0 else 46)
+                out[5].note(start + k * PPQ // 2, PPQ // 2 + 60, cyc[k % len(cyc)], 70 if k % 2 == 0 else 56)
     return {lv: o.ev for lv, o in out.items()}
 
 
@@ -173,14 +175,14 @@ def bass(bars, bpb, style, swing, final_bar):
     for i, (b, beat, length, c) in enumerate(flat):
         start, dur = b * bpb * PPQ + beat * PPQ, length * PPQ
         root = _bass_root(c)
-        fifth = root + 7 if root + 7 <= 52 else root - 5
+        fifth = root + 7 if root + 7 <= 40 else root - 5
         third = root + (3 if 3 in c.intervals else 4)
         nxt = _bass_root(flat[i + 1][3]) if i + 1 < len(flat) else root
         if b == final_bar:
             for lv in range(1, 5):
                 out[lv].note(start, dur, root, 84)
             continue
-        out[1].note(start, dur, root, 84)                                    # L1: held
+        out[1].note(start, dur, root, 97)                                    # L1: held
         for k in range(length):                                              # L2: the root in rhythm
             bib = beat + k
             if bpb % 3 == 0:                                                 # (3/4: on 1, held 2 beats, and on 3)
@@ -209,13 +211,13 @@ def bass(bars, bpb, style, swing, final_bar):
         elif bpb % 3 == 0:                                                   # 3/4: root, fifth, octave
             for k in range(length):
                 p = (root, fifth, root + 12)[(beat + k) % 3]
-                out[4].note(start + k * PPQ, PPQ - 30, p if p <= 55 else p - 12, 84 if (beat + k) % 3 == 0 else 72)
+                out[4].note(start + k * PPQ, PPQ - 30, p if p <= 43 else p - 12, 84 if (beat + k) % 3 == 0 else 72)
         else:                                                                # walking quarters into the next root
             walk = [root, third, fifth, nxt + (1 if nxt < root else -1)]
             for k in range(length):
                 p = walk[k % 4] if k < length - 1 or length < 2 else walk[3]
                 if k == length - 1 and length >= 2 and nxt == root:
-                    p = root + 9 if root + 9 <= 55 else fifth             # the same chord next: the sixth
+                    p = root + 9 if root + 9 <= 43 else fifth             # the same chord next: the sixth
                 out[4].note(start + k * PPQ, PPQ - 30, p, 84 if k == 0 else 72)
     return {lv: o.ev for lv, o in out.items()}
 
