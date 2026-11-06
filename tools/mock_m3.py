@@ -329,7 +329,52 @@ def mock_tab(path):
     s.save(path)
 
 
-MOCKS = {"p6-guitar": mock_guitar, "p6-tab": mock_tab, "p4-layout": mock_layout, "p4-keys-zoom": mock_keys_zoom, "p4-settings": mock_settings, "p3-loop-set-a": mock_loop_set_a, "p3-loop-set-b": mock_loop_set_b, "p3-loop-on": mock_loop_on, "p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
+def mock_roll(path):
+    s = Screen()
+    top(s, "Amazing Grace", "84 BPM  G", "5:2", "MELODY - YOURS")
+    s.text(56, 34, "G", B, HI)
+    s.text(150, 34, "Em", B, WHITE)
+    lo, hi, y0, y1 = 62, 74, 52, 150
+    row = lambda n: y1 - (n - lo) * (y1 - y0) / (hi - lo)
+    for n in range(lo, hi + 1):
+        if n % 12 in (0, 2, 4, 5, 7, 9, 11):
+            s.rect(16, int(row(n)), 224, 1, LINE)
+    for x in (52, 160):
+        s.rect(x, 50, 1, 102, DIM)
+    s.rect(44, 50, 2, 102, AMB)
+    notes = [(20, 40, 62, "D", DIM), (40, 112, 67, "G", HI), (112, 130, 71, "B", WHITE), (130, 148, 67, "G", WHITE),
+             (160, 232, 71, "B", WHITE)]
+    for xa, xb, n, nm, c in notes:
+        s.rect(xa, int(row(n)) - 3, xb - xa - 2, 7, c if c != WHITE else AMB)
+        s.text(xa + 2, int(row(n)) - 18, nm, XS, c)
+    s.text(6, 160, "melody L1: bars slide to the line", XS, GRAY)
+    layers(s, 180, ["L1", "L1", "L1", "MUTE"])
+    legend2(s, [("PLAY", "pause"), ("EDIT", "view"), ("SAVE", "key"), ("GLO", "help")])
+    s.save(path)
+
+
+def mock_drum_grid(path):
+    s = Screen()
+    top(s, "Saints", "112 BPM  F", "3:2", "DRUMS - YOURS")
+    rows = ["KICK", "SNARE", "HAT", "OTHER"]
+    for i, r in enumerate(rows):
+        y = 48 + i * 24
+        s.text(2, y + 2, r, XS, DIM)
+        s.rect(44, y + 18, 196, 1, LINE)
+    s.rect(44, 44, 2, 100, AMB)
+    for k in range(10):
+        x = 50 + k * 19
+        hits = [k % 2 == 0, k % 2 == 1, True, k == 7]
+        for i, h in enumerate(hits):
+            if h:
+                s.rect(x, 50 + i * 24, 12, 14, AMB if x > 46 else DIM)
+    s.text(6, 160, "drums L1: hits slide to the line", XS, GRAY)
+    layers(s, 180, ["MUTE", "L1", "L1", "L1"])
+    legend2(s, [("PLAY", "pause"), ("EDIT", "view"), ("SAVE", "key"), ("GLO", "help")])
+    s.save(path)
+
+
+MOCKS = {"p7-roll": mock_roll, "p7-drum-grid": mock_drum_grid, "p6-guitar": mock_guitar, "p6-tab": mock_tab, "p4-layout": mock_layout, "p4-keys-zoom": mock_keys_zoom, "p4-settings": mock_settings, "p3-loop-set-a": mock_loop_set_a, "p3-loop-set-b": mock_loop_set_b, "p3-loop-on": mock_loop_on, "p2-harmony": mock_harmony, "p2-bass": mock_bass, "p2-melody": mock_melody, "p2-drums": mock_drums,
          "p2-keys-blink": mock_keys_blink}
 
 if __name__ == "__main__":

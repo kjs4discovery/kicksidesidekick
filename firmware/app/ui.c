@@ -55,14 +55,15 @@ static void ui_busy(const char *a, const char *b);
 
 enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS };
 /* the play screen's views (EDIT); PV_CHORD: the part's main view (the chord, or your part's note or hit) */
-enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_N };
+enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_ROLL, PV_NOTATION, PV_GRID, PV_N };
 static const uint8_t VIEWS[SONG_LAYERS][8] = {   /* each part's views in EDIT's order (PV_N ends a list) */
-    {PV_CHORD, PV_CHART, PV_N},                                   /* drums */
-    {PV_CHORD, PV_KEYS, PV_CHART, PV_TAB, PV_N},                  /* bass */
+    {PV_CHORD, PV_CHART, PV_GRID, PV_N},                          /* drums */
+    {PV_CHORD, PV_KEYS, PV_CHART, PV_TAB, PV_NOTATION, PV_N},     /* bass */
     {PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_N},               /* harmony */
-    {PV_CHORD, PV_KEYS, PV_CHART, PV_N},                          /* melody */
+    {PV_CHORD, PV_KEYS, PV_CHART, PV_ROLL, PV_NOTATION, PV_N},    /* melody */
 };
-static const char *const VIEW_NAME[PV_N] = {"MAIN", "KEYBOARD", "CHART", "GUITAR", "BASS TAB"};
+static const char *const VIEW_NAME[PV_N] = {"MAIN", "KEYBOARD", "CHART", "GUITAR", "BASS TAB", "MELODY ROLL",
+                                            "NOTATION", "DRUM GRID"};
 #define L_DRUMS 0u
 #define L_BASS 1u
 #define L_HARM 2u
@@ -78,17 +79,17 @@ static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "M
 /* the settings (M3 part 4): kept in fm1-base's settings store (plat_store, OBJ_SETTINGS: 0xFC000 / 0xFD000, two
  * copies, the newer valid one wins; the stock firmware never uses these sectors) */
 #define SET_MAGIC 0x31534D46u            /* "FMS1" */
-enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_N };
+enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_N };
 struct settings {
     uint32_t magic, version;
     uint8_t v[8];                        /* S_* values (the rest 0) */
 };
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
-                                          "Note names (notation)"};
-static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2};   /* how many values each has */
+                                          "Note names (notation)", "Scrolling views show"};
+static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2};   /* how many values each has */
 static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
-                                            {"OFF", "ON", ""}};
-static const uint8_t SET_DEFAULT[S_N] = {1, 0, 2, 1};
+                                            {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}};
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 2, 1, 0};
 static const uint8_t COUNT_VOL[3] = {64, 96, 127};   /* the beep's channel volume */
 
 static struct {
@@ -1802,15 +1803,17 @@ static void draw_guitar_view(int st, const struct pinfo *pi, int32_t k, int32_t 
 }
 
 /* ------------------------------------------- the scrolling views (M3 parts 6, 7): one engine --- */
-/* time runs right to left past a now line at x0; span ticks of the song right of it. The tab: x0 44, 1.25 bars ahead
- * (about 1.5 bars on the screen). (Part 7 adds its views to this engine.) */
+/* time runs right to left past a now line at x0; span ticks of the song right of it. The tab, roll and drum grid: x0
+ * 44, 1.25 bars ahead (about 1.5 bars on the screen); the notation: x0 84, 36 px a beat (the approved mock). The
+ * zoom setting doubles the span (about 3 bars) */
 #define NOW_X 44
 
 static void scroll_setup(int view)
 {
-    (void)view;
-    ui.sc_x0 = NOW_X;
-    ui.sc_span = (int32_t)(bar_ticks() * 5u / 4u);
+    uint32_t zoom = ui.set.v[S_ZOOM] ? 2u : 1u;
+    ui.sc_x0 = view == PV_NOTATION ? 84 : NOW_X;
+    ui.sc_span = (int32_t)(view == PV_NOTATION ? (uint32_t)(240 - 84) * ui.s->ppq / 36u * zoom :
+                           bar_ticks() * 5u / 4u * zoom);
 }
 
 static int32_t scroll_span(void) { return ui.sc_span; }
@@ -1926,6 +1929,331 @@ static void draw_tab_view(int32_t now, const struct pinfo *pi)
         }
     }
     cv_text(6, 126, &FONT_XS, t, C_GRAY);
+    cv_blit(0, Y_CHORD);
+}
+
+/* the chord names above a scrolling view, at their changes (the one sounding amber) */
+static void scroll_chords(int32_t now, int32_t y, int32_t clip)
+{
+    const struct song *s = ui.s;
+    uint32_t k = song_chord_at(s, (uint32_t)(scroll_from(now) > 0 ? scroll_from(now) : 0));
+    for (; k < s->ncevt && (int32_t)song_cevt_tick(s, k) <= scroll_to(now); k++) {
+        int32_t t = (int32_t)song_cevt_tick(s, k), x = scroll_x(t, now), xe;
+        const char *sym = chord_name(k);
+        int sounding = t <= now && (k + 1u >= s->ncevt || (int32_t)song_cevt_tick(s, k + 1u) > now);
+        if (sym[0] == 'N')
+            continue;
+        if (x < clip)
+            x = clip;                    /* the one sounding stays in view at the left */
+        xe = k + 1u < s->ncevt ? scroll_x((int32_t)song_cevt_tick(s, k + 1u), now) : 240;
+        if (x + text_w(&FONT_B, sym) > xe && !sounding)
+            continue;
+        if (x < 238)
+            cv_text(x, y, &FONT_B, sym, sounding ? C_HI : C_WHITE);
+    }
+}
+
+/* ------------------------------------------------------ the melody roll (M3 part 7, melody) --- */
+/* the melody's notes as bars sliding to the now line, higher notes higher (the song's melody range at this level, in
+ * the key now, fills the height), their names above them; the chords above */
+static void draw_roll_view(int32_t now, const struct pinfo *pi)
+{
+    const struct song_stream *st = layer_stream(pi->part);
+    struct song_event e;
+    uint32_t k, lo = 127, hi = 0, n;
+    int32_t y0 = 26, y1 = 118;
+    char t[48] = "";
+    cv_begin(240, H_VIEW, C_BLACK);
+    if (st)
+        for (k = 0; k < st->count; k++) { /* the range (a melody: a few hundred events) */
+            song_event_get(st, k, &e);
+            if (e.status == 0x90u) {
+                n = moved(e.d1);
+                lo = n < lo ? n : lo;
+                hi = n > hi ? n : hi;
+            }
+        }
+    if (lo > hi)
+        lo = 60, hi = 72;
+    if (hi - lo < 12u)
+        lo = hi > 12u ? hi - 12u : 0;
+    for (n = lo; n <= hi; n++)           /* a faint line for each C and G */
+        if (n % 12u == 0u || n % 12u == 7u)
+            cv_rect(16, y1 - (int32_t)((n - lo) * (uint32_t)(y1 - y0) / (hi - lo)), 224, 1, C_LINE);
+    scroll_grid(now, y0 - 4, y1 + 6, 0);
+    scroll_chords(now, 0, 16);
+    if (st)
+        for (k = song_seek(st, (uint32_t)(scroll_from(now) - (int32_t)bar_ticks() > 0 ?
+                                          scroll_from(now) - (int32_t)bar_ticks() : 0)); k < st->count; k++) {
+            int32_t x, xe, y;
+            uint32_t end;
+            uint16_t c;
+            song_event_get(st, k, &e);
+            if ((int32_t)e.tick > scroll_to(now))
+                break;
+            if (e.status != 0x90u)
+                continue;
+            n = moved(e.d1);
+            end = note_end(st, k, e.d1, e.tick);
+            x = scroll_x((int32_t)e.tick, now);
+            xe = scroll_x((int32_t)end, now);
+            if (xe < 16 || x >= 240)
+                continue;
+            y = y1 - (int32_t)((n - lo) * (uint32_t)(y1 - y0) / (hi - lo));
+            c = (int32_t)end <= now ? C_DIM : (int32_t)e.tick <= now ? C_HI : C_AMB;
+            cv_rect(x < 16 ? 16 : x, y - 3, xe - (x < 16 ? 16 : x) - 1 > 2 ? xe - (x < 16 ? 16 : x) - 1 : 2, 7, c);
+            if (x >= 16)
+                cv_text(x + 1, y - 18, &FONT_XS, names()[n % 12u], (int32_t)end <= now ? C_DIM : C_GRAY);
+        }
+    scroll_now_line(y0 - 8, y1 + 8);
+    text_cat(t, LAYER_NAME[pi->part]);
+    text_cat(t, " L");
+    num_cat(t, player_variant_of(pi->part));
+    text_cat(t, ": the bars slide to the line");
+    cv_text(6, 126, &FONT_XS, t, C_GRAY);
+    cv_blit(0, Y_CHORD);
+}
+
+/* ------------------------------------------------------- the drum grid (M3 part 7, drums) --- */
+static void draw_grid_view(int32_t now)
+{
+    static const char *const ROW[4] = {"KICK", "SNARE", "HATS", "OTHER"};
+    const struct song_stream *st = layer_stream(L_DRUMS);
+    struct song_event e;
+    uint32_t k;
+    int32_t i, y0 = 20, rh = 24;
+    char t[32] = "DRUMS L";
+    cv_begin(240, H_VIEW, C_BLACK);
+    for (i = 0; i < 4; i++) {
+        cv_text(2, y0 + i * rh + 3, &FONT_T, ROW[i], C_DIM);
+        cv_rect(30, y0 + i * rh + rh - 3, 210, 1, C_LINE);
+    }
+    scroll_grid(now, y0 - 2, y0 + 4 * rh, 1);
+    if (st)
+        for (k = song_seek(st, (uint32_t)(scroll_from(now) > 0 ? scroll_from(now) : 0)); k < st->count; k++) {
+            int32_t x, w;
+            song_event_get(st, k, &e);
+            if ((int32_t)e.tick > scroll_to(now))
+                break;
+            if (e.status != 0x90u)
+                continue;
+            x = scroll_x((int32_t)e.tick, now);
+            w = scroll_x((int32_t)(e.tick + ui.s->ppq / 4u), now) - x;   /* a sixteenth wide */
+            w = w < 4 ? 4 : w > 14 ? 14 : w;
+            if (x < 30 || x >= 240)
+                continue;
+            cv_rect(x, y0 + (int32_t)drum_row(e.d1) * rh + 2, w, rh - 8,
+                    (int32_t)e.tick + (int32_t)ui.s->ppq / 8 < now ? C_DIM : (int32_t)e.tick <= now ? C_WHITE :
+                    e.d2 >= 80u ? C_HI : C_AMB);
+        }
+    scroll_now_line(y0 - 6, y0 + 4 * rh + 2);
+    num_cat(t, player_variant_of(L_DRUMS));
+    text_cat(t, ": the hits slide to the line");
+    cv_text(6, 126, &FONT_XS, t, C_GRAY);
+    cv_blit(0, Y_CHORD);
+}
+
+/* --------------------------------------- the notation view (M3 part 7, D025: simplified notation) --- */
+/* one staff: the treble clef for the melody, the bass clef for the bass; the key signature; noteheads (hollow from a
+ * half note), stems, dots, beams for eighth pairs (a flag for a lone eighth), ledger lines, bar lines; the chords
+ * above; the note names under the staff (a setting). Played dim, sounding amber, coming white. Each note is drawn as
+ * the nearest simple value (whole, dotted half, half, dotted quarter, quarter, eighth): no ties, no rests (D025) */
+#define ST_TOP 34                        /* the staff's top line (view rows) */
+#define ST_SP 12                         /* line spacing */
+#define ST_CLIP 52                       /* notes are drawn right of the clef and key signature */
+#define ST_NOW 84
+static const int8_t TREBLE[48][2] = {
+    {-2, 36}, {-2, 35}, {-3, 35}, {-3, 34}, {-2, 33}, {-2, 32}, {-1, 32}, {-1, 31}, {1, 31}, {2, 30}, {3, 31},
+    {4, 31}, {5, 32}, {7, 33}, {7, 34}, {8, 36}, {8, 38}, {8, 40}, {7, 42}, {6, 43}, {5, 45}, {3, 46}, {1, 47},
+    {-1, 48}, {-4, 48}, {-6, 47}, {-8, 46}, {-10, 44}, {-12, 42}, {-13, 39}, {-14, 36}, {-14, 33}, {-13, 30},
+    {-12, 27}, {-10, 24}, {-8, 22}, {-5, 20}, {-2, 19}, {2, 18}, {5, 19}, {6, 2}, {7, -8}, {3, -14}, {-1, -8},
+    {0, 6}, {4, 58}, {2, 63}, {-3, 61}};   /* the planning chat's mock's clef (docs/m3-design/notation_mock.py) */
+static const int8_t KEY_SIG[12] = {0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5};   /* by the parent major: + sharps, - flats */
+static const uint8_t SHARP_STEPS[7] = {8, 5, 9, 6, 3, 7, 4};   /* F5 C5 G5 D5 A4 E5 B4: steps above E4 (treble) */
+static const uint8_t FLAT_STEPS[7] = {4, 7, 3, 6, 2, 5, 1};    /* B4 E5 A4 D5 G4 C5 F4 */
+
+/* a note's staff step (0: the bottom line; each step half a space) and its accidental as spelled (1 #, -1 b, 0) */
+static int32_t staff_step(uint32_t n, int bass, int *acc)
+{
+    static const uint8_t LETTER[7] = {'C', 'D', 'E', 'F', 'G', 'A', 'B'};
+    const char *nm = names()[n % 12u];
+    int32_t l = 0, oct = (int32_t)(n / 12u) - 1;
+    while (l < 6 && LETTER[l] != (uint8_t)nm[0])
+        l++;
+    *acc = nm[1] == '#' ? 1 : nm[1] == 'b' ? -1 : 0;
+    if (nm[0] == 'C' && nm[1] == 'b')
+        oct++;
+    return oct * 7 + l - (bass ? 2 * 7 + 4 : 4 * 7 + 2);   /* minus G2 (bass) or E4 (treble) */
+}
+
+/* the key signature's accidental on a letter (step mod 7 from E): 1, -1 or 0 */
+static int sig_acc(int32_t step, int sig, int bass)
+{
+    int32_t i, s;
+    for (i = 0; i < (sig > 0 ? sig : -sig); i++) {
+        s = (sig > 0 ? SHARP_STEPS[i] : FLAT_STEPS[i]) - (bass ? 2 : 0);   /* G2 is two steps above E2 */
+        if ((((s - step) % 7) + 7) % 7 == 0)
+            return sig > 0 ? 1 : -1;
+    }
+    return 0;
+}
+
+static void draw_acc(int32_t x, int32_t y, int acc, uint16_t c)
+{
+    if (acc > 0) {                       /* sharp */
+        cv_rect(x + 1, y - 6, 1, 12, c);
+        cv_rect(x + 4, y - 7, 1, 12, c);
+        cv_rect(x - 1, y - 3, 8, 1, c);
+        cv_rect(x - 1, y + 2, 8, 1, c);
+    } else if (acc < 0) {                /* flat */
+        cv_rect(x + 1, y - 9, 1, 13, c);
+        cv_rect(x + 2, y - 1, 3, 1, c);
+        cv_rect(x + 4, y, 1, 3, c);
+        cv_rect(x + 2, y + 3, 2, 1, c);
+    } else {                             /* natural */
+        cv_rect(x + 1, y - 7, 1, 11, c);
+        cv_rect(x + 5, y - 4, 1, 11, c);
+        cv_rect(x + 1, y - 2, 5, 2, c);
+        cv_rect(x + 1, y + 2, 5, 2, c);
+    }
+}
+
+static void draw_head(int32_t x, int32_t y, int hollow, uint16_t c)
+{
+    static const uint8_t W[9] = {6, 10, 12, 12, 12, 12, 12, 10, 6};   /* 12 x 9, tilted a little */
+    int32_t i;
+    for (i = 0; i < 9; i++) {
+        int32_t w = W[i], ox = (12 - w) / 2 + (4 - i) / 3 - 6;
+        if (hollow && i > 1 && i < 7) {
+            cv_rect(x + ox, y - 4 + i, 3, 1, c);
+            cv_rect(x + ox + w - 3, y - 4 + i, 3, 1, c);
+        } else {
+            cv_rect(x + ox, y - 4 + i, w, 1, c);
+        }
+    }
+}
+
+struct snote { int32_t x, y, step; uint32_t q; uint16_t c; };   /* q: the value in eighths (1..8) */
+
+static void draw_notation_view(int32_t now, const struct pinfo *pi)
+{
+    const struct song_stream *st = layer_stream(pi->part);
+    struct song_event e;
+    int bass = pi->part == L_BASS, sig = KEY_SIG[(ui.s->key_root + MODE_PARENT[ui.s->key_mode % 7u] + 12u +
+                                                 (uint32_t)ui.key) % 12u];
+    int32_t bot = ST_TOP + 4 * ST_SP, i, ppq = (int32_t)ui.s->ppq;
+    struct snote nt[24];
+    uint32_t nn = 0, k, last = 0xFFFFFFFFu;
+    cv_begin(240, H_VIEW, C_BLACK);
+    for (i = 0; i < 5; i++)
+        cv_rect(4, ST_TOP + i * ST_SP, 236, 1, C_GRAY);
+    scroll_grid(now, ST_TOP, bot + 1, 0);
+    scroll_chords(now, 4, ST_CLIP);
+    if (st)
+        for (k = song_seek(st, (uint32_t)(scroll_from(now) > 0 ? scroll_from(now) : 0)); k < st->count && nn < 24u;
+             k++) {
+            uint32_t n, end, len, q;
+            int acc;
+            int32_t x, step, y;
+            uint16_t c;
+            song_event_get(st, k, &e);
+            if ((int32_t)e.tick > scroll_to(now))
+                break;
+            if (e.status != 0x90u)
+                continue;
+            if (e.tick == last)          /* (two notes at once in the part: the first) */
+                continue;
+            last = e.tick;
+            n = moved(e.d1);
+            end = note_end(st, k, e.d1, e.tick);
+            len = (end - e.tick) * 8u / (uint32_t)ppq;   /* in 32nd notes */
+            /* the nearest simple value, in eighths: 8 whole, 6 dotted half, 4 half, 3 dotted quarter, 2, 1 */
+            q = len >= 28u ? 8u : len >= 20u ? 6u : len >= 14u ? 4u : len >= 10u ? 3u : len >= 6u ? 2u : 1u;
+            x = scroll_x((int32_t)e.tick, now) + 10;
+            if (x < ST_CLIP + 4 || x > 236)
+                continue;
+            step = staff_step(n, bass, &acc);
+            y = bot - step * ST_SP / 2;
+            c = (int32_t)end <= now ? C_DIM : (int32_t)e.tick <= now ? C_HI : C_WHITE;
+            for (i = -2; i >= step; i -= 2)  /* ledger lines below and above */
+                cv_rect(x - 9, bot - i * ST_SP / 2, 18, 1, C_GRAY);
+            for (i = 10; i <= step; i += 2)
+                cv_rect(x - 9, bot - i * ST_SP / 2, 18, 1, C_GRAY);
+            if (acc != sig_acc(step, sig, bass))
+                draw_acc(x - 18, y, acc, c);
+            draw_head(x, y, q >= 4u, c);
+            if (q == 3u || q == 6u)
+                cv_rect(x + 8, y - 1, 3, 3, c);
+            if (ui.set.v[S_NOTE_NAMES]) {
+                char nm[4] = "";
+                text_cat(nm, names()[n % 12u]);
+                cv_text(x - text_w(&FONT_XS, nm) / 2, bot + 26, &FONT_XS, nm, c == C_WHITE ? C_GRAY : c);
+            }
+            nt[nn].x = x;                /* q: the value, 16: on a beat, 32: on its "and" */
+            nt[nn].y = y;
+            nt[nn].step = step;
+            nt[nn].c = c;
+            nt[nn++].q = q | (e.tick % (uint32_t)ppq == 0u ? 16u : 0u) | (e.tick % (uint32_t)ppq * 2u == (uint32_t)ppq ?
+                                                                         32u : 0u);
+        }
+    for (k = 0; k < nn; k++) {           /* stems, flags and beams: eighths on a beat and its "and" are a pair */
+        uint32_t q = nt[k].q & 15u;
+        int pair = q == 1u && (nt[k].q & 16u) && k + 1u < nn && (nt[k + 1u].q & 15u) == 1u && (nt[k + 1u].q & 32u) &&
+                   nt[k + 1u].x - nt[k].x < 60;
+        int32_t up, sx, sy, sx2, sy2, top;
+        if (q == 8u)
+            continue;                    /* a whole note: no stem */
+        if (pair) {
+            up = nt[k].step + nt[k + 1u].step < 8;   /* below the middle line on average: stems up */
+            sx = up ? nt[k].x + 5 : nt[k].x - 6;
+            sx2 = up ? nt[k + 1u].x + 5 : nt[k + 1u].x - 6;
+            sy = nt[k].y;
+            sy2 = nt[k + 1u].y;
+            top = up ? (sy < sy2 ? sy : sy2) - 28 : (sy > sy2 ? sy : sy2) + 28;
+            cv_rect(sx, up ? top : sy, 2, up ? sy - top : top - sy, nt[k].c);
+            cv_rect(sx2, up ? top : sy2, 2, up ? sy2 - top : top - sy2, nt[k + 1u].c);
+            cv_rect(sx, up ? top : top - 3, sx2 - sx + 2, 4, nt[k + 1u].c);
+            k++;
+            continue;
+        }
+        up = nt[k].step < 4;
+        sx = up ? nt[k].x + 5 : nt[k].x - 6;
+        cv_rect(sx, up ? nt[k].y - 28 : nt[k].y, 2, 28, nt[k].c);
+        if (q == 1u) {                   /* a lone eighth: a flag */
+            int32_t fy = up ? nt[k].y - 28 : nt[k].y + 28;
+            cv_line(sx + 1, fy, sx + 7, fy + (up ? 10 : -10), nt[k].c);
+            cv_line(sx + 2, fy, sx + 8, fy + (up ? 10 : -10), nt[k].c);
+        }
+    }
+    cv_rect(0, ST_TOP - 16, ST_CLIP - 2, 4 * ST_SP + 34, C_BLACK);   /* the clef and key signature over the past */
+    for (i = 0; i < 5; i++)
+        cv_rect(4, ST_TOP + i * ST_SP, ST_CLIP - 6, 1, C_GRAY);
+    if (!bass) {
+        for (i = 0; i + 1 < 48; i++)
+            if (TREBLE[i + 1][1] - TREBLE[i][1] < 40 && TREBLE[i][1] - TREBLE[i + 1][1] < 40) {
+                cv_line(18 + TREBLE[i][0], ST_TOP + TREBLE[i][1], 18 + TREBLE[i + 1][0], ST_TOP + TREBLE[i + 1][1],
+                        C_WHITE);
+                cv_line(19 + TREBLE[i][0], ST_TOP + TREBLE[i][1], 19 + TREBLE[i + 1][0], ST_TOP + TREBLE[i + 1][1],
+                        C_WHITE);
+            }
+    } else {                             /* the bass clef: a hook from the F line, two dots */
+        static const int8_t BC[12][2] = {{0, 15}, {2, 9}, {7, 7}, {12, 9}, {14, 15}, {13, 22}, {9, 29}, {3, 35},
+                                         {-2, 39}, {-2, 39}, {-2, 39}, {-2, 39}};
+        for (i = 0; i + 1 < 9; i++) {
+            cv_line(8 + BC[i][0], ST_TOP + BC[i][1] - 6, 8 + BC[i + 1][0], ST_TOP + BC[i + 1][1] - 6, C_WHITE);
+            cv_line(8 + BC[i][0], ST_TOP + BC[i][1] - 5, 8 + BC[i + 1][0], ST_TOP + BC[i + 1][1] - 5, C_WHITE);
+        }
+        cv_rect(6, ST_TOP + ST_SP - 3, 5, 5, C_WHITE);
+        cv_rect(26, ST_TOP + ST_SP / 2 - 2, 3, 3, C_WHITE);
+        cv_rect(26, ST_TOP + ST_SP * 3 / 2 - 2, 3, 3, C_WHITE);
+    }
+    for (i = 0; i < (sig > 0 ? sig : -sig) && i < 7; i++) {   /* the key signature */
+        int32_t step = (sig > 0 ? SHARP_STEPS[i] : FLAT_STEPS[i]) - (bass ? 2 : 0);
+        draw_acc(32 + i * 5, bot - step * ST_SP / 2, sig > 0 ? 1 : -1, C_WHITE);
+    }
+    cv_rect(ST_NOW, ST_TOP - 10, 2, 4 * ST_SP + 22, C_AMB);  /* the now line */
+    cv_rect(ST_NOW - 3, ST_TOP - 14, 8, 2, C_AMB);
+    cv_rect(ST_NOW - 2, ST_TOP - 12, 6, 2, C_AMB);
     cv_blit(0, Y_CHORD);
 }
 
@@ -2251,7 +2579,7 @@ static void frame_play(uint32_t now)
               (uint32_t)ui.loop_step << 14 ^ (ui.loop_step ? ui.a_bar << 16 ^ ui.b_bar << 22 : 0u) ^
               (uint32_t)count << 8 ^ (uint32_t)(k + 1) << 12 ^ pi.part << 28;
     if (ui.pview != PV_CHORD) {          /* the other views: the chord band, strip and cursor's place */
-        int scroll = ui.pview == PV_TAB;
+        int scroll = ui.pview == PV_TAB || ui.pview == PV_ROLL || ui.pview == PV_NOTATION || ui.pview == PV_GRID;
         if (scroll)
             scroll_setup(ui.pview);
         view_key = big_key ^ (uint32_t)left << 22 ^ (uint32_t)(ui.pview == PV_CHART ? bar : 0) << 3 ^
@@ -2267,6 +2595,12 @@ static void frame_play(uint32_t now)
                 draw_guitar_view(st, &pi, k, next);
             else if (ui.pview == PV_TAB)
                 draw_tab_view(tb, &pi);
+            else if (ui.pview == PV_ROLL)
+                draw_roll_view(tb, &pi);
+            else if (ui.pview == PV_NOTATION)
+                draw_notation_view(tb, &pi);
+            else if (ui.pview == PV_GRID)
+                draw_grid_view(tb);
             else
                 draw_chart_view(bar, section, pi.part);
             lcd_done();

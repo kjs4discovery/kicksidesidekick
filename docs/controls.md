@@ -228,9 +228,9 @@ EDIT now goes through **each part's own list of views** (the main view first):
 | your part | views (EDIT) |
 |---|---|
 | harmony | chord, keyboard, chart, **guitar** |
-| bass | bass note, keyboard, chart, **bass tab** |
-| melody | melody note, keyboard, chart |
-| drums | the hits, chart |
+| bass | bass note, keyboard, chart, **bass tab**, notation (Part 7) |
+| melody | melody note, keyboard, chart, roll and notation (Part 7) |
+| drums | the hits, chart, drum grid (Part 7) |
 
 - **Guitar (harmony):**
   - A chord box for the chord now: 6 strings (low E on the left), 4 frets, the dots with finger numbers, o (open)
@@ -257,3 +257,39 @@ Mock-ups: ![guitar](step-M3/mock-p6-guitar.png) ![bass tab](step-M3/mock-p6-tab.
 
 Built: ![guitar, open shapes](step-M3/p6-guitar.png) ![guitar in A](step-M3/p6-guitar-key.png)
 ![bass tab](step-M3/p6-tab.png)
+
+### Part 7: scrolling views (one shared engine, a now line)
+
+All scrolling views share Part 6's engine: the song moves right to left past an amber now line, with bar lines and
+beat ticks, and is redrawn for every pixel it moves. The count-in replaces them while it counts, as in every view.
+
+- **Melody roll (melody):**
+  - the melody's notes are bars sliding to the line, higher notes higher (the song's melody range at its level, in
+    the key now, fills the height);
+  - each bar has its name above it, and the chords are along the top;
+  - played notes are dim, the sounding one bright, coming ones amber.
+- **Notation (melody: treble clef; bass: bass clef), D025, after the approved mock
+  (docs/m3-design/notation-mock.png):**
+  - one staff with the clef (the mock's treble clef curve; a drawn bass clef with its two dots), the key signature
+    and bar lines;
+  - noteheads, hollow from a half note up; stems (up below the middle line, down above it); dots; beams for eighth
+    pairs on a beat and its "and"; a flag for a lone eighth; ledger lines;
+  - accidentals where the note differs from the key signature: sharp, flat or natural;
+  - chord names above (the sounding one amber); note names under the staff (setting "Note names", on by default);
+  - played notes dim, the sounding one amber, coming ones white;
+  - simplifications, as D025 says: each note is drawn as the nearest of whole, dotted half, half, dotted quarter,
+    quarter or eighth; no ties, no rests; two notes at once in the part: the first.
+  - It follows key changes: Greensleeves at +5 gets one flat.
+- **Drum grid (drums):** rows KICK, SNARE, HATS (hi-hats and cymbals), OTHER. The hits are blocks sliding to the line
+  at the drums' level; a loud hit is brighter.
+- **Zoom (setting "Scrolling views show"):** 1.5 BARS (the default) or 3 BARS, for all the scrolling views (the
+  notation at 36 px a beat, or 18).
+- The audio is not disturbed: the whole Blues at 250 BPM in the drum grid or the notation is on time, with no
+  deferred block and CPU at most 15 %.
+
+Mock-ups: ![melody roll](step-M3/mock-p7-roll.png) ![drum grid](step-M3/mock-p7-drum-grid.png); notation: the planning
+chat's ![notation mock](m3-design/notation-mock.png)
+
+Built: ![melody roll](step-M3/p7-roll.png) ![notation, treble](step-M3/p7-notation.png)
+![notation, bass](step-M3/p7-notation-bass.png) ![drum grid](step-M3/p7-grid.png)
+![notation in D minor](step-M3/p7-notation-flats.png) ![3 bars](step-M3/p7-notation-zoom.png)

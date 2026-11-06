@@ -907,3 +907,29 @@ Hardware touched: none
 Questions for the planning chat:
 - The guitar table is ours and was checked by script, not by a guitarist. Worth a look by one before beta.
 Next: Part 7 (melody roll, notation, drum grid on the same scrolling engine).
+
+2026-11-05 19:02 — Milestone M3, Part 7 (scrolling views: melody roll, notation, drum grid) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "Part 7"; mock-ups first: docs/step-M3/mock-p7-*.png, and the planning chat's notation mock):
+- The melody roll, the notation view (treble for melody, bass clef for bass; D025's simplified rules) and the drum
+  grid, on Part 6's scrolling engine. The engine's now line and span are per view.
+- A new setting, "Scrolling views show 1.5 / 3 BARS": the zoom the plan asked to propose.
+Learned / measured:
+- Release build build/step-M3/part7/fm1acc-0.3.7-m3p7.fwsc: FM-1_46000307, sha256
+  0745dba26f7fa9fef2b6a4249926be305135ff75844a8ea8ee2845521d111646. Image 412,000 B.
+  - Checks part7 and part6 on it: ALL PASS (13).
+  - Every view scrolls with no deferred audio block, CPU at most 12 % at the songs' tempos.
+  - The whole Blues at 250 BPM in the drum grid and in the notation: on time to within one block; CPU at most 13 %
+    and 15 %.
+  - It was built and tested in the worktree with exactly this commit's files.
+- The notation uses no font: the noteheads, accidentals and the bass clef are drawn rectangles and lines; the treble
+  clef is the mock's curve as 48 points.
+Choices (with reasons):
+- The rhythm is snapped to the nearest simple value. A note across a bar line is drawn at its start with its value
+  (D025: no ties). Eighths on a beat and its "and" are beamed; others get a flag.
+- The drum grid has 4 rows; the cymbals share the hi-hats' row.
+- The default zoom is 1.5 bars, as the plan said; 3 bars is a setting.
+Hardware touched: none
+Questions for the planning chat:
+- The notation should be checked by a staff reader (D025's caveat). The screens are in docs/step-M3/p7-notation*.png.
+Next: Part 8 (song folders by category, format 1.2; guide volume).

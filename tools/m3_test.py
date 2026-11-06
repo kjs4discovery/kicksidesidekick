@@ -1029,8 +1029,54 @@ def test_part6(all_songs, rep):
     return st["ok"]
 
 
+def test_part7(all_songs, rep):
+    """M3 part 7: the scrolling views: melody roll, notation (treble, bass), drum grid; the zoom setting"""
+    lines, st, check = checker("Part 7: scrolling views")
+    slugs = [c["slug"] for c in all_songs]
+    g, d, sa, b = (slugs.index(x) for x in ("amazing-grace", "danny-boy", "saints", "twelve-bar-blues"))
+    edits = lambda n, t0=OPEN_MS + 400: [x for k in range(n) for x in press(t0 + 250 * k, "EDIT")]
+    runs = {
+        "p7-roll": (open_song(g) + press(OPEN_MS + 200, "LFO") + edits(3), 5),
+        "p7-notation": (open_song(g) + press(OPEN_MS + 200, "LFO") + edits(4), 6),
+        "p7-notation-bass": (open_song(d) + press(OPEN_MS + 200, "SCL") + edits(4), 6),
+        "p7-grid": (open_song(sa) + press(OPEN_MS + 200, "FX") + edits(2), 7),
+    }
+    for name, (sc, view) in runs.items():
+        r = run(name, PLAY_MS + 9000, sc + press(PLAY_MS, "PLAY"))
+        s = r["stats"]
+        check(s["view"] == view and s["deferred"] == 0 and not r["halt"],
+              f"{name}: view {s['view']} (expected {view}), scrolling; no deferred audio block, CPU at most "
+              f"{max(s['cpu'][:6])} % ({name}.png)")
+    # zoom: 3 bars (the setting), the notation in a key with flats (Greensleeves -> key change)
+    sc, t = settings_script(OPEN_MS + 200, [(4, 1)])
+    r = run("p7-notation-zoom", PLAY_MS + 9000, open_song(g) + sc + press(t + 200, "LFO") + edits(4, t + 400)
+            + press(PLAY_MS + 1000, "PLAY"))
+    check(r["stats"]["view"] == 6 and (r["stats"]["settings"] >> 16) & 15 == 1,
+          "the setting 'Scrolling views show 3 BARS': the notation at half the scale (p7-notation-zoom.png)")
+    gr = slugs.index("greensleeves")
+    r = run("p7-notation-flats", PLAY_MS + 9000, open_song(gr) + press(OPEN_MS + 200, "LFO") + edits(4)
+            + press(OPEN_MS + 1500, "SAVE") + [f"{OPEN_MS + 1700}:e0:5"] + press(OPEN_MS + 2100, "SAVE")
+            + press(PLAY_MS, "PLAY"))
+    check(r["stats"]["view"] == 6 and r["stats"]["transpose"] == 5, "Greensleeves moved to D minor (+5): the key "
+          "signature and accidentals follow (p7-notation-flats.png)")
+    # the whole Blues at 250 BPM in the drum grid and the notation: on time, no deferred block
+    cb = all_songs[b]
+    ms = song_ms(cb, count_in=False, bpm=250)
+    for name, mute, n in (("p7-grid-250", "FX", 2), ("p7-notation-250", "LFO", 4)):
+        r = run(name, int(PLAY_MS + ms + 2000), open_song(b) + press(OPEN_MS + 100, "ARP") +
+                [f"{OPEN_MS + 200}:e0:200"] + press(OPEN_MS + 500, mute) + edits(n, OPEN_MS + 700) + press(PLAY_MS, "PLAY"))
+        s = r["stats"]
+        want = ticks_to_frames(cb, cb["end_tick"], 250)
+        got = s["end_frames"] - s["start_frames"]
+        check(s["ends"] == 1 and abs(got - want) <= BLOCK and s["deferred"] == 0,
+              f"{name}: the Blues at 250 BPM to the end on time ({got} frames, predicted {want:.0f}), no deferred "
+              f"block, CPU at most {max(s['cpu'][:cb['bar_count']])} %")
+    rep += lines
+    return st["ok"]
+
+
 PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3, "part4": test_part4, "part5": test_part5,
-              "part6": test_part6}
+              "part6": test_part6, "part7": test_part7}
 
 
 def main():
