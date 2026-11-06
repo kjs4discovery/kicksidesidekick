@@ -353,3 +353,39 @@ Built: ![folders](step-M3/p8-folders.png) ![Folk](step-M3/p8-folk.png) ![Other](
 Mock-up: ![your part and the volumes](step-M4/mock-p2-yours.png)
 
 Built: ![harmony yours, QUIET, the others muted](step-M4/m4p2-quiet.png) ![bass held: yours, playing](step-M4/m4p2-hold-bass.png)
+
+### Part 3: views (harmony notation, two drum views, hiding views)
+
+| your part | views (EDIT) |
+|---|---|
+| harmony | chord, keyboard, chart, guitar, **notation** (new) |
+| bass | bass note, keyboard, chart, bass tab, notation |
+| melody | melody note, keyboard, chart, roll, notation |
+| drums | **drum grid, drum notation** (only these two now, the user's note) |
+
+- **Harmony notation:**
+  - **Staves:** a grand staff, treble and bass with 9 px line spacing. Notes from C4 up go on the treble staff, the
+    rest on the bass staff.
+  - **Chords:** the harmony at its level, as played. Block chords are stacked on one stem per staff (up on the
+    treble, down on the bass); broken chords and arpeggios come out as single notes in time.
+  - **Accidentals:** where a note differs from the key signature, e.g. the natural F of G7 in G.
+  - **Rest of the page:** chord names above and a now line. The same simplifications as D025 apply: nearest simple
+    value, no ties or rests, flags and no beams.
+- **Drum notation:** a percussion staff.
+  - Kick in the bottom space, low tom, snare in the third space, high tom.
+  - Hi-hat above the top line, ride on the top line, crash on a ledger line, the cymbals with x noteheads.
+  - The hands' notes of one hit share a stem up; the kick has its own stem down. Values run to the next hit.
+- **The drums' other screens are gone**: the main view with the hit names and the chart.
+- **Settings → "Views (hide some)" → the Views screen:**
+  - every part's views, SHOWN or HIDDEN. SELECT picks one, and ALGORITHM, PLAY or EDIT toggles it;
+  - EDIT skips the hidden ones, and a part whose view is hidden opens its first shown one;
+  - each layer keeps at least one view ("ONE VIEW MUST STAY");
+  - saved with the settings.
+  - The saved settings grew: an M3 copy is a different size, so the defaults are used once.
+- The settings screen has 8 rows of 22 px.
+
+Mock-ups (written right after the code this time: see LOG): ![harmony notation](step-M4/mock-p3-harm-notation.png)
+![drum notation](step-M4/mock-p3-drum-notation.png) ![views](step-M4/mock-p3-viewset.png)
+
+Built: ![harmony notation L1](step-M4/m4p3-harm-notation1.png) ![L2](step-M4/m4p3-harm-notation2.png)
+![drum notation](step-M4/m4p3-drum-notation.png) ![views](step-M4/m4p3-viewset.png)

@@ -1245,7 +1245,61 @@ def test_m4p2(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS.update({"m4p1": test_m4p1, "m4p2": test_m4p2})
+def test_m4p3(all_songs, rep):
+    """M4 part 3: harmony notation (grand staff), drums: grid + drum notation only, hiding views (settings)"""
+    lines, st, check = checker("M4 part 3: harmony notation, drum views, hidden views")
+    slugs = [c["slug"] for c in all_songs]
+    g, sa, b = slugs.index("amazing-grace"), slugs.index("saints"), slugs.index("twelve-bar-blues")
+    O = OPEN_MS
+    ed = lambda n, t0: [x for k in range(n) for x in press_raw(t0 + 250 * k, "EDIT")]
+    for lvl in (1, 2):
+        r = run(f"m4p3-harm-notation{lvl}", PLAY_MS + 7000, open_song(g) + ([f"{O + 100}:e4:1"] if lvl == 2 else [])
+                + ed(4, O + 300) + press_raw(PLAY_MS, "PLAY"))
+        check(r["stats"]["view"] == 6 and r["stats"]["part"] == 2 and r["stats"]["deferred"] == 0,
+              f"harmony (your part by default), EDIT x4: the notation, a grand staff with the chords stacked, level "
+              f"{lvl} (m4p3-harm-notation{lvl}.png)")
+    r1 = run("m4p3-drum-grid", PLAY_MS + 5000, open_song(sa) + hold(O + 100, "FX") + press_raw(PLAY_MS, "PLAY"))
+    r2 = run("m4p3-drum-notation", PLAY_MS + 5000, open_song(sa) + hold(O + 100, "FX") + ed(1, O + 1300)
+             + press_raw(PLAY_MS, "PLAY"))
+    r3 = run("m4p3-drum-back", PLAY_MS + 3000, open_song(sa) + hold(O + 100, "FX") + ed(2, O + 1300)
+             + press_raw(PLAY_MS, "PLAY"))
+    check(r1["stats"]["view"] == 7 and r2["stats"]["view"] == 8 and r3["stats"]["view"] == 7,
+          "drums your part: the drum grid first, EDIT: the drum notation, EDIT: the grid again (only these two; "
+          "m4p3-drum-grid.png, m4p3-drum-notation.png)")
+    # hide the harmony's keyboard and chart: EDIT goes chord -> guitar
+    vs = press_raw(O + 100, "GLO") + press_raw(O + 300, "GLO") + [f"{O + 500}:e0:7"] + press_raw(O + 800, "PLAY") \
+        + [f"{O + 1000}:e0:8"] + [f"{O + 1300}:e1:1"] + [f"{O + 1600}:e0:1"] + [f"{O + 1900}:e1:1"]
+    run("m4p3-viewset", O + 2200, open_song(g) + vs)
+    vs += press_raw(O + 2200, "GLO") + press_raw(O + 2500, "GLO")
+    r = run("m4p3-hidden", PLAY_MS + 3500, open_song(g) + vs + ed(1, O + 2900) + press_raw(PLAY_MS + 1500, "PLAY"))
+    r2 = run("m4p3-hidden-kept", 5000, [], flash=r["flash"])
+    r3 = run("m4p3-hidden-restart", PLAY_MS + 2000, open_song(g) + ed(1, O + 300) + press_raw(PLAY_MS, "PLAY"),
+             flash=r["flash"])
+    check(r["stats"]["view"] == 3 and r["stats"]["settings_saves"] == 1 and r3["stats"]["view"] == 3,
+          "settings, Views: the harmony's KEYBOARD and CHART hidden (m4p3-viewset.png): EDIT goes from the chord "
+          "straight to the guitar; saved, and still so after a restart")
+    # the last view of a layer cannot be hidden: drums' grid hidden, then its notation refused
+    vd = press_raw(O + 100, "GLO") + press_raw(O + 300, "GLO") + [f"{O + 500}:e0:7"] + press_raw(O + 800, "PLAY") \
+        + [f"{O + 1000}:e1:1"] + [f"{O + 1300}:e0:1"] + [f"{O + 1600}:e1:1"] + press_raw(O + 1900, "GLO") \
+        + press_raw(O + 2100, "GLO")
+    r = run("m4p3-last-view", PLAY_MS + 3000, open_song(sa) + vd + hold(O + 2400, "FX") + press_raw(PLAY_MS + 900, "PLAY"))
+    check(r["stats"]["view"] == 8, "drums: the grid hidden, then hiding the notation too is refused (ONE VIEW MUST "
+          "STAY): your part drums shows the drum notation")
+    cb = all_songs[b]
+    ms = song_ms(cb, count_in=False, bpm=250)
+    r = run("m4p3-harm-notation-250", int(PLAY_MS + ms + 2000), open_song(b) + press_raw(O + 100, "ARP")
+            + [f"{O + 200}:e0:200"] + [f"{O + 500}:e4:1"] + ed(4, O + 700) + press_raw(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    want = ticks_to_frames(cb, cb["end_tick"], 250)
+    got = s["end_frames"] - s["start_frames"]
+    check(s["ends"] == 1 and abs(got - want) <= BLOCK and s["deferred"] == 0 and s["view"] == 6,
+          f"the Blues at 250 BPM, harmony L2 in the notation: on time ({got} / {want:.0f} frames), no deferred block, "
+          f"CPU at most {max(s['cpu'][:cb['bar_count']])} %")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS.update({"m4p1": test_m4p1, "m4p2": test_m4p2, "m4p3": test_m4p3})
 del PART_TESTS["part2"]                          # (M3's "the last muted is yours": replaced by m4p2)
 
 

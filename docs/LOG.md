@@ -1080,3 +1080,31 @@ Choices (with reasons):
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 3 (harmony notation, drums: grid + drum notation only, hide views).
+
+2026-11-06 11:01 — Milestone M4, Part 3 (views: harmony notation, drums grid + notation, hide views) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "M4 Part 3"):
+- **Harmony notation:** a grand staff with the chords stacked, at the harmony's level.
+- **Drums:** only the scrolling grid and a new drum notation (a percussion staff with x heads for cymbals); M3's
+  drum main view and chart are gone.
+- **Hiding views:** a Views screen under the settings hides views per layer, keeping at least one per layer. The
+  settings struct grew 8 bytes (version 2), so M3's saved copy is not read and the defaults are used once.
+- **Refactor:** the clef and key-signature drawing is now one helper (staff_head) for any line spacing.
+Learned / measured:
+- Release build build/step-M4/part3/fm1acc-0.4.3-m4p3.fwsc: FM-1_46000403, sha256
+  c22f9c8c58c97b6b8a6d409ffa4d3fea9a13dbef677232390930ddbbacf1846a. Checks m4p2, m4p3 and part7 on it: ALL PASS
+  (21).
+  - The Blues at 250 BPM with harmony L2 in the notation: on time, no deferred block, CPU at most 16 %.
+  - Hidden views are saved and kept over a restart.
+  - Hiding a layer's last view is refused.
+- Image 418,512 B (dev build).
+Choices (with reasons):
+- **Grand staff for the harmony:** our voicings (D3–G4) sit across middle C, so a treble staff alone would need
+  three or more ledger lines. Split at C4.
+- **Harmony notation:** flags and no beams; the user's broken chords and arpeggios read note by note.
+- **Order of work:** the Part 3 mock-ups were drawn right after the code, not before (an ordering slip). They match
+  what was built and are in controls.md.
+Hardware touched: none
+Questions for the planning chat:
+- A staff reader should look at the harmony and drum notation too (as D025's caveat).
+Next: Part 4 (five harmony levels, format change; then the early install point).
