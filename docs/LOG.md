@@ -1222,3 +1222,43 @@ Questions for the planning chat:
   all songs together. A later milestone?
 - Zombie has no vocal track: is the lead guitar line as the melody acceptable for a test song?
 Next: Part 6 (full suite, budget, 0.5.0-m4, docs/step-M4-install.md, STOP).
+
+2026-11-06 12:06 — Milestone M4, Part 6 (tests, budget, install checklist) —
+Status: done; STOPPED for review (nothing installed, nothing sent; the FM-1 was not touched)
+Did:
+- Version 0.5.0-m4. Release build build/step-M4/final/fm1acc-0.5.0-m4.fwsc: identity FM-1_46000500, sha256
+  c811e0f7f002a2d7573843394e812490dbe3c2709c425d4b457c2351f767195b. Firmware source = Part 4's with the version.
+- **The full suite on that exact package: 258 checks, ALL PASS** (build/step-M4/final/report.md). It covers:
+  - all 9 songs on time, chords before their sound;
+  - the store, with power cuts;
+  - flash ids 856014 / b36014 / unknown;
+  - settings over a restart;
+  - M3's checks adapted to M4, and M4 parts 1–5 (the 5 private songs on a flash of their own).
+- Laptop tests:
+  - tools/song_fuzz.sh 600: 968,000 files, no sanitizer report. The script now skips songs/private/; its first try
+    stopped there, and the rerun was clean;
+  - pytest: 78 pass;
+  - store_test: ALL PASS.
+- Docs:
+  - docs/step-M4-install.md (final): install over M3 or 0.4.4, resend the 9 songs (1.3), which private songs fit
+    and how to make room, on-unit checks per part and layer, fallback M3. The early checklist is marked superseded
+    unless run.
+  - docs/step-M4-emulator-report.md (results, budget).
+  - docs/firmware.md (M4 section).
+Learned / measured:
+- Budget:
+  - image 419,056 B (+4.8 KB on M3); RAM .data+.bss 74,836 of 98,304;
+  - pool 284,936 of 344,064 (the decode buffer is now 128 KiB);
+  - our songs: 168 KB in 45 of 69 sectors;
+  - CPU at most 16 %, voices at most 15.
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M4-install.md (or the early docs/step-M4-early-install.md; one of the two).
+- The open questions from Parts 4 and 5:
+  - **long imports cut to their first sections:** Creep 56 of 90 bars, Rockin 64 of 147, Zombie 80 of 213. Lifting
+    this needs per-level decoding and receiving to flash: a later milestone?
+  - Zombie's melody is its lead guitar;
+  - the five private songs don't fit beside our 9;
+  - the level ladder should be judged by ear;
+  - a staff reader should check the harmony and drum notation.
+Next: STOP. The user and the planning chat review; then the user runs the checklist.

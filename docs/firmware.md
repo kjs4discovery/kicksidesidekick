@@ -1,8 +1,22 @@
 # Our firmware
 
-**On the FM-1 now: M2, v0.3.0-m2 (FM-1_46000300)**, installed by the user, as the planning chat reported
-(HANDOFF 17:40; docs/device.md records only what Claude Code saw). M3 (below) is built, emulator only. Each part's
-tested release build is kept in `build/step-M3/`, and the final one in `build/step-M3/final/`.
+**On the FM-1 now: M3, v0.4.0-m3 (FM-1_46000400)**, installed by the user 2026-11-05 (LOG). M4 (below) is built,
+emulator only; its builds are in `build/step-M4/`.
+
+## Milestone M4 (v0.5.0-m4 = FM-1_46000500; part builds 0.4.N-m4pN)
+
+Plan: docs/plan-M4.md (D026, D027, D004 hybrid). Controls: [controls.md](controls.md), section M4. Tests:
+`tools/m4_test.py` (grown from m3_test.py; M3-style layer presses translated; groups m4p1..m4p5). Report:
+[step-M4-emulator-report.md](step-M4-emulator-report.md). Import: [import.md](import.md).
+
+| File | M4 changes |
+|---|---|
+| `firmware/app/ui.c` | the song loop back; your part by holding a layer button, a press cycles FULL / QUIET / MUTED; settings Quiet level, Key lights, Views (hide views); harmony notation (grand staff), drum notation, drums grid + notation only; 5 levels (voicing mapping, L4/L5 lights note by note) |
+| `firmware/app/player.c/.h` | player_quiet (any layer, by the square root of the level) |
+| `firmware/app/song.c/.h`, `library.c` | format 1.3: 5 variants, 16384 events (decode buffer 128 KiB) |
+| `tools/fm1song/arrange.py` | the generators (harmony 1–5, bass 1–4, drums 1–3) for make_songs.py and the importer |
+| `tools/fm1song/importer.py`, `cli.py` | `fm1song import`; `send` compiles 1.2 / 1.1 for older FM-1s |
+| `songs/make_songs.py` | all 9 songs from arrange.py (Amazing Grace too) |
 
 ## Milestone M3 (v0.4.0-m3 = FM-1_46000400; part builds 0.3.N-m3pN = FM-1_460003NN)
 

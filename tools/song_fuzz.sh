@@ -9,6 +9,7 @@ OUT="$ROOT/build/fuzz"
 mkdir -p "$OUT"
 rm -f "$OUT"/*.fm1s
 for s in "$ROOT"/songs/*/; do       # seeds in all versions: 1.2 (+ category), 1.1 (delta-coded events), 1.0 (8-byte)
+  [ -f "$s/song.yaml" ] || continue  # (songs/private/: a folder of folders)
   "$ROOT/tools/fm1song.sh" compile "$s" -o "$OUT/$(basename "$s").fm1s" >/dev/null
   "$ROOT/tools/fm1song.sh" compile "$s" --format 1.1 -o "$OUT/$(basename "$s")-v11.fm1s" >/dev/null
   "$ROOT/tools/fm1song.sh" compile "$s" --format 1.0 -o "$OUT/$(basename "$s")-v10.fm1s" >/dev/null
