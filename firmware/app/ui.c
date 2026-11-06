@@ -89,7 +89,7 @@ static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length",
 static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 3};   /* how many values each has */
 static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
                                             {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}, {"OFF", "15 %", "30 %"}};
-static const uint8_t SET_DEFAULT[S_N] = {1, 0, 2, 1, 0, 0};
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 0};   /* (M4: count-in volume MEDIUM, the user's note) */
 static const uint8_t GUIDE_PCT[3] = {0, 15, 30};   /* your part, played this loud instead of muted (M3 part 8) */
 static const uint8_t COUNT_VOL[3] = {64, 96, 127};   /* the beep's channel volume */
 
@@ -609,11 +609,17 @@ static void loop_region(uint32_t *from, uint32_t *to)
     *to = (ui.b_bar + 1u) * bar_ticks();
 }
 
-static void set_loop(int on)
+/* the loop: LOOP_OFF, LOOP_BARS (A..B) or LOOP_SONG (M4, back by the user's wish: the whole song, from its first
+ * note to its end, round again) */
+static void set_loop(int mode)
 {
     uint32_t from = 0, to = 0;
-    ui.loop = on ? LOOP_BARS : LOOP_OFF;
+    ui.loop = mode;
     loop_region(&from, &to);
+    if (mode == LOOP_SONG) {
+        from = ui.s->start_tick;
+        to = ui.s->end_tick;
+    }
     player_loop(ui.loop, from, to);
     ui.sh_strip = -1;
     ui.sh_view = 0;
@@ -622,7 +628,7 @@ static void set_loop(int on)
 /* where PLAY starts from stopped: the loop's start, or the start point */
 static int32_t start_point(void)
 {
-    if (ui.loop == LOOP_OFF)
+    if (ui.loop == LOOP_OFF || ui.loop == LOOP_SONG)
         return ui.from_tick;
     return (int32_t)(ui.a_bar * bar_ticks());
 }
@@ -632,7 +638,7 @@ static int loop_shown(uint32_t *a, uint32_t *b)
 {
     *a = ui.a_bar;
     *b = ui.loop_step == 1 ? ui.a_bar : ui.b_bar;
-    return ui.loop_step || ui.loop == LOOP_BARS;
+    return ui.loop_step || ui.loop == LOOP_BARS;   /* (the whole song: not filled, the top line says so) */
 }
 
 /* ------------------------------------------------------------------------ input --- */
@@ -659,7 +665,7 @@ static void open_song(uint32_t i)
     player_transpose(0);
     set_from_bar(first_bar());
     ui.from_tick = (int32_t)section_from(0);
-    set_loop(0);
+    set_loop(LOOP_OFF);
     ui.loop_step = 0;
     ui.view = V_PLAY;
     ui.redraw = 1;
@@ -921,7 +927,7 @@ static void input_play(uint32_t down, uint32_t now)
         ui.sh_status = ui.sh_strip = 0xFFFFFFFFu;
         d = 0;
     }
-    if (d && ui.loop == LOOP_OFF) {      /* the start point, by section */
+    if (d && ui.loop != LOOP_BARS) {     /* the start point, by section */
         int32_t i = clamp((int32_t)section_at(ui.from_tick) + d, 0, (int32_t)ui.s->nsect - 1);
         set_from_bar(song_section_first(ui.s, (uint32_t)i));
         app_say("START", song_section_name(ui.s, (uint32_t)i));
@@ -938,7 +944,7 @@ static void input_play(uint32_t down, uint32_t now)
         ui.sh_status = ui.sh_strip = 0xFFFFFFFFu;
         d = 0;
     }
-    if (d && ui.loop == LOOP_OFF) {      /* the start point, by bar */
+    if (d && ui.loop != LOOP_BARS) {     /* the start point, by bar */
         set_from_bar((uint32_t)clamp((int32_t)ui.from_bar + d, (int32_t)first_bar(), (int32_t)last_bar()));
         say_from();
         ui.sh_status = 0xFFFFFFFFu;
@@ -949,12 +955,17 @@ static void input_play(uint32_t down, uint32_t now)
         player_count_in(!player_count_in_of());
         app_say("COUNT-IN", player_count_in_of() ? "ON" : "OFF");
     }
-    if (down >> B_SEQ & 1u) {            /* the loop, step by step: SEQ sets A, SEQ sets B (on); SEQ again: off */
+    if (down >> B_SEQ & 1u) {            /* the loop, step by step: SEQ the whole song (M4); SEQ sets A, SEQ sets B
+                                          * (A-B on); SEQ again: off */
         char t[24] = "";
         if (ui.loop == LOOP_BARS) {
-            set_loop(0);
+            set_loop(LOOP_OFF);
             app_say("LOOP", "OFF");
-        } else if (ui.loop_step == 0) {  /* A starts at the bar playing (or the start point); the start point stays */
+        } else if (ui.loop == LOOP_OFF && ui.loop_step == 0) {
+            set_loop(LOOP_SONG);
+            app_say("LOOP", "WHOLE SONG");
+        } else if (ui.loop_step == 0) {  /* (from the song loop) A starts at the bar playing or the start point */
+            set_loop(LOOP_OFF);
             ui.a_bar = st == PL_PLAYING || st == PL_PAUSED ? bar_at(player_tick(PL_LEAD_BEAT_MS)) : ui.from_bar;
             ui.loop_step = 1;
             app_say("LOOP", "SET A");
@@ -966,7 +977,7 @@ static void input_play(uint32_t down, uint32_t now)
             app_say(t, "SET B");
         } else {                         /* B set: the loop is on */
             ui.loop_step = 0;
-            set_loop(1);
+            set_loop(LOOP_BARS);
             text_cat(t, "BARS ");
             num_cat(t, ui.a_bar + ui.s->first_bar_number);
             text_cat(t, "-");
@@ -1244,9 +1255,9 @@ static void draw_help(void)
                                           {"PLAY", "play / pause"}, {"HOME", "stop / list"}, {"SEQ", "loop: A, B, off"},
                                           {"ARP", "count-in"}, {"EDIT", "view"}, {"SAVE", "key (SELECT)"},
                                           {"keys", "play along"}};
-    static const char *const BTN_LIST[9][2] = {{"PLAY", "open the song"}, {"EDIT", "open the song"},
-                                               {"keys", "play along"}, {"", ""}, {"", ""}, {"", ""}, {"", ""},
-                                               {"", ""}, {"", ""}};
+    static const char *const BTN_LIST[9][2] = {{"PLAY", "open"}, {"EDIT", "open"},
+                                               {"HOME", "folders"}, {"keys", "play along"}, {"", ""}, {"", ""},
+                                               {"", ""}, {"", ""}, {"", ""}};
     const char *const (*e)[2] = ui.back == V_PLAY ? ENC : ENC_LIST;
     const char *const (*b)[2] = ui.back == V_PLAY ? BTN : BTN_LIST;
     uint32_t r, band;
@@ -1346,7 +1357,9 @@ static void draw_top(int32_t bar, int32_t beat, int st)
             text_cat(t, "  FROM ");
             num_cat(t, ui.from_bar + s->first_bar_number);
         }
-        if (ui.loop) {
+        if (ui.loop == LOOP_SONG) {
+            text_cat(t, "  LOOP SONG");
+        } else if (ui.loop) {
             text_cat(t, "  LOOP ");
             num_cat(t, ui.a_bar + s->first_bar_number);
             text_cat(t, "-");
@@ -2542,11 +2555,13 @@ static const char *legend_play(int st)
     if (ui.loop_step == 2)
         return "ALGO bar B|PRESETS section|SEQ set|HOME back";
     if (st == PL_PLAYING || st == PL_COUNT_IN)
-        return ui.loop ? "PLAY pause|SEQ loop off|EDIT view|GLO help" : "PLAY pause|EDIT view|SEQ loop|GLO help";
+        return ui.loop == LOOP_BARS ? "PLAY pause|SEQ loop off|EDIT view|GLO help" : ui.loop == LOOP_SONG ?
+               "PLAY pause|SEQ set A-B|EDIT view|GLO help" : "PLAY pause|EDIT view|SEQ loop|GLO help";
     if (ui.loop == LOOP_BARS && st == PL_STOPPED)
         return "PLAY from A|SEQ loop off|EDIT view|GLO help";
     if (st == PL_STOPPED)
-        return "PLAY|PRESETS/ALGO start|SEQ loop|GLO help";
+        return ui.loop == LOOP_SONG ? "PLAY|PRESETS/ALGO start|SEQ set A-B|GLO help" :
+               "PLAY|PRESETS/ALGO start|SEQ loop|GLO help";
     if (st == PL_PAUSED)
         return "PLAY go on|HOME stop|GLO help";
     return "PLAY pause|HOME stop|SEQ loop|GLO help";

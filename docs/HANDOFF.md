@@ -524,3 +524,15 @@ Excellent: nine parts, full suite 235 checks on the exact package.
 ### Current step
 - [x] M3 built and reviewed
 - [ ] M3 install: steps run by the user
+
+---
+
+## 2026-11-06 10:35 — from the planning chat — Milestone M4 planned: docs/plan-M4.md
+
+The user tested M3 (notes in the vault). M4 (D026): quick fixes (count-in default
+medium, whole-song loop back), "your part" chosen by holding a layer button + press to
+cycle FULL/QUIET/MUTED (D027), harmony notation, drums reduced to grid + drum notation,
+hide views, five harmony levels (format change), the MIDI import tool (laptop) and the
+user's five private test songs from import/private/ (only their content; marked private).
+D004 is decided: hybrid (generated, imported, hand-edited, or mixed). Early install point
+after Part 4. The user will start it with a short prompt.

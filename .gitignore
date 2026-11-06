@@ -24,3 +24,7 @@ build-logs/
 firmware/app/build/
 firmware/app/web/words/
 .pytest_cache/
+
+# The user's private test songs (M4): copyrighted MIDI files and their conversions; never committed
+import/private/
+songs/private/

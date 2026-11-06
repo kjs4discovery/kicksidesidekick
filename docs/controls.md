@@ -1,4 +1,4 @@
-# Controls (M2; M3 changes at the end)
+# Controls (M2; M3 and M4 changes at the end)
 
 The FM-1's panel, as M2 uses it. M1's map (2026-11-04) was the start; M2 adds what the user asked for after testing
 M1 (D020: tempo in BPM, loops you can find, pause, the keys' octave) and the planning chat's rule from M1's lesson
@@ -314,3 +314,23 @@ Built: ![melody roll](step-M3/p7-roll.png) ![notation, treble](step-M3/p7-notati
 
 Built: ![folders](step-M3/p8-folders.png) ![Folk](step-M3/p8-folk.png) ![Other](step-M3/p8-old-folders.png)
 ![guide](step-M3/p8-guide.png)
+
+## M4 (docs/plan-M4.md), part by part
+
+### Part 1: quick fixes
+
+- **Count-in volume:** the default is now MEDIUM. A value already saved in the settings stays as it is.
+- **The whole-song loop is back** (the user's note), as the first step of SEQ:
+
+  | SEQ press | loop |
+  |---|---|
+  | 1st (loop off) | **LOOP SONG**: at the end the song goes round again from its first note |
+  | 2nd | the song loop off; set A |
+  | 3rd | set B: the A–B loop is on |
+  | 4th | off |
+
+  With the song loop on, PRESETS and ALGORITHM still set the start point. The top line says `LOOP SONG`, and the
+  legend says `SEQ set A-B`.
+- **Help on the list** now says `HOME folders`.
+
+![song loop](step-M4/m4p1-song-loop.png) ![help on the list](step-M4/m4p1-help-list.png)

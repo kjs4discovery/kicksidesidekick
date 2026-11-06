@@ -1025,3 +1025,29 @@ Learned / measured:
 Hardware touched: WRITE (the app area and the update staging area, by our update loader; run by the user)
 Questions for the planning chat: none
 Next: step 2.2, the user sends songs/*/ (format 1.2); then step 3 on the unit.
+
+2026-11-06 10:34 — Milestone M4, Part 1 (quick fixes) —
+Status: done (emulator); committed; tested release build kept
+Did:
+- Read HANDOFF 10:35 and docs/plan-M4.md (D026, D027), and the user's M3 notes in the vault (read only). The user
+  tested M3 on the unit, so it ran FM-1_46000400. I recorded M3 install step 1; steps 2–3 were the user's, with
+  the planning chat.
+- **.gitignore:** import/private/ and songs/private/, done first. The user's five MIDI files are not tracked.
+- **Count-in volume:** default MEDIUM.
+- **Whole-song loop back:** SEQ from off turns on LOOP SONG; SEQ again starts setting A; the A–B steps follow; SEQ
+  turns it off. The player loops from the song's first note (after the pickup's empty beats) at its end.
+- **Help on the list:** HOME = folders. tools/m3_test.py's store check now prints the real format version.
+- **New tools/m4_test.py,** grown from m3_test.py. M3's loop scripts get the extra SEQ press; new group m4p1.
+Learned / measured:
+- Release build build/step-M4/part1/fm1acc-0.4.1-m4p1.fwsc: FM-1_46000401, sha256
+  db9bb08461af40346411c0b8cf40f3403962bc0601fde715f76261d5a446be86. Checks m4p1 and part3 on it: ALL PASS.
+  - Happy Birthday with LOOP SONG jumps from 24480 back to 960 and never ends.
+  - The Amazing Grace full run with the new loop script: ALL PASS (dev build).
+- Version scheme: part builds 0.4.N-m4pN (FM-1_460004NN); M4 will be 0.5.0-m4.
+Choices (with reasons):
+- The song loop comes first in the SEQ cycle (off → song → A → B → off). It is one press, and the A–B steps are
+  unchanged after it.
+- The song loop goes round from the song's first note, not the start point: "loop the whole song".
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 2 (your part chosen by holding a layer button; press cycles FULL / QUIET / MUTED).

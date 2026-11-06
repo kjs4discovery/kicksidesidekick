@@ -324,7 +324,8 @@ def test_store(all_songs, sent, rep):
     want = {c["slug"]: compile_folder(ROOT / "songs" / c["slug"])[0] for c in all_songs}
     check(sent["out"].count(": stored (") == len(slugs) and stored == want,
           f"sent all {len(slugs)} songs over USB ({sent['ms']} ms emulated, {sent['ops']} flash erases / programs); "
-          f"each stored byte for byte ({sum(len(b) for b in want.values())} bytes, format 1.1)")
+          f"each stored byte for byte ({sum(len(b) for b in want.values())} bytes, format "
+          f"1.{'/1.'.join(str(v) for v in sorted({b[5] for b in want.values()}))})")
     li = run("store-list", 30000, [], host=f"{SEND} list --emu-pipe")
     check(all(re.search(rf"{s} +\d+ bytes +\d+ sectors +ok", li["out"]) for s in slugs) and li["ops"] == 0,
           f"fm1song list: every song, ok; nothing written by listing")
