@@ -175,7 +175,7 @@ static void sc_list(void)
     b[1] = (uint8_t)store_free_sectors();
     b[2] = (uint8_t)store_largest_free();
     b[3] = (uint8_t)STORE_SECTORS;
-    b[4] = 2;                            /* the format versions it reads: 1.0 .. 1.this (M3: 1.2) */
+    b[4] = 3;                            /* the format versions it reads: 1.0 .. 1.this (M3: 1.2, M4: 1.3) */
     b[5] = lib_state > 0 ? SR_OK : SR_NO_FLASH;
     ota_send_msg(SC_END, b, 6);
 }

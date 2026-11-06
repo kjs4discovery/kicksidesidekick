@@ -389,3 +389,21 @@ Mock-ups (written right after the code this time: see LOG): ![harmony notation](
 
 Built: ![harmony notation L1](step-M4/m4p3-harm-notation1.png) ![L2](step-M4/m4p3-harm-notation2.png)
 ![drum notation](step-M4/m4p3-drum-notation.png) ![views](step-M4/m4p3-viewset.png)
+
+### Part 4: five harmony levels (format 1.3)
+
+- **K1 to K4** go from 1 up to as many levels as the song has: now harmony 5, bass 4, drums 3 for all our songs. An
+  older song keeps its 2 or 3.
+- **Harmony ladder:** L1 block chords held → L2 block chords in the song's rhythm (waltz oom-pah-pah, shuffle,
+  stride, ballad quarters, straight eighths) → L3 the same rhythm with inversions (voice leading) → L4 broken chords
+  (Alberti in 4/4, low-mid-high in 3/4) → L5 arpeggios across about 1.5 octaves.
+- **Bass:** L1 the root held → L2 the root in rhythm → L3 root and fifth → L4 walking (into the next root; the
+  boogie line in the blues; root-fifth-octave in 3/4).
+- **Drums:** L1 the pulse → L2 a groove → L3 the groove with fills every 4 bars and crashes at the sections.
+- **Following the level:**
+  - the rhythm cue follows the part's own notes at the level;
+  - the inversion line names the level ("L3 inversions", "L5 arpeggio");
+  - at **L4 and L5** the key lights and the keyboard view show **each note as it's played** (bright), with the
+    chord around it at the middle level (darker in the keyboard view).
+
+![L5: the note played and the chord around it](step-M4/m4p4-l5.png) ![L4 on the keyboard](step-M4/m4p4-l4-keys.png)

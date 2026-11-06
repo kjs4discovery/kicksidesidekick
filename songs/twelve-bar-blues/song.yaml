@@ -30,20 +30,26 @@ layers:
   drums:
     channel: 10
     variants:
-      1: kick 1 and 3, snare 2 and 4, ride on the beat
-      2: swung ride, snare ghost notes, a fill every 4 bars
+      1: the pulse (kick, snare backbeat, hi-hat)
+      2: a groove
+      3: the groove with fills and crashes
   bass:
     channel: 3
     program: 33
     variants:
-      1: root note, once per chord
-      2: boogie line in swung eighths
+      1: the root, held
+      2: the root in rhythm
+      3: root and fifth
+      4: walking, more motion
   harmony:
     channel: 2
     program: 5
     variants:
-      1: root-position seventh chords, held
-      2: inversions, short stabs on every beat
+      1: block chords, root position, held
+      2: block chords in the song's rhythm
+      3: the same rhythm with inversions (voice leading)
+      4: broken chords
+      5: arpeggios across about 1.5 octaves
   melody:
     channel: 1
     program: 67

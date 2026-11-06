@@ -186,10 +186,11 @@ def cmd_send(args):
         print("no songs to send", file=sys.stderr)
         return 2
     device, dev = _device(args)
-    if not args.no_validate:             # an FM-1 that reads only older formats (M2: up to 1.1): compiled for it
-        minor = device.song_list(dev)[1]["minor"]
-        if minor < 2:
-            print(f"the FM-1 reads formats up to 1.{minor}: sending 1.{minor} (no song category)", file=args.out)
+    if not args.no_validate:             # an FM-1 that reads only older formats (M2: up to 1.1, M3: 1.2): compiled
+        minor = device.song_list(dev)[1]["minor"]   # for it
+        if minor < 3:
+            lost = "levels above 3" + ("" if minor >= 2 else ", the song category")
+            print(f"the FM-1 reads formats up to 1.{minor}: sending 1.{minor} (without {lost})", file=args.out)
             older = []
             for path, blob in blobs:
                 if not Path(path).is_dir():
@@ -228,7 +229,7 @@ def main(argv=None):
     p = sub.add_parser("compile", help="song folder -> .fm1s")
     p.add_argument("song")
     p.add_argument("-o", "--output")
-    p.add_argument("--format", choices=["1.2", "1.1", "1.0"], default="1.2",
+    p.add_argument("--format", choices=["1.3", "1.2", "1.1", "1.0"], default="1.3",
                    help="1.0: the M1 layout (8-byte events), for an M1 device or tests")
     p.set_defaults(fn=cmd_compile)
     p = sub.add_parser("info", help="summary of a .fm1s file or a song folder")

@@ -99,7 +99,7 @@ def test_minimal_midi_is_fine(song_copy):
     (_track("melody", [(5000, None, 62)], 0), "no-off at"),
     (_track("melody", [(47520, 47600, 62)], 0), "starts after the end of the song (bar 32)"),
     (_track("melody", [(100, 500, 62)], 0), "starts before the pickup"),
-    (_track("bass:3", [(960, 1000, 40)], 2), "must be 1, 1-2 or 1-3"),
+    (_track("bass:3", [(960, 1000, 40)], 2), "with no gaps"),
     (_track("harmony:1", [(960, 1000, 60)], 1), "two tracks for harmony:1"),
 ])
 def test_midi_errors(song_copy, bad, expect):

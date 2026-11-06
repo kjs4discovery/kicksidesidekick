@@ -14,8 +14,9 @@ from .errors import Diagnostics
 from .source import LAYERS
 
 MAGIC = b"FM1S"
-VERSION = (1, 2)                                         # what compile_song writes
-READS = (0, 1, 2)                                        # the minor versions this reader takes
+VERSION = (1, 3)                                         # what compile_song writes
+READS = (0, 1, 2, 3)                                     # the minor versions this reader takes
+MAX_VARIANTS = {0: 3, 1: 3, 2: 3, 3: 5}                  # levels a layer may have, by minor version (1.3: M4)
 HEADER = struct.Struct("<4sBBHII HBB I I HBB")          # 32 bytes
 DIRENT = struct.Struct("<4sII")                          # fourcc, offset, size
 MAX_FILE = 256 * 1024
@@ -29,7 +30,8 @@ LAYR = struct.Struct("<BBBBBBH")                         # 8 bytes
 EVNT = struct.Struct("<IBBBB")                           # 8 bytes
 LIMITS = {"bars": 999, "sections": 32, "chords": 64, "chord_events": 2048, "events": 65535,
           "voicing_notes": 5, "voicing_levels": 2,
-          "ez_events": 8192}                             # all EZ streams together: 64 KiB decoded on the device
+          "ez_events": 8192, "ez_events_13": 16384}      # all EZ streams together: 64 KiB decoded on the device
+                                                         # (1.3, M4: 16384, 128 KiB)
 LAYER_LETTER = "DBHM"                                    # event chunk "EV" + letter + variant digit
 STATUSES = (0x80, 0x90, 0xB0, 0xE0)
 NO_CHORD = 0xFF
@@ -99,6 +101,7 @@ def ez_decode(body, bad, where):
 
 
 def compile_song(song, version=VERSION):
+    nvars = lambda ly: min(len(ly.variants), MAX_VARIANTS[version[1]])   # (an older format: the first 3 levels)
     """Song (from source.load_song) -> bytes. Deterministic: same song, same bytes. version (1, 0): the M1 layout
     (8-byte event records), for tests and old devices."""
     chunks = []
@@ -127,14 +130,14 @@ def compile_song(song, version=VERSION):
         if ly is None:
             layr += LAYR.pack(0xFF, 0xFF, 0, 0, 0, 0, 0)
         else:
-            layr += LAYR.pack(ly.channel, 0xFF if ly.program is None else ly.program, len(ly.variants),
+            layr += LAYR.pack(ly.channel, 0xFF if ly.program is None else ly.program, nvars(ly),
                               ly.volume, ly.pan, 0, 0)
     chunks.append((b"LAYR", layr))
     if version >= (1, 2):
         chunks.append((b"CATG", _cstr(song.category, 16)))
     for li, name in enumerate(LAYERS):
         ly = song.layers.get(name)
-        for var in sorted(ly.variants) if ly else []:
+        for var in sorted(ly.variants)[:nvars(ly)] if ly else []:
             evs = ly.variants[var]
             tag = LAYER_LETTER[li].encode() + str(var).encode()
             if version >= (1, 1):
@@ -303,7 +306,7 @@ def read_compiled(blob, diag=None):
             if chan != 0xFF:
                 bad(f"{name}: no variants but a channel", "LAYR")
             continue
-        if chan > 15 or nvar > 3 or vol > 127 or pan > 127 or lfl or prog > 127 and prog != 0xFF:
+        if chan > 15 or nvar > MAX_VARIANTS[vmin] or vol > 127 or pan > 127 or lfl or prog > 127 and prog != 0xFF:
             bad(f"{name} out of range", "LAYR")
         variants = {}
         for v in range(1, nvar + 1):
@@ -315,8 +318,9 @@ def read_compiled(blob, diag=None):
                 fourcc = b"EZ" + tag
                 raw = ez_decode(chunk(fourcc), bad, fourcc.decode())
                 ez_total += len(raw)
-                if ez_total > LIMITS["ez_events"]:
-                    bad(f"more than {LIMITS['ez_events']} events in all EZ streams together", fourcc.decode())
+                cap = LIMITS["ez_events_13" if vmin >= 3 else "ez_events"]
+                if ez_total > cap:
+                    bad(f"more than {cap} events in all EZ streams together", fourcc.decode())
                 raw = [(t, st, a, b2, 0) for t, st, a, b2 in raw]
             else:
                 evb = chunk(fourcc)

@@ -64,7 +64,7 @@ static int header(struct song *s, const uint8_t *d, uint32_t n)
         return SONG_E_SHORT;
     if (d[0] != 'F' || d[1] != 'M' || d[2] != '1' || d[3] != 'S')
         return SONG_E_MAGIC;
-    if (d[4] != 1u || d[5] > 2u)          /* 1.0, 1.1 (M2), 1.2 (M3: the category) */
+    if (d[4] != 1u || d[5] > 3u)          /* 1.0, 1.1 (M2), 1.2 (M3: the category), 1.3 (M4: 5 levels) */
         return SONG_E_VERSION;
     s->minor = d[5];
     s->size = u32(d + 8);
@@ -289,7 +289,7 @@ static int ez_events(const struct song *s, const uint8_t *c, uint32_t len, struc
     if (!c || len < 4u)
         return SONG_E_EVENTS;
     n = u32(c);
-    if (n > MAX_EVENTS || n > SONG_EZ_EVENTS - *used / EVNT_REC)
+    if (n > MAX_EVENTS || n > (s->minor >= 3u ? SONG_EZ_EVENTS : SONG_EZ_EVENTS_OLD) - *used / EVNT_REC)
         return SONG_E_EVENTS;
     if (!buf || n * EVNT_REC > room - *used)
         return SONG_E_ROOM;
@@ -353,7 +353,8 @@ static int layers(struct song *s, uint8_t *buf, uint32_t room)
                 return SONG_E_LAYR;
             continue;
         }
-        if (ly->channel > 15u || ly->variants > SONG_MAX_VARIANTS || ly->volume > 127u || ly->pan > 127u || r[5] ||
+        if (ly->channel > 15u || ly->variants > (s->minor >= 3u ? SONG_MAX_VARIANTS : 3u) || ly->volume > 127u ||
+            ly->pan > 127u || r[5] ||
             (ly->program > 127u && ly->program != 0xFFu))
             return SONG_E_LAYR;
         for (v = 0; v < ly->variants; v++) {

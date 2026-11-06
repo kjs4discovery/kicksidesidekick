@@ -29,20 +29,26 @@ layers:
   drums:
     channel: 10
     variants:
-      1: the plain beat, kick on 1, light snare on 2 and 3, hi-hat on every beat
-      2: the full waltz, rim clicks, eighth hi-hats, a crash at each section, a fill every 4 bars
+      1: the pulse (kick, snare backbeat, hi-hat)
+      2: a groove
+      3: the groove with fills and crashes
   bass:
     channel: 3
     program: 33
     variants:
-      1: root note, once per chord
-      2: root on beat 1, fifth on beat 3
+      1: the root, held
+      2: the root in rhythm
+      3: root and fifth
+      4: walking, more motion
   harmony:
     channel: 2
     program: 1
     variants:
-      1: root-position triads, held
-      2: inversions, waltz rhythm (oom-pah-pah)
+      1: block chords, root position, held
+      2: block chords in the song's rhythm
+      3: the same rhythm with inversions (voice leading)
+      4: broken chords
+      5: arpeggios across about 1.5 octaves
   melody:
     channel: 1
     program: 74

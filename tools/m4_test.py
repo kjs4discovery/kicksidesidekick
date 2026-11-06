@@ -769,11 +769,13 @@ def test_part1(all_songs, rep):
           f"others in 8 s at {own_bpm(c)} BPM, ~{beats:.0f} beats)")
     # loop bars, a 2-bar loop played past its end: one A, one B on the strip (p1-loop-marks.png); then the loop off:
     # the start point is the one set before (bar 3), not the loop's A
-    ab = o + [f"{OPEN_MS + 200}:e1:2"] + press(OPEN_MS + 500, "SEQ") + press(OPEN_MS + 700, "SEQ") \
-        + [f"{OPEN_MS + 900}:e6:2", f"{OPEN_MS + 1200}:e1:-2"] + press(OPEN_MS + 1500, "ARP")
+    # (M4's SEQ cycle: off -> song -> set A -> set B -> A-B on -> off; the start point set to bar 3 first)
+    ab = o + [f"{OPEN_MS + 100}:e1:2"] + press(OPEN_MS + 400, "SEQ") + press(OPEN_MS + 550, "SEQ") \
+        + [f"{OPEN_MS + 700}:e1:2"] + press(OPEN_MS + 1000, "SEQ") + [f"{OPEN_MS + 1150}:e1:-2"] \
+        + press(OPEN_MS + 1400, "SEQ") + press(OPEN_MS + 1550, "ARP")
     loop_ms = 2 * bt * 60000 / (c["ppq"] * own_bpm(c))
     run("p1-loop-marks", int(PLAY_MS + loop_ms * 1.6), ab + press(PLAY_MS, "PLAY"))
-    off = ab + press(OPEN_MS + 1700, "SEQ") + press(OPEN_MS + 1900, "SEQ") + press(OPEN_MS + 2400, "PLAY")
+    off = ab + press(OPEN_MS + 1700, "SEQ") + press(OPEN_MS + 2400, "PLAY")
     r = run("p1-loop-off", OPEN_MS + 3900, off)
     want = (c["sections"][0]["first_bar"] + 2) * bt
     check(r["stats"]["start_from"] == want, f"LOOP BARS with A moved to bar 5, then the loop off: PLAY starts at the "
@@ -1299,7 +1301,99 @@ def test_m4p3(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS.update({"m4p1": test_m4p1, "m4p2": test_m4p2, "m4p3": test_m4p3})
+def ladder_facts(c):
+    """the generated levels, from the compiled song: per harmony level the attacks, the notes per attack (most), the
+    span of notes within one chord (most); bass and drums: attacks per level"""
+    out = {}
+    ev = c["chord_events"]
+    for layer in ("harmony", "bass", "drums"):
+        for lv, evs in c["layers"][layer]["variants"].items():
+            ons = [e for e in evs if e[1] == 144]
+            ticks = {}
+            last = ev[-1]["tick"]                    # (the last chord is held at every level: left out)
+            for e in ons:
+                if e[0] < last:
+                    ticks.setdefault(e[0], []).append(e[2])
+            span = 0
+            for k in range(len(ev)):
+                t0, t1 = ev[k]["tick"], ev[k + 1]["tick"] if k + 1 < len(ev) else 1 << 30
+                ps = [e[2] for e in ons if t0 <= e[0] < t1]
+                span = max(span, max(ps) - min(ps) if ps else 0)
+            out[(layer, lv)] = (len(ticks), max((len(v) for v in ticks.values()), default=0), span)
+    return out
+
+
+def test_m4p4(all_songs, rep):
+    """M4 part 4: five harmony levels, bass 4, drums 3 (format 1.3); the device follows each level"""
+    lines, st, check = checker("M4 part 4: five harmony levels (format 1.3)")
+    bad = []
+    for c in all_songs:
+        n = {l: len(c["layers"][l]["variants"]) for l in ("harmony", "bass", "drums")}
+        f = ladder_facts(c)
+        h = [f[("harmony", k)] for k in range(1, 6)]
+        okc = (c["version"] == "1.3" and n == {"harmony": 5, "bass": 4, "drums": 3}
+               and h[0][0] < h[1][0] and h[1][0] == h[2][0]           # L2, L3: the same rhythm, more than L1
+               and h[3][1] == 1 and h[4][1] == 1                      # L4, L5: one note at a time
+               and h[3][0] > h[1][0] * 0.5 and h[4][2] >= 12          # L5 spans an octave or more in a chord
+               and f[("bass", 1)][0] < f[("bass", 2)][0] <= f[("bass", 4)][0]
+               and f[("drums", 1)][0] < f[("drums", 2)][0] <= f[("drums", 3)][0] + 4)
+        if not okc:
+            bad.append((c["slug"], n, h))
+        lines.append(f"  - {c['slug']}: harmony attacks/notes/span by level {[x for x in h]}; bass attacks "
+                     f"{[f[('bass', k)][0] for k in range(1, 5)]}; drums {[f[('drums', k)][0] for k in range(1, 4)]}")
+    check(not bad, f"all {len(all_songs)} songs: format 1.3, harmony 5 levels (L1 held < L2 = L3 rhythm; L4, L5 a note "
+                   f"at a time, L5 over an octave), bass 4, drums 3 (busier upwards)" + (f"; BAD {bad[:2]}" if bad else ""))
+    slugs = [c["slug"] for c in all_songs]
+    g, su = slugs.index("amazing-grace"), slugs.index("oh-susanna")
+    cg = all_songs[g]
+    lead = lambda c, ms: int(ms / 1000 * c["ppq"] * own_bpm(c) / 60)
+    r = run("m4p4-l5", PLAY_MS + 7000, open_song(g) + press_raw(OPEN_MS + 100, "ARP") + [f"{OPEN_MS + 200}:e4:9"]
+            + press_raw(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    want = attacks(cg, "harmony", 5, s["start_from"], s["last_tick"] + lead(cg, 30))
+    check(bin(s["lit_keys"]).count("1") <= 1 and s["mid_keys"] and abs(s["key_flashes"] - len(want)) <= 2,
+          f"harmony L5 (K3 turned up past 5: stops at 5): the key lights flash each note as it is played ({s['key_flashes']} "
+          f"flashes for {len(want)} notes), the chord around it at the middle level (m4p4-l5.png)")
+    run("m4p4-l4-keys", PLAY_MS + 7000, open_song(g) + [f"{OPEN_MS + 200}:e4:3"]
+        + [x for k in range(1) for x in press_raw(OPEN_MS + 500, "EDIT")] + press_raw(PLAY_MS, "PLAY"))
+    run("m4p4-l3", PLAY_MS + 7000, open_song(g) + [f"{OPEN_MS + 200}:e4:2"] + press_raw(PLAY_MS, "PLAY"))
+    # older formats: a 1.2 copy (3 levels) is read; fm1song send to an M3 FM-1 sends 1.2 without levels above 3
+    d = OUT / "m4p4"
+    d.mkdir(exist_ok=True)
+    f12 = d / "saints-12.fm1s"
+    subprocess.run([SEND, "compile", str(ROOT / "songs/saints"), "--format", "1.2", "-o", str(f12)], check=True,
+                   capture_output=True)
+    c12 = read_compiled(f12.read_bytes())
+    r = run("m4p4-old-send", 60000, [], host=f"{SEND} send --emu-pipe {f12}")
+    i = slugs.index("saints")
+    r2 = run("m4p4-old-play", PLAY_MS + 3000, open_song(i) + [f"{OPEN_MS + 200}:e4:9"] + press_raw(PLAY_MS, "PLAY"),
+             flash=r["flash"])
+    check(c12["version"] == "1.2" and len(c12["layers"]["harmony"]["variants"]) == 3 and "stored" in r["out"] and
+          r2["stats"]["starts"] == 1, "a 1.2 copy (the first 3 levels) is stored and plays; K3 stops at its 3")
+    if M3_FLASH.exists():
+        r = run("m4p4-send-to-m3", 60000, [], flash=str(M3_FLASH), pkg=M3_PKG,
+                host=f"{SEND} send --emu-pipe {ROOT}/songs/oh-susanna")
+        check("sending 1.2" in r["out"] and "stored" in r["out"] and "NOT stored" not in r["out"],
+              "fm1song send to an M3 FM-1 (it reads up to 1.2): sent as 1.2 with the first 3 levels, stored")
+    # the busiest: Oh! Susanna at 250 BPM, harmony L5, bass L4, drums L3
+    cs = all_songs[su]
+    ms = song_ms(cs, count_in=False, bpm=250)
+    r = run("m4p4-busy-250", int(PLAY_MS + ms + 2000), open_song(su) + press_raw(OPEN_MS + 100, "ARP")
+            + [f"{OPEN_MS + 200}:e0:200", f"{OPEN_MS + 300}:e4:9", f"{OPEN_MS + 400}:e3:9", f"{OPEN_MS + 500}:e2:9"]
+            + press_raw(PLAY_MS, "PLAY"))
+    s = r["stats"]
+    start = (int(cs["time_signature"][0]) - cs["pickup_beats"]) * cs["ppq"] if cs["pickup_beats"] else 0
+    want = ticks_to_frames(cs, cs["end_tick"] - start, 250)   # (from the pickup's first note, no count-in)
+    got = s["end_frames"] - s["start_frames"]
+    nb = min(cs["bar_count"], 64)
+    check(s["ends"] == 1 and abs(got - want) <= BLOCK and s["deferred"] == 0 and max(s["voices"][:nb]) <= 24,
+          f"Oh! Susanna at 250 BPM with harmony L5, bass L4, drums L3: on time ({got} / {want:.0f}), no deferred "
+          f"block, at most {max(s['voices'][:nb])} voices, CPU at most {max(s['cpu'][:nb])} %")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS.update({"m4p1": test_m4p1, "m4p2": test_m4p2, "m4p3": test_m4p3, "m4p4": test_m4p4})
 del PART_TESTS["part2"]                          # (M3's "the last muted is yours": replaced by m4p2)
 
 

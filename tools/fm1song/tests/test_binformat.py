@@ -36,7 +36,7 @@ def blobs11():
 
 def test_header_layout(blobs):
     b = blobs[0]
-    assert b[:4] == b"FM1S" and b[4:6] == bytes([1, 2])
+    assert b[:4] == b"FM1S" and b[4:6] == bytes([1, 3])
     assert struct.unpack_from("<I", b, 8)[0] == len(b)
     assert HEADER.size == 32 and len(b) % 4 == 0
 
@@ -77,13 +77,18 @@ def test_header_fields(blobs, offset, value, expect):
         read_compiled(fix_crc(b))
 
 
-def test_v10_v11_v12_same_music(blobs, blobs10, blobs11):
+def test_v10_to_v13_same_music(blobs, blobs10, blobs11):
+    """1.0 / 1.1 / 1.2 carry the first 3 levels of each layer; 1.3 (M4) all of them (harmony 5, bass 4, drums 3)"""
     for a, b, c in zip(blobs10, blobs11, blobs):
         ca, cb, cc = read_compiled(a), read_compiled(b), read_compiled(c)
-        assert ca["version"] == "1.0" and cb["version"] == "1.1" and cc["version"] == "1.2" and len(b) < len(a) * 0.6
-        assert len(c) == len(b) + 12 + 16       # 1.2: one more directory entry and the 16-byte CATG chunk
-        for k in ("layers", "chord_events", "bars", "sections", "chords", "title", "key"):
+        assert ca["version"] == "1.0" and cb["version"] == "1.1" and cc["version"] == "1.3" and len(b) < len(a) * 0.6
+        for k in ("chord_events", "bars", "sections", "chords", "title", "key"):
             assert ca[k] == cb[k] == cc[k]
+        for name, ly in cc["layers"].items():
+            assert len(ly["variants"]) == {"harmony": 5, "bass": 4, "drums": 3, "melody": 1}[name]
+            for v in range(1, min(3, len(ly["variants"])) + 1):
+                assert ca["layers"][name]["variants"][v] == cb["layers"][name]["variants"][v] == ly["variants"][v]
+            assert len(cb["layers"][name]["variants"]) == min(3, len(ly["variants"]))
         assert ca["category"] == cb["category"] == "" and cc["category"]   # every song of ours has one
 
 
@@ -134,7 +139,7 @@ def test_ez_rules(blobs, blobs10):
         "count larger than the events": lambda c: c.__setitem__(b"EZD1", struct.pack("<I", 99) + c[b"EZD1"][4:]),
         "note-on with velocity left out": lambda c: c.__setitem__(b"EZD1", struct.pack("<I", 1) + bytes([0x50, 36])),
         "past the end tick": lambda c: c.__setitem__(b"EZD1", ez_encode([[10 ** 7, 0x80, 36, 0]])),
-        "over 8192 events in all": lambda c: c.__setitem__(b"EZD1", ez_encode([[0, 0xB0, 1, 0]] * 8193)),
+        "over 16384 events in all (1.3)": lambda c: c.__setitem__(b"EZD1", ez_encode([[0, 0xB0, 1, 0]] * 16385)),
     }
     for what, edit in bad.items():
         f = rebuild(b, edit)

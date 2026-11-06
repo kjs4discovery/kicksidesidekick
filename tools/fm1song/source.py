@@ -14,7 +14,7 @@ from .smf import read_midi
 
 FORMAT = "fm1-song/1"
 LAYERS = ["drums", "bass", "harmony", "melody"]      # fixed order everywhere (compiled file, device buttons)
-MAX_VARIANTS = 3
+MAX_VARIANTS = 5                  # M4 (format 1.3): up to 5 levels a layer; 1.2 and older: 3
 MODES = ["major", "minor", "dorian", "mixolydian", "lydian", "phrygian", "locrian"]
 KEEP_CC = {1: "modulation", 7: "volume", 10: "pan", 11: "expression", 64: "sustain", 91: "reverb", 93: "chorus"}
 LIMITS = {"bars": 999, "sections": 32, "chords": 64, "chord_events": 2048, "events": 65535}
@@ -382,7 +382,7 @@ def _read_layers(song, data, midi, chart_events, diag):
                       vol if isinstance(vol, int) else 100, pan if isinstance(pan, int) else 64)
         desc = ly.get("variants", {1: ""})
         if not isinstance(desc, dict) or not desc:
-            diag.error("variants must map 1, 2, 3 to a short description", "song.yaml", where)
+            diag.error("variants must map 1, 2, ... (up to 5) to a short description", "song.yaml", where)
             desc = {1: ""}
         for n in desc:
             if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= MAX_VARIANTS:
@@ -424,7 +424,7 @@ def _read_layers(song, data, midi, chart_events, diag):
             diag.error(f"layer {name} is in song.yaml but song.mid has no {name} track", "song.mid")
             continue
         if have != list(range(1, len(have) + 1)):
-            diag.error(f"{name} variants {have}: must be 1, 1-2 or 1-3 with no gaps", "song.mid")
+            diag.error(f"{name} variants {have}: must be 1, 1-2, ... 1-{MAX_VARIANTS} with no gaps", "song.mid")
         for n in layer.descriptions:
             if n not in layer.variants:
                 diag.error(f"song.yaml describes {name}:{n} but song.mid has no such track", "song.yaml",

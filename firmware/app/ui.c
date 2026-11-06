@@ -578,9 +578,33 @@ static uint32_t key_bit(uint32_t n)
 }
 
 /* the voicing of chord event k for the harmony's level (L1: level 1, L2 and L3: level 2), moved to the key now */
+/* the voicing level the harmony's level shows (CEVT: 1 root position, 2 inversions). M4's ladder (3 to 5 levels): L1,
+ * L2 root position, L3 to L5 inversions; an older song (2 levels): L2 inversions */
+static uint32_t harm_voicing_level(void)
+{
+    uint32_t v = player_variant_of(L_HARM), n = ui.s->layer[L_HARM].variants;
+    return n >= 3u ? (v >= 3u ? 2u : 1u) : (v >= 2u ? 2u : 1u);
+}
+
+/* the harmony plays its chord a note at a time: M4's L4 (broken chords) and L5 (arpeggios) */
+/* the harmony level's short name: what it plays (M4's ladder; an older song: root pos. / inversions) */
+static const char *harm_level_name(void)
+{
+    static const char *const N[5] = {" held", " rhythm", " inversions", " broken", " arpeggio"};
+    uint32_t v = player_variant_of(L_HARM);
+    if (ui.s->layer[L_HARM].variants >= 3u && v >= 1u && v <= 5u)
+        return N[v - 1u];
+    return harm_voicing_level() >= 2u ? " inversions" : " root pos.";
+}
+
+static int harm_broken(void)
+{
+    return ui.s->layer[L_HARM].variants >= 4u && player_variant_of(L_HARM) >= 4u;
+}
+
 static uint32_t voicing(uint32_t k, uint8_t *out)
 {
-    const uint8_t *v = song_cevt_voicing(ui.s, k, player_variant_of(L_HARM) >= 2u ? 2u : 1u);
+    const uint8_t *v = song_cevt_voicing(ui.s, k, harm_voicing_level());
     uint32_t i, n = 0;
     for (i = 0; i < SONG_VOICING_NOTES; i++)
         if (v[i])
@@ -1555,6 +1579,8 @@ struct pinfo {
     char big[24], next[24], small[24];   /* the main view: the name now, the next one, a line under it */
     uint8_t now[SONG_VOICING_NOTES], nx[SONG_VOICING_NOTES];   /* the keys now and next (as sounded) */
     uint32_t nnow, nnx;
+    uint8_t ctx[SONG_VOICING_NOTES];     /* M4: L4, L5: the chord around the note played (shown darker) */
+    uint32_t nctx;
     uint32_t cue;                        /* bits 0..3 the cue's kind (0: none), bit 4: an attack just now */
 };
 
@@ -1800,6 +1826,10 @@ static void kb_follow(const struct pinfo *pi)
         lo = pi->nx[i] < lo ? pi->nx[i] : lo;
         hi = pi->nx[i] > hi ? pi->nx[i] : hi;
     }
+    for (i = 0; i < pi->nctx; i++) {
+        lo = pi->ctx[i] < lo ? pi->ctx[i] : lo;
+        hi = pi->ctx[i] > hi ? pi->ctx[i] : hi;
+    }
     if (lo > hi)
         return;                          /* nothing to show: stay */
     for (top = ui.kb_lo, n = 1; n < KB_WHITES; top++)   /* the window's highest key */
@@ -1853,7 +1883,9 @@ static void draw_keys_view(int st, const struct pinfo *pi, int32_t left, int bri
             lit |= pi->now[i] == n;
         for (i = 0; i < pi->nnx; i++)
             dim |= pi->nx[i] == n;
-        cv_rect(x0 + (int32_t)wi * KB_W, y0, KB_W - 1, 88, lit ? on : RGB(220, 220, 225));
+        for (i = 0; i < pi->nctx; i++)
+            lit |= (pi->ctx[i] == n) << 1;   /* (2: the chord around, darker) */
+        cv_rect(x0 + (int32_t)wi * KB_W, y0, KB_W - 1, 88, lit & 1u ? on : lit ? DARK_AMB : RGB(220, 220, 225));
         if (dim && !lit)
             frame_rect(x0 + (int32_t)wi * KB_W + 4, y0 + 64, KB_W - 9, 16, C_AMB);
         if (n % 12u == 0u) {
@@ -1875,14 +1907,18 @@ static void draw_keys_view(int st, const struct pinfo *pi, int32_t left, int bri
             lit |= pi->now[i] == n;
         for (i = 0; i < pi->nnx; i++)
             dim |= pi->nx[i] == n;
-        cv_rect(x0 + (int32_t)wi * KB_W - 7, y0, 13, 54, lit ? on : RGB(40, 40, 46));
+        for (i = 0; i < pi->nctx; i++)
+            lit |= (pi->ctx[i] == n) << 1;
+        cv_rect(x0 + (int32_t)wi * KB_W - 7, y0, 13, 54, lit & 1u ? on : lit ? DARK_AMB : RGB(40, 40, 46));
         if (dim && !lit)
             frame_rect(x0 + (int32_t)wi * KB_W - 5, y0 + 36, 9, 14, C_AMB);
     }
     t[0] = 0;
     if (pi->part == L_HARM && k >= 0) {
         inversion_cat(t, (uint32_t)k);
-        text_cat(t, player_variant_of(L_HARM) >= 2u ? "  (L2)" : "  (L1)");
+        text_cat(t, "  (L");
+        num_cat(t, player_variant_of(L_HARM));
+        text_cat(t, ")");
     } else {
         text_cat(t, LAYER_NAME[pi->part]);
         text_cat(t, " L");
@@ -2885,7 +2921,7 @@ static void draw_inv(const struct pinfo *pi, int32_t k)
     if (k >= 0 && pi->part == L_HARM) {
         inversion_cat(t, (uint32_t)k);
         num_cat(u, player_variant_of(L_HARM));
-        text_cat(u, player_variant_of(L_HARM) >= 2u ? " inversions" : " root pos.");
+        text_cat(u, harm_level_name());
     } else if (k >= 0) {
         text_cat(t, "chord ");
         text_cat(t, chord_name((uint32_t)k));
@@ -2939,7 +2975,7 @@ static void part_info(struct pinfo *pi, int st, int32_t tb, int32_t k, int32_t n
     int bright = 0;
     pi->part = l;
     pi->big[0] = pi->next[0] = pi->small[0] = 0;
-    pi->nnow = pi->nnx = 0;
+    pi->nnow = pi->nnx = pi->nctx = 0;
     pi->cue = 0;
     if (l == L_HARM) {
         uint32_t kc = st == PL_STOPPED || k < 0 ? (uint32_t)(next >= 0 ? next : 0) : (uint32_t)k;
@@ -2949,6 +2985,15 @@ static void part_info(struct pinfo *pi, int st, int32_t tb, int32_t k, int32_t n
             text_cat(pi->next, chord_name((uint32_t)next));
         if (st != PL_STOPPED)
             pi->nnow = voicing(kc, pi->now);
+        if (st != PL_STOPPED && harm_broken()) {   /* L4, L5: the note just played; the chord around it darker */
+            uint8_t a[SONG_VOICING_NOTES];
+            uint32_t na = attack_notes(L_HARM, tb, 0, a, SONG_VOICING_NOTES, &at);
+            for (i = 0; i < pi->nnow; i++)
+                pi->ctx[i] = pi->now[i];
+            pi->nctx = pi->nnow;
+            for (i = 0, pi->nnow = 0; i < na; i++)
+                pi->now[pi->nnow++] = (uint8_t)moved(a[i]);
+        }
         if (next >= 0 && left > 0)
             pi->nnx = voicing((uint32_t)next, pi->nx);
     } else {
@@ -3055,6 +3100,8 @@ static void frame_play(uint32_t now)
         if (pi.part == L_HARM)
             for (i = 0; i < pi.nnx; i++)
                 ui.dim_keys |= key_bit(pi.nx[i]);
+        for (i = 0; i < pi.nctx; i++)    /* L4, L5: the chord around the note, at the middle level */
+            ui.mid_keys |= key_bit(pi.ctx[i]) & ~ui.lit_keys;
         if (ui.lit_keys && !ui.flash_keys && st == PL_PLAYING)
             player_stats.key_flashes++;
         ui.flash_keys = ui.lit_keys != 0;

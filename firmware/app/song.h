@@ -1,5 +1,5 @@
 /* Licence: TBD (see D017) */
-/* The compiled song file (.fm1s, versions 1.0, 1.1 and 1.2; docs/song-format.md section 2): the device's parser.
+/* The compiled song file (.fm1s, versions 1.0 to 1.3; docs/song-format.md section 2): the device's parser.
  * Standalone C (no platform calls), so it is fuzzed on the laptop under ASan/UBSan (tools/song_fuzz.c).
  * song_open checks everything before anything else reads the file: every count, offset, tick and value has a bound,
  * the CRC must match, and the accessors below then never read outside the checked chunks. The file stays where it
@@ -10,11 +10,12 @@
 #include <stdint.h>
 
 #define SONG_LAYERS 4u                    /* drums, bass, harmony, melody: the compiled file's order */
-#define SONG_MAX_VARIANTS 3u
+#define SONG_MAX_VARIANTS 5u               /* M4, format 1.3 (1.2 and older: 3) */
 #define SONG_MAX_SIZE (256u * 1024u)
 #define SONG_VOICING_NOTES 5u
 #define SONG_NO_CHORD 0xFFu               /* a chord's root for N.C. */
-#define SONG_EZ_EVENTS 8192u              /* 1.1: all EZ streams together, at most (the format's limit) */
+#define SONG_EZ_EVENTS 16384u             /* all EZ streams together, at most: 1.3 (M4: 12 levels); 1.1, 1.2: 8192 */
+#define SONG_EZ_EVENTS_OLD 8192u
 #define SONG_DECODE_BYTES (SONG_EZ_EVENTS * 8u)   /* a decode buffer this big opens any valid file */
 
 enum {
