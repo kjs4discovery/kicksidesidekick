@@ -1,7 +1,26 @@
 # Our firmware
 
-**On the FM-1 now: M1, v0.2.0-m1 (FM-1_46000200), installed by the user 2026-11-05 (docs/device.md).**
-M2 (below) is being built in parts, emulator only; each part's tested release build is kept in `build/step-M2/`.
+**On the FM-1 now: M2, v0.3.0-m2 (FM-1_46000300)**, installed by the user, as the planning chat reported
+(HANDOFF 17:40; docs/device.md records only what Claude Code saw). M3 (below) is built, emulator only. Each part's
+tested release build is kept in `build/step-M3/`, and the final one in `build/step-M3/final/`.
+
+## Milestone M3 (v0.4.0-m3 = FM-1_46000400; part builds 0.3.N-m3pN = FM-1_460003NN)
+
+Plan: docs/plan-M3.md (D024, D025). Controls, with mock-ups and screens: [controls.md](controls.md), section M3.
+Tests: `tools/m3_test.py` (grown from m2_test.py; `--only part1..part8`, a song's slug, store, flash, boot,
+practice, views, levels). Report: [step-M3-emulator-report.md](step-M3-emulator-report.md).
+
+| File | M3 changes |
+|---|---|
+| `firmware/app/ui.c` | Part 2: your part (the last muted layer) drives the screen, cue, key lights (three levels: an attack, between, the next chord) and views. Part 3: the A–B loop set and confirmed with SEQ. Part 4: legend parser (names amber, actions gray, dividers), 144-row views, inversion line, zoomed keyboard (11 white keys following the notes), count-in in every view, settings screen (fm1-base `plat_store`, OBJ_SETTINGS). Part 6: a view list per part, guitar view, the scrolling engine and bass tab. Part 7: melody roll, notation (treble / bass clef, drawn glyphs), drum grid, zoom. Part 8: folders (HOME on the list), guide volume |
+| `firmware/app/guitar.h` | our guitar shape table: open shapes, E/A-form barre templates (tools/guitar_check.py checks it) |
+| `firmware/app/player.c/.h` | Part 4: the count-in beep (GM square lead on a free channel, 70 ms; volume and 1 or 2 bars); BIAS_BARS 3. Part 8: the guide (a muted layer's velocities x sqrt(level)). Stats version 4 |
+| `firmware/app/song.c/.h` | Part 4: chord root and pitch-class accessors. Part 8: format 1.2 (CATG, the category) |
+| `firmware/app/library.c` | Part 8: LIST says it reads up to 1.2 |
+| `tools/fm1song/` | Part 1: `send` skips non-songs. Part 8: `category`, format 1.2 (`--format 1.2/1.1/1.0`), `send` compiles 1.1 for an older FM-1 |
+| `songs/make_songs.py` | Part 1: level-1 drums with a backbeat. Part 5: Happy Birthday. Part 8: categories |
+| `tools/mock_m3.py`, `tools/guitar_check.py`, `tools/m3_test.py` | mock-ups, the guitar table check, the emulator tests |
+
 
 ## Milestone M2 (v0.3.0-m2; part builds 0.2.1-m2p1 = FM-1_46000201, ...)
 

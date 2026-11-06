@@ -970,3 +970,42 @@ Choices (with reasons):
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 9 (full tests of every item and every song, budget, 0.4.0-m3, docs/step-M3-install.md, STOP).
+
+2026-11-05 19:30 — Milestone M3, Part 9 (tests, budget, install checklist) —
+Status: done; STOPPED for review (nothing installed, nothing sent; the FM-1 was not touched)
+Did:
+- Version 0.4.0-m3, release build build/step-M3/final/fm1acc-0.4.0-m3.fwsc: identity FM-1_46000400, sha256
+  7bb7e58ad8c27cb8eb4038fef641f02a708fa01344fd856931cf1280d027787d. Firmware source = the Part 8 commit dde3dc1 with
+  the version.
+- **The full suite on that exact package: 235 checks, ALL PASS** (build/step-M3/final/report.md). It covers:
+  - all 9 songs to the end on time, with the chord on screen 52–99 ms before its sound;
+  - the store, with power cuts;
+  - flash ids 856014 / b36014 / unknown c84017;
+  - the settings kept across a restart;
+  - every check of parts 1–8.
+- Laptop tests:
+  - tools/song_fuzz.sh 600: 1,788,000 files, no sanitizer report;
+  - pytest: 75 pass;
+  - tools/store_test.sh: ALL PASS;
+  - tools/guitar_check.py: all pass.
+- docs/step-M3-emulator-report.md (results per item and per song, budget); docs/firmware.md (M3 section).
+- docs/step-M3-install.md: install over M2 (or over 0.3.5-m3p5), resend the 9 songs as 1.2, the settings write
+  explained, on-unit checks per layer and view, fallback M2 (then resend the songs: fm1song sends 1.1 to M2).
+Learned / measured:
+- Budget: image 414,272 B (+19 KB on M2; ~167 KB room); RAM .data+.bss 74,740 of 98,304; pool 215,304 of 344,064;
+  songs 83,360 B in 24 of 69 sectors; CPU at most 15 % (Blues at 250 BPM, notation view); voices at most 14 of 24.
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M3-install.md (and the early docs/step-M3-early-install.md; one of the two is enough).
+- **CLAUDE.md is still not updated** (the edit was refused by Claude Code's permission check, LOG Part 1). Please
+  apply the proposed text or allow the edit.
+- Proposals to confirm:
+  - "the last one muted is your part";
+  - settings open with GLO, GLO;
+  - folders one HOME up from All songs;
+  - guide levels OFF / 15 / 30 %.
+- Checks by people: a guitarist (the shape table), a staff reader (the notation, D025), and the melodies typed from
+  memory (Happy Birthday too).
+- Small things noticed: the help screen (GLO) on the list does not mention HOME = folders (the legend does); the
+  store check's text in tools/m3_test.py still says "format 1.1".
+Next: STOP. The user and the planning chat review; then the user runs the checklist.
