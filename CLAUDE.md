@@ -14,11 +14,13 @@ except `backups/SHA256SUMS`). Python tools use the venv in `.venv/`.
 * NEVER run any command that writes to, erases, flashes, updates, reboots into a
   bootloader, or sends firmware/SysEx to the FM-1. This includes fm1_install.py
   (without --info), fm1-update.sh flash, fm1_unbrick.py restore/softkey, M-Flasher
-  writes, dock.py deploy, and any web installer.
+  writes, dock.py deploy, any web installer, and `tools/fm1song.sh send` and
+  `delete` (they write the FM-1's song area; the user runs them).
   Instead: print the exact command, explain what it writes and how to undo it,
   and stop so the user can run it themselves.
 * Read-only commands (lsusb, aconnect -l, amidi -l, fm1_install.py --info,
-  fm1-update.sh info, fm1_unbrick.py find) are allowed, but say what you're
+  fm1-update.sh info, fm1_unbrick.py find, `tools/fm1song.sh list` (a SysEx
+  question that writes nothing)) are allowed, but say what you're
   running first.
 * Never use override flags such as --i-know, --force, --skip-check.
 * Do NOT update the stock firmware. The unit stays on its factory version until
