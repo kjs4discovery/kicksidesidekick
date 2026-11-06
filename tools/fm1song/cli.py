@@ -209,6 +209,34 @@ def cmd_send(args):
     return status
 
 
+def cmd_import(args):
+    """a MIDI file -> a song folder (tools/fm1song/importer.py); --list: only show the tracks and the guess"""
+    from . import importer
+    from .smf import read_midi
+    midi = read_midi(Path(args.file).read_bytes())
+    infos = importer.analyze(midi)
+    roles = importer.parse_roles(infos, args)
+    if args.list:
+        for i in infos:
+            print(f"  {i.index:2} {i.name[:28]:28} ch {[c + 1 for c in i.channels]} program "
+                  f"{i.program + 1 if i.program >= 0 else '-':>3} {i.notes:5} notes {i.poly:.1f} at once -> "
+                  f"{roles[i.index]}", file=args.out)
+        return 0
+    imp, rep = importer.import_file(args.file, args.out_dir, args.title, args.slug, args.category, args.rights,
+                                    args.credit, roles, args.style)
+    print("\n".join(rep), file=args.out)
+    blob, items = None, []
+    try:
+        compiled, blob, items = _load(args.out_dir)
+        _print_diags(items, args.out_dir)
+        print(f"{args.out_dir}: compiles, {len(blob)} bytes, format {compiled['version']}", file=args.out)
+    except SongError as e:
+        _print_diags(e.diagnostics, args.out_dir)
+        print(f"{args.out_dir}: written, but does not compile (see above)", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_delete(args):
     device, dev = _device(args)
     status = 0
@@ -226,6 +254,20 @@ def main(argv=None):
     p = sub.add_parser("validate", help="check song folders")
     p.add_argument("songs", nargs="+")
     p.set_defaults(fn=cmd_validate)
+    p = sub.add_parser("import", help="a MIDI file -> a song folder (all levels; docs/import.md)")
+    p.add_argument("file")
+    p.add_argument("--out", dest="out_dir", help="the song folder to write")
+    p.add_argument("--list", action="store_true", help="only list the tracks and the roles guessed")
+    p.add_argument("--title")
+    p.add_argument("--slug")
+    p.add_argument("--category", default="Imported")
+    p.add_argument("--rights", default="TBD", help="rights.composition text")
+    p.add_argument("--credit", help="credits.music text")
+    p.add_argument("--style", choices=sorted(__import__("fm1song.arrange", fromlist=["STYLES"]).STYLES),
+                   help="the generated levels' style (default: from the metre and tempo)")
+    for role in ("melody", "harmony", "bass", "drums", "drop"):
+        p.add_argument(f"--{role}", help=f"track numbers (from --list) for the {role}, comma-separated")
+    p.set_defaults(fn=cmd_import)
     p = sub.add_parser("compile", help="song folder -> .fm1s")
     p.add_argument("song")
     p.add_argument("-o", "--output")

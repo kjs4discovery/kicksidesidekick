@@ -1393,7 +1393,49 @@ def test_m4p4(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS.update({"m4p1": test_m4p1, "m4p2": test_m4p2, "m4p3": test_m4p3, "m4p4": test_m4p4})
+def test_m4p5(all_songs, rep):
+    """M4 part 5: the import tool's songs (the user's private test songs, songs/private/; never committed): sent on a
+    flash of their own (the store holds them, not with all 9 of ours), each played to the end at its top levels"""
+    lines, st, check = checker("M4 part 5: imported songs (private)")
+    priv = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
+        if (ROOT / "songs/private").is_dir() else []
+    if not priv:
+        lines.append("- (no songs/private/: the user's private songs are not on this machine; nothing to test)")
+        rep += lines
+        return True
+    cs = []
+    for f in priv:
+        c = read_compiled(compile_folder(f)[0])
+        n = {l: len(c["layers"][l]["variants"]) for l in c["layers"]}
+        cs.append(c)
+        check(c["version"] == "1.3" and n.get("harmony") == 5 and n.get("bass") == 4 and n.get("drums") == 3 and
+              c["category"] == "Private test", f"{f.name}: format 1.3, every level ({n}), category Private test, "
+              f"{c['size']} bytes, {c['bar_count']} bars")
+    r = run("m4p5-send", 180000, [], flash="empty", host=f"{SEND} send --emu-pipe " + " ".join(str(f) for f in priv))
+    check(r["out"].count(": stored (") == len(priv), f"all {len(priv)} sent over emulated USB and stored")
+    fl = r["flash"]
+    shutil.copy(fl, OUT / "flash" / "private.bin")
+    cs.sort(key=lambda c: c["title"].lower())
+    for i, c in enumerate(cs):
+        ms = song_ms(c, count_in=False)
+        bpb = int(c["time_signature"][0])
+        start = (bpb - c["pickup_beats"]) * c["ppq"] if c["pickup_beats"] else 0
+        sc = ([f"3150:e0:{i}"] if i else []) + press_raw(OPEN_MS, "PLAY") + press_raw(OPEN_MS + 100, "ARP") \
+            + [f"{OPEN_MS + 200}:e4:9", f"{OPEN_MS + 300}:e3:9", f"{OPEN_MS + 400}:e2:9"] + press_raw(PLAY_MS, "PLAY")
+        r = run(f"m4p5-{c['slug']}", int(PLAY_MS + ms + 2500), sc, flash=str(OUT / "flash" / "private.bin"))
+        s = r["stats"]
+        want = ticks_to_frames(c, c["end_tick"] - start)
+        got = s["end_frames"] - s["start_frames"]
+        nb = min(c["bar_count"], 64)
+        check(s["ends"] == 1 and abs(got - want) <= BLOCK and s["deferred"] == 0 and max(s["voices"][:nb]) <= 24
+              and s["song_crc"] == int(c["crc32"], 16),
+              f"{c['title']}: played to the end at harmony L5, bass L4, drums L3, on time ({got} / {want:.0f}), no "
+              f"deferred block, at most {max(s['voices'][:nb])} voices, CPU at most {max(s['cpu'][:nb])} %")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS.update({"m4p1": test_m4p1, "m4p2": test_m4p2, "m4p3": test_m4p3, "m4p4": test_m4p4, "m4p5": test_m4p5})
 del PART_TESTS["part2"]                          # (M3's "the last muted is yours": replaced by m4p2)
 
 
