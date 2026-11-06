@@ -1,7 +1,9 @@
-# fm1song: the compiled song file (.fm1s), versions 1.0 and 1.1: writer and checking reader. Licence: TBD (see D017)
+# fm1song: the compiled song file (.fm1s), versions 1.0, 1.1 and 1.2: writer and checking reader. Licence: TBD (see D017)
 #
 # 1.1 (M2) stores each event stream delta-coded (chunk "EZ" + layer + variant) instead of 8-byte records ("EV..");
-# the device decodes them into RAM when it opens the song. The writer writes 1.1; the reader reads both.
+# the device decodes them into RAM when it opens the song. 1.2 (M3) adds the CATG chunk: the song's category (16
+# bytes, NUL-terminated printable ASCII, may be empty). The writer writes 1.2 (or 1.1 / 1.0 when asked: for an older
+# device); the reader reads all three.
 # Layout and limits: docs/song-format.md, "Compiled format". All numbers little-endian, every chunk 4-byte
 # aligned. The reader checks everything the device parser (firmware/app/song.c) checks, so a file this
 # reader accepts, the device accepts; tests/test_binformat.py keeps the two in step.
@@ -12,8 +14,8 @@ from .errors import Diagnostics
 from .source import LAYERS
 
 MAGIC = b"FM1S"
-VERSION = (1, 1)                                         # what compile_song writes
-READS = (0, 1)                                           # the minor versions this reader takes
+VERSION = (1, 2)                                         # what compile_song writes
+READS = (0, 1, 2)                                        # the minor versions this reader takes
 HEADER = struct.Struct("<4sBBHII HBB I I HBB")          # 32 bytes
 DIRENT = struct.Struct("<4sII")                          # fourcc, offset, size
 MAX_FILE = 256 * 1024
@@ -128,6 +130,8 @@ def compile_song(song, version=VERSION):
             layr += LAYR.pack(ly.channel, 0xFF if ly.program is None else ly.program, len(ly.variants),
                               ly.volume, ly.pan, 0, 0)
     chunks.append((b"LAYR", layr))
+    if version >= (1, 2):
+        chunks.append((b"CATG", _cstr(song.category, 16)))
     for li, name in enumerate(LAYERS):
         ly = song.layers.get(name)
         for var in sorted(ly.variants) if ly else []:
@@ -180,7 +184,7 @@ def read_compiled(blob, diag=None):
     if magic != MAGIC:
         bad(f"magic {magic!r}, expected {MAGIC!r}", "header")
     if vmaj != VERSION[0] or vmin not in READS:
-        bad(f"format version {vmaj}.{vmin}; this reader reads {VERSION[0]}.0 and {VERSION[0]}.1", "header")
+        bad(f"format version {vmaj}.{vmin}; this reader reads {VERSION[0]}.0 to {VERSION[0]}.{READS[-1]}", "header")
     if size != len(blob) or size > MAX_FILE:
         bad(f"header says {size} bytes, the file has {len(blob)} (max {MAX_FILE})", "header")
     if crc != zlib.crc32(blob[:12] + bytes(4) + blob[16:]):
@@ -233,7 +237,12 @@ def read_compiled(blob, diag=None):
     if root > 11 or mode > 6:
         bad("key out of range", "META")
     out.update(slug=_str(diag, slug, "META slug"), title=_str(diag, title, "META title"),
-               key=_str(diag, key, "META key"), key_root=root, key_mode=mode)
+               key=_str(diag, key, "META key"), key_root=root, key_mode=mode, category="")
+    if vmin >= 2:                         # 1.2: the category (required, may be empty)
+        catg = chunk(b"CATG")
+        if len(catg) != 16:
+            bad(f"{len(catg)} bytes, expected 16", "CATG")
+        out["category"] = _str(diag, catg, "CATG category")
 
     sects, _ = chunk(b"SECT", SECT, limit=LIMITS["sections"])
     out["sections"], expect = [], None
@@ -329,7 +338,7 @@ def read_compiled(blob, diag=None):
                                "volume": vol, "pan": pan, "variants": variants}
     if not out["layers"]:
         bad("no layers", "LAYR")
-    known = {b"META", b"SECT", b"CHRD", b"CEVT", b"BARS", b"LAYR"}
+    known = {b"META", b"SECT", b"CHRD", b"CEVT", b"BARS", b"LAYR"} | ({b"CATG"} if vmin >= 2 else set())
     out["unknown_chunks"] = sorted(c.decode("latin-1") for c in chunks
                                    if c not in known and not c.startswith(b"EV") and not c.startswith(b"EZ"))
     return out

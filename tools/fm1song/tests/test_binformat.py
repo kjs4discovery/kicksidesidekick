@@ -29,9 +29,14 @@ def blobs10():
     return [compile_folder(f, (1, 0))[0] for f in SONGS]
 
 
+@pytest.fixture(scope="module")
+def blobs11():
+    return [compile_folder(f, (1, 1))[0] for f in SONGS]
+
+
 def test_header_layout(blobs):
     b = blobs[0]
-    assert b[:4] == b"FM1S" and b[4:6] == bytes([1, 1])
+    assert b[:4] == b"FM1S" and b[4:6] == bytes([1, 2])
     assert struct.unpack_from("<I", b, 8)[0] == len(b)
     assert HEADER.size == 32 and len(b) % 4 == 0
 
@@ -72,12 +77,29 @@ def test_header_fields(blobs, offset, value, expect):
         read_compiled(fix_crc(b))
 
 
-def test_v10_and_v11_same_music(blobs, blobs10):
-    for a, b in zip(blobs10, blobs):
-        ca, cb = read_compiled(a), read_compiled(b)
-        assert ca["version"] == "1.0" and cb["version"] == "1.1" and len(b) < len(a) * 0.6
-        for k in ("layers", "chord_events", "bars", "sections", "chords"):
-            assert ca[k] == cb[k]
+def test_v10_v11_v12_same_music(blobs, blobs10, blobs11):
+    for a, b, c in zip(blobs10, blobs11, blobs):
+        ca, cb, cc = read_compiled(a), read_compiled(b), read_compiled(c)
+        assert ca["version"] == "1.0" and cb["version"] == "1.1" and cc["version"] == "1.2" and len(b) < len(a) * 0.6
+        assert len(c) == len(b) + 12 + 16       # 1.2: one more directory entry and the 16-byte CATG chunk
+        for k in ("layers", "chord_events", "bars", "sections", "chords", "title", "key"):
+            assert ca[k] == cb[k] == cc[k]
+        assert ca["category"] == cb["category"] == "" and cc["category"]   # every song of ours has one
+
+
+def test_category(tmp_path):
+    """song.yaml category: optional, printable ASCII up to 15 characters; in 1.2's CATG, not in 1.1"""
+    import shutil
+    from fm1song.errors import SongError
+    folder = tmp_path / "s"
+    shutil.copytree(SONGS[0], folder)
+    y = (folder / "song.yaml").read_text()
+    assert "category:" in y
+    (folder / "song.yaml").write_text(y.replace("category:", "# category:", 1))
+    assert read_compiled(compile_folder(folder)[0])["category"] == ""
+    (folder / "song.yaml").write_text(y.replace("category:", "category: A very long category name #", 1))
+    with pytest.raises(SongError):
+        compile_folder(folder)
 
 
 def rebuild(blob, edit):
@@ -191,7 +213,7 @@ def test_fuzz_yaml():
             pass
 
 
-def test_device_parser_agrees(blobs, blobs10, tmp_path):
+def test_device_parser_agrees(blobs, blobs10, blobs11, tmp_path):
     """the C parser (firmware/app/song.c, via build/fuzz/song_fuzz --diff) accepts exactly what this reader accepts"""
     import subprocess
     from conftest import ROOT
@@ -200,7 +222,7 @@ def test_device_parser_agrees(blobs, blobs10, tmp_path):
         pytest.skip("build tools/song_fuzz first (tools/song_fuzz.sh)")
     rng = random.Random(4)
     files, expect = [], {}
-    seeds = blobs + blobs10
+    seeds = blobs + blobs10 + blobs11
     for k in range(3000):
         b = mutate(rng, rng.choice(seeds))
         if k % 4:

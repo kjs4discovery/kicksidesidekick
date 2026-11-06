@@ -933,3 +933,40 @@ Hardware touched: none
 Questions for the planning chat:
 - The notation should be checked by a staff reader (D025's caveat). The screens are in docs/step-M3/p7-notation*.png.
 Next: Part 8 (song folders by category, format 1.2; guide volume).
+
+2026-11-05 19:12 — Milestone M3, Part 8 (song folders by category, format 1.2; guide volume) —
+Status: done (emulator); committed; tested release build kept
+Did (docs/controls.md "Part 8"; docs/song-format.md 1.2):
+- **Format 1.2:** song.yaml's optional `category` (printable ASCII, up to 15 characters) goes into a new 16-byte
+  CATG chunk.
+  - The compiler writes 1.2, or 1.1 / 1.0 with `--format`. The laptop reader reads all three; song_fuzz.sh
+    seeds all three.
+  - The device parser (song.c) reads 1.0–1.2 and reports 1.2 in LIST.
+  - `fm1song send` asks the FM-1 which versions it reads and compiles 1.1 for an older one (M2), so the M2 fallback
+    needs nothing special. A .fm1s file sent to an older FM-1 is refused with a hint to send its folder.
+- **Folders on the FM-1:** the list opens in All songs, as before. HOME on the list shows the folders (All songs, the
+  categories alphabetically, "Other" for none), each with its count; PLAY opens one.
+- Every song has a category: Hymns, Folk, Blues, Practice forms, Celebrations (amazing-grace's hand-written
+  song.yaml, the others by make_songs.py).
+- **Guide volume:** setting OFF / 15 % / 30 %, default OFF. Your part, muted, plays quietly instead of silent; the
+  layers row says GUIDE. The player scales the velocities by the square root of the level.
+Learned / measured:
+- pytest: 75 pass. New: 1.0/1.1/1.2 carry the same music; the category is optional; 3000 mutated files of all three
+  versions agree between the C and Python readers. tools/song_fuzz.sh 120 s: 640,000 files, no sanitizer report.
+- Release build build/step-M3/part8/fm1acc-0.3.8-m3p8.fwsc: FM-1_46000308, sha256
+  b7c04f63f6ddb71bda86432018c5a0dda1c13f0abd0dfc0bce72a59cfd3169e8. Image 414,272 B.
+  - Checks part8, part4 and part2 on it: ALL PASS (21).
+  - Folders: All songs, then Blues, Celebrations, Folk, Hymns, Practice forms; Folk's first song opens.
+  - A 1.1 and a 1.0 file are stored and played, in "Other".
+  - fm1song send to M2's own flash and app: "sending 1.1", stored.
+  - Guide 30 %: the harmony's notes sent quietly, none skipped.
+- EAS's loudness is roughly the square of the velocity: a plain 30 % velocity sounded at 9 % of the level. With the
+  square root it is 18 % (rms 200 against 1126 for the harmony alone, emulator).
+Choices (with reasons):
+- The list opens in All songs and the folders are one HOME up. Nothing changes for someone who never uses folders.
+- Songs with no category go in "Other", which is only shown when such songs exist.
+- The guide applies to your part only. The other muted layers stay silent, because the guide is a learning aid for
+  the part you play.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 9 (full tests of every item and every song, budget, 0.4.0-m3, docs/step-M3-install.md, STOP).

@@ -36,6 +36,8 @@ static const struct song *volatile want_song;
 static volatile uint32_t song_req, song_done, play_req, play_done, loop_req, loop_done;
 static volatile uint8_t play_cmd, countin_want = 1, start_countin;   /* play_cmd: 0 stop, 1 start, 2 pause */
 static volatile uint8_t countin_bars_want = 1, beep_vol_want = 127;
+static volatile uint8_t guide_layer = 0xFFu, guide_q8;   /* M3: your part plays quietly instead of muted: its
+                                                           * velocities x guide_q8 / 256 */
 static volatile int32_t start_want;
 static volatile uint32_t mute_want, tempo_want = 120;
 static volatile uint8_t var_want[SONG_LAYERS] = {1, 1, 1, 1};
@@ -125,6 +127,17 @@ void player_tempo(uint32_t b)
 }
 
 void player_count_in(int on) { countin_want = (uint8_t)(on != 0); }
+/* the guide at pct % of the part's loudness: EAS's gain goes about with the velocity squared, so the velocities are
+ * scaled by the square root (30 % -> x 0.55, 15 % -> x 0.39; a plain 30 % of the velocity sounded at 9 %) */
+void player_guide(uint32_t layer, uint32_t pct)
+{
+    uint32_t want = (pct > 100u ? 100u : pct) * 65536u / 100u, q = 0;
+    while ((q + 1u) * (q + 1u) <= want && q < 255u)
+        q++;
+    guide_q8 = (uint8_t)(pct ? (q ? q : 1u) : 0u);
+    guide_layer = (uint8_t)(layer < SONG_LAYERS ? layer : 0xFFu);
+}
+
 void player_count_in_bars(uint32_t bars) { countin_bars_want = (uint8_t)(bars >= 2u ? 2u : 1u); }
 void player_count_in_volume(uint32_t cc7) { beep_vol_want = (uint8_t)(cc7 > 127u ? 127u : cc7); }
 
@@ -234,18 +247,25 @@ static void dispatch(uint32_t l, const struct song_event *e)
     uint32_t n = e->status == 0x90u || e->status == 0x80u ? pitch(l, e->d1) : e->d1;
     uint32_t w = n >> 5, bit = 1u << (n & 31u);
     switch (e->status) {
-    case 0x90u:
+    case 0x90u: {
+        uint32_t vel = e->d2;
         if (mute_cur >> l & 1u) {
-            player_stats.notes_skipped[l]++;
-            return;
+            if (l != guide_layer || !guide_q8) {
+                player_stats.notes_skipped[l]++;
+                return;
+            }
+            vel = vel * guide_q8 / 256u;  /* the guide: your part, quietly (M3 part 8) */
+            vel = vel ? vel : 1u;
+            player_stats.notes_guided++;
         }
         if (active[l][w] & bit)
             send(l, 0x80u, n, 0);         /* restarted: end the one sounding */
         active[l][w] |= bit;
-        send(l, 0x90u, n, e->d2);
+        send(l, 0x90u, n, vel);
         player_stats.notes_on[l]++;
         player_stats.note_on_last[l] = n;
         return;
+    }
     case 0x80u:
         if (active[l][w] & bit) {
             active[l][w] &= ~bit;

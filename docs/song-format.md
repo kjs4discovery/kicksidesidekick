@@ -15,6 +15,10 @@ M2 (2026-11-05): format **1.1** stores the event streams delta-coded (section 2.
 of 1.0's), and the songs live in the FM-1's flash, sent from the laptop (section 4); M1 bundled them into the
 firmware.
 
+M3 (2026-11-05): format **1.2** adds the song's **category** (`category:` in song.yaml, the `CATG` chunk): the
+FM-1's list groups songs into folders by it. The M3 device reads 1.0, 1.1 and 1.2. `fm1song send` asks the FM-1
+which versions it reads and, for an older one (M2: up to 1.1), sends 1.1 without the category.
+
 ## 1. Source: a song folder
 
 A folder named after the song's slug, holding `song.yaml` and `song.mid`. Optional: `previews/`
@@ -26,6 +30,7 @@ A folder named after the song's slug, holding `song.yaml` and `song.mid`. Option
 format: fm1-song/1            # required, exactly this
 slug: amazing-grace           # required: a-z 0-9 '-', 1..23 characters
 title: Amazing Grace          # required: printable ASCII, up to 31 characters (the device font)
+category: Hymns               # optional (M3, format 1.2): the list's folder, printable ASCII, up to 15 characters
 credits:                      # required mapping; free text (music, words, arrangement, ...)
   music: ...
 rights:                       # required mapping
@@ -101,7 +106,7 @@ before the pickup, wrong tempo/metre, track/variant mismatches, more than the li
 **Warnings**: events on another channel than `song.yaml` says, a note retriggered before its note-off (the
 first one is ended there), notes ringing past the end (cut at the end), unused chart parts.
 
-## 2. Compiled file (`.fm1s`), versions 1.0 and 1.1
+## 2. Compiled file (`.fm1s`), versions 1.0, 1.1 and 1.2
 
 Little-endian, every chunk starts on a 4-byte boundary (zero padding between chunks). Text fields are
 fixed-size, NUL-padded, printable ASCII, and must contain at least one NUL. The reader refuses anything
@@ -112,7 +117,7 @@ that is not exactly as described; `fm1song info`/`dump` use the same checks as t
 | off | type | field | rule |
 |---|---|---|---|
 | 0 | char[4] | magic | `FM1S` |
-| 4 | u8, u8 | version major, minor | major must be 1; minor 0 or 1 (1.1: `EZ` event chunks, below). `fm1song compile` writes 1.1 (`--format 1.0`: the M1 layout); the M2 device reads both; an M1 device refuses a 1.1 file safely (EVENTS) |
+| 4 | u8, u8 | version major, minor | major must be 1; minor 0, 1 or 2 (1.1: `EZ` event chunks; 1.2: also the `CATG` chunk, below). `fm1song compile` writes 1.2 (`--format 1.1` / `1.0` for older devices); the M3 device reads all three, the M2 device 1.0 and 1.1, M1 only 1.0; an older device refuses a newer file safely (VERSION or EVENTS) |
 | 6 | u16 | chunk_count | 1..24 |
 | 8 | u32 | file_size | = the file's length, ≤ 256 KiB |
 | 12 | u32 | crc32 | CRC-32 (zlib/IEEE) of the whole file with these 4 bytes as zero |
@@ -135,6 +140,7 @@ All required except `EV..` chunks of layers that have no variants.
 
 | id | size | content |
 |---|---|---|
+| `CATG` | 16 | **1.2 only, required there**: char category[16] (printable ASCII, NUL-terminated; empty = no folder) |
 | `META` | 76 | u8 key_root (0..11), u8 key_mode (0..6, as §1.1's list), u16 0, char slug[24], char title[32], char key_name[16] ("G", "Em", "D dorian") |
 | `SECT` | 4 + 24n | u16 n (1..32), u16 0; per section: u16 first_bar (index), u16 bar_count (≥1), u16 lead_ticks (< one bar), u16 0, char name[16]. Sections follow each other with no gaps from bar index 1 (pickup songs) or 0 to the last bar |
 | `CHRD` | 4 + 12n | u16 n (1..64), u16 0; per chord: char symbol[8], u8 root (0..11, 0xFF = N.C.), u8 bass (0..11, 0xFF = none), u16 pitch-class mask (bit k = pitch class k; 0 only for N.C.) |
@@ -142,7 +148,7 @@ All required except `EV..` chunks of layers that have no variants.
 | `BARS` | 4 + 4n | u16 n (= bar_count), u16 0; per bar: u16 chord_event (the event sounding on the bar's first beat), u8 section (index), u8 flags (bit 0: a chord change on beat 1, bit 1: a section starts here) |
 | `LAYR` | 4 + 8×4 | u8 4, u8 0, u16 0; for drums, bass, harmony, melody in that order: u8 channel (0..15; 0xFF if absent), u8 program (0..127, 0xFF = none), u8 variants (0..3), u8 volume, u8 pan, u8 flags (0), u16 0 |
 | `EV` + L + V | 4 + 8n | layer letter L = `D` `B` `H` `M`, variant digit V = `1`..`3` (e.g. `EVB2` = bass:2). u32 n (≤ 65535); per event: u32 tick (non-decreasing, ≤ end_tick), u8 status (0x80 note-off, 0x90 note-on, 0xB0 controller, 0xE0 pitch bend; no channel bits: the layer's channel is used), u8 data1, u8 data2 (both ≤ 127; note-on velocity ≥ 1 and tick < end_tick), u8 0. At one tick: note-offs, then controllers, bends, note-ons |
-| `EZ` + L + V | 4 + … | **1.1 only**, instead of the same stream's `EV` chunk (never both). The same events, delta-coded: u32 n, then per event: a first byte (bit 7: more delta bytes follow; bit 6: data2 is 0 and left out; bits 5–4: the status, 0x80 0x90 0xB0 0xE0; bits 3–0: the tick delta's low 4 bits), up to 3 more delta bytes (7 bits each, low first, bit 7: another follows), data1, then data2 unless left out. The delta is from the previous event's tick (the first: from 0) and never takes the tick past end_tick. The chunk ends exactly after event n. The same rules as `EV` apply to the decoded events. All `EZ` streams together: at most 8192 events (the device decodes them into a 64 KiB buffer) |
+| `EZ` + L + V | 4 + … | **1.1 and 1.2**, instead of the same stream's `EV` chunk (never both). The same events, delta-coded: u32 n, then per event: a first byte (bit 7: more delta bytes follow; bit 6: data2 is 0 and left out; bits 5–4: the status, 0x80 0x90 0xB0 0xE0; bits 3–0: the tick delta's low 4 bits), up to 3 more delta bytes (7 bits each, low first, bit 7: another follows), data1, then data2 unless left out. The delta is from the previous event's tick (the first: from 0) and never takes the tick past end_tick. The chunk ends exactly after event n. The same rules as `EV` apply to the decoded events. All `EZ` streams together: at most 8192 events (the device decodes them into a 64 KiB buffer) |
 
 **Why this shape.** Fixed-size records make every bound a multiplication the parser can check before
 reading; absolute ticks let the player binary-search a stream when it jumps (loop, variant change); the bar

@@ -53,7 +53,7 @@ def cmd_validate(args):
 
 def cmd_compile(args):
     try:
-        compiled, blob, items = _load(args.song, (1, 0) if args.format == "1.0" else None)
+        compiled, blob, items = _load(args.song, tuple(int(x) for x in args.format.split(".")))
     except SongError as e:
         _print_diags(e.diagnostics, args.song)
         return 1
@@ -186,6 +186,18 @@ def cmd_send(args):
         print("no songs to send", file=sys.stderr)
         return 2
     device, dev = _device(args)
+    if not args.no_validate:             # an FM-1 that reads only older formats (M2: up to 1.1): compiled for it
+        minor = device.song_list(dev)[1]["minor"]
+        if minor < 2:
+            print(f"the FM-1 reads formats up to 1.{minor}: sending 1.{minor} (no song category)", file=args.out)
+            older = []
+            for path, blob in blobs:
+                if not Path(path).is_dir():
+                    print(f"{path}: a compiled file: send its song folder instead (the FM-1 reads up to 1.{minor})",
+                          file=sys.stderr)
+                    return 2
+                older.append((path, _load(path, (1, minor))[1]))
+            blobs = older
     status = 0
     for path, blob in blobs:
         r = device.song_send(dev, blob)
@@ -216,7 +228,7 @@ def main(argv=None):
     p = sub.add_parser("compile", help="song folder -> .fm1s")
     p.add_argument("song")
     p.add_argument("-o", "--output")
-    p.add_argument("--format", choices=["1.1", "1.0"], default="1.1",
+    p.add_argument("--format", choices=["1.2", "1.1", "1.0"], default="1.2",
                    help="1.0: the M1 layout (8-byte events), for an M1 device or tests")
     p.set_defaults(fn=cmd_compile)
     p = sub.add_parser("info", help="summary of a .fm1s file or a song folder")

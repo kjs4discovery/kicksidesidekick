@@ -64,7 +64,7 @@ static int header(struct song *s, const uint8_t *d, uint32_t n)
         return SONG_E_SHORT;
     if (d[0] != 'F' || d[1] != 'M' || d[2] != '1' || d[3] != 'S')
         return SONG_E_MAGIC;
-    if (d[4] != 1u || d[5] > 1u)
+    if (d[4] != 1u || d[5] > 2u)          /* 1.0, 1.1 (M2), 1.2 (M3: the category) */
         return SONG_E_VERSION;
     s->minor = d[5];
     s->size = u32(d + 8);
@@ -151,6 +151,15 @@ static int meta(struct song *s)
     s->slug = (const char *)(m + 4);
     s->title = (const char *)(m + 28);
     s->key = (const char *)(m + 60);
+    s->category = "";
+    if (s->minor >= 2u) {                 /* 1.2: the category, 16 bytes (may be empty) */
+        const uint8_t *c = chunk(s, fourcc("CATG"), &len);
+        if (!c)
+            return SONG_E_MISSING;
+        if (len != 16u || !text_ok(c, 16))
+            return SONG_E_META;
+        s->category = (const char *)c;
+    }
     return SONG_OK;
 }
 

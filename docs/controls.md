@@ -293,3 +293,24 @@ chat's ![notation mock](m3-design/notation-mock.png)
 Built: ![melody roll](step-M3/p7-roll.png) ![notation, treble](step-M3/p7-notation.png)
 ![notation, bass](step-M3/p7-notation-bass.png) ![drum grid](step-M3/p7-grid.png)
 ![notation in D minor](step-M3/p7-notation-flats.png) ![3 bars](step-M3/p7-notation-zoom.png)
+
+### Part 8: song folders, guide volume
+
+- **Folders (categories):**
+  - `category:` in song.yaml (format 1.2) puts each song in a folder. The list opens in **All songs** (as before:
+    SELECT, PLAY), and **HOME on the list goes up to the folders**: All songs, then the categories in alphabetical
+    order, each with its count. PLAY opens one.
+  - Songs without a category (an older 1.1 or 1.0 file, or none given) are in **Other**.
+  - Ours: Hymns (Amazing Grace, Saints), Folk (Greensleeves, Danny Boy, Oh! Susanna, Scarborough Fair), Blues,
+    Practice forms (Four Chords), Celebrations (Happy Birthday).
+  - The FM-1 reads 1.0, 1.1 and 1.2. `fm1song send` asks which versions an FM-1 reads; an M2 FM-1 (up to 1.1) gets
+    1.1, without the category. A fallback to M2 needs no special step.
+- **Guide volume (setting "Guide (your part)": OFF / 15 % / 30 %):**
+  - your part, muted, plays quietly instead of silent, so you can lean on it while learning. Other muted layers stay
+    silent;
+  - the layers row says GUIDE instead of YOURS;
+  - EAS's loudness goes roughly with the square of the velocity, so the velocities are scaled by the square root
+    (x 0.39 / x 0.55). In the emulator, 30 % gives 18 % of the part's own level (about −15 dB).
+
+Built: ![folders](step-M3/p8-folders.png) ![Folk](step-M3/p8-folk.png) ![Other](step-M3/p8-old-folders.png)
+![guide](step-M3/p8-guide.png)

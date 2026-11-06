@@ -31,6 +31,7 @@ uint32_t player_song_bpm(const struct song *s);   /* its own tempo, whole BPM */
 void player_count_in(int on);
 void player_count_in_bars(uint32_t bars); /* M3: the count-in's length, 1 or 2 bars */
 void player_count_in_volume(uint32_t cc7);/* M3: the count-in beep's channel volume, 0..127 */
+void player_guide(uint32_t layer, uint32_t pct);   /* M3: layer (muted) plays at pct % velocity; 0xFF / 0: none */
 void player_transpose(int32_t semitones); /* every layer but the percussion channel's, -11..+11; at once (sounding notes
                                            * released) */
 int32_t player_transpose_of(void);
@@ -97,6 +98,8 @@ struct player_stats {
     uint32_t loop_step;                   /* setting the loop (ui.c): 1 moving A, 2 moving B, 0 not */
     uint32_t settings;                    /* the settings in use (ui.c): 4 bits each, S_* order */
     uint32_t settings_saves;              /* settings saved to the flash since start-up */
+    uint32_t notes_guided;                /* note-ons of a muted layer sent quietly (the guide, M3 part 8) */
+    uint32_t folder;                      /* the song list's folder (ui.c): 0 the folders, 1 all songs, 1 + k category k */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

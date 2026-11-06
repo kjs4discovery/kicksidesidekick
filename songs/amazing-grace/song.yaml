@@ -4,6 +4,7 @@
 format: fm1-song/1
 slug: amazing-grace
 title: Amazing Grace
+category: Hymns                 # M3: the list's folder (format 1.2)
 
 credits:
   music: '"New Britain", traditional American hymn tune (first printed 1830s; unverified)'

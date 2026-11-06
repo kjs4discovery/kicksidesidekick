@@ -1,5 +1,5 @@
 /* Licence: TBD (see D017) */
-/* The compiled song file (.fm1s, versions 1.0 and 1.1; docs/song-format.md section 2): the device's parser.
+/* The compiled song file (.fm1s, versions 1.0, 1.1 and 1.2; docs/song-format.md section 2): the device's parser.
  * Standalone C (no platform calls), so it is fuzzed on the laptop under ASan/UBSan (tools/song_fuzz.c).
  * song_open checks everything before anything else reads the file: every count, offset, tick and value has a bound,
  * the CRC must match, and the accessors below then never read outside the checked chunks. The file stays where it
@@ -47,6 +47,7 @@ struct song {
     uint32_t first_bar_number;            /* the number musicians read for bar index 0: 0 (a pickup) or 1 */
     uint8_t key_root, key_mode;
     const char *slug, *title, *key;       /* NUL-terminated, printable ASCII, inside the file */
+    const char *category;                 /* 1.2: the song's folder in the list ("" none; 1.0, 1.1: "") */
     const uint8_t *sect, *chrd, *cevt, *bars;
     uint32_t nsect, nchrd, ncevt;
     struct song_layer layer[SONG_LAYERS];

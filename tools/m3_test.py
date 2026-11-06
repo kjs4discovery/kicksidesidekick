@@ -51,7 +51,8 @@ RATE = 44100
 BLOCK = 256
 OPEN_MS, PLAY_MS = 3400, 4600                  # after the splash (3 s): open the song, then PLAY
 STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIIIi4I3I")   # PL_STATS_TEMPOS 64
-STATS4 = struct.Struct("<6I")                  # version 4 (M3): part key_flashes mid_keys loop_step settings saves
+STATS4 = struct.Struct("<8I")                  # version 4 (M3): part key_flashes mid_keys loop_step settings saves
+                                               # notes_guided folder
 FIELDS = ("magic version blocks render_max budget starts start_frames ends end_frames last_tick loops loop_from "
           "loop_to ntempo").split()
 FIELDS2 = ("start_from start_tick pauses pause_frames pause_tick bpm clicks click_peak_vel key_note_last keys_octave "
@@ -164,9 +165,10 @@ def stats(ram):
     p += len(FIELDS2)
     s["note_on_last"], (s["lit_keys"], s["dim_keys"], s["view"]) = v[p:p + 4], v[p + 4:p + 7]
     s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"], s["settings"], s["settings_saves"] = 0xFF, 0, 0, 0, 0, 0
+    s["notes_guided"], s["folder"] = 0, 0
     if s["version"] >= 4:
-        (s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"], s["settings"],
-         s["settings_saves"]) = STATS4.unpack_from(ram, i + STATS.size)
+        (s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"], s["settings"], s["settings_saves"],
+         s["notes_guided"], s["folder"]) = STATS4.unpack_from(ram, i + STATS.size)
     return s
 
 
@@ -1075,8 +1077,64 @@ def test_part7(all_songs, rep):
     return st["ok"]
 
 
+def test_part8(all_songs, rep):
+    """M3 part 8: song folders (categories, format 1.2), older formats, an M2 FM-1 gets 1.1; the guide volume"""
+    lines, st, check = checker("Part 8: song folders, format 1.2, guide volume")
+    cats = sorted({c["category"] for c in all_songs})
+    folk = sorted((c for c in all_songs if c["category"] == "Folk"), key=lambda c: c["title"].lower())
+    k = cats.index("Folk") + 1                         # the folders: All songs, then the categories, sorted
+    r0 = run("p8-all", 4000, [])
+    r1 = run("p8-folders", 4300, press(3600, "HOME"))
+    r2 = run("p8-folk", 5000, press(3600, "HOME") + [f"3800:e0:{k}"] + press(4200, "PLAY"))
+    r3 = run("p8-folk-open", 6000, press(3600, "HOME") + [f"3800:e0:{k}"] + press(4200, "PLAY") + press(4800, "PLAY"))
+    check(r0["stats"]["folder"] == 1 and r1["stats"]["folder"] == 0 and r2["stats"]["folder"] == k + 1 and
+          r3["stats"]["ui_view"] == 1 and r3["stats"]["song_crc"] == int(folk[0]["crc32"], 16),
+          f"the list opens in All songs (p8-all.png); HOME: the folders {['All songs'] + cats} (p8-folders.png); "
+          f"Folk: its {len(folk)} songs (p8-folk.png); PLAY: {folk[0]['title']} opens")
+    # older files: a 1.1 and a 1.0 file are still read (no category: the folder "Other")
+    d = OUT / "p8"
+    d.mkdir(exist_ok=True)
+    f11, f10 = d / "saints-11.fm1s", d / "grace-10.fm1s"
+    subprocess.run([SEND, "compile", str(ROOT / "songs/saints"), "--format", "1.1", "-o", str(f11)], check=True,
+                   capture_output=True)
+    subprocess.run([SEND, "compile", str(ROOT / "songs/amazing-grace"), "--format", "1.0", "-o", str(f10)],
+                   check=True, capture_output=True)
+    r = run("p8-old-send", 60000, [], host=f"{SEND} send --emu-pipe {f11} {f10}")
+    r4 = run("p8-old-folders", 4300, press(3600, "HOME"), flash=r["flash"])
+    i = [c["slug"] for c in all_songs].index("saints")
+    r5 = run("p8-old-play", PLAY_MS + 3000, open_song(i) + press(PLAY_MS, "PLAY"), flash=r["flash"])
+    check(r["out"].count("stored") == 2 and r5["stats"]["starts"] == 1 and r5["stats"]["song_crc"] != 0,
+          "a 1.1 and a 1.0 file sent: both stored and played; with no category they are in the folder Other "
+          "(p8-old-folders.png)")
+    # an M2 FM-1 (reads up to 1.1): fm1song send compiles 1.1 for it, without the category
+    if M2_FLASH.exists():
+        r = run("p8-send-to-m2", 60000, [], flash=str(M2_FLASH), pkg=M2_PKG,
+                host=f"{SEND} send --emu-pipe {ROOT}/songs/happy-birthday")
+        check("sending 1.1" in r["out"] and "stored" in r["out"] and "NOT stored" not in r["out"],
+              "fm1song send to an M2 FM-1 (it reads up to 1.1): sent as 1.1 without the category, stored")
+    # the guide: your part (harmony, muted) plays at 30 % instead of silent
+    g = [c["slug"] for c in all_songs].index("amazing-grace")
+    sc, t = settings_script(OPEN_MS + 200, [(5, 2)])
+    base = open_song(g) + ["1500:pot:4096"] + press(OPEN_MS + 100, "SCL") + press(OPEN_MS + 150, "FX") \
+        + press(OPEN_MS + 170, "LFO")
+    on = run("p8-guide-off", PLAY_MS + 8000, base + sc + press(t + 400, "ARP") + press(PLAY_MS + 1000, "PLAY"))
+    gd = run("p8-guide", PLAY_MS + 8000, base + sc + press(t + 300, "ENV") + press(t + 400, "ARP")
+             + press(PLAY_MS + 1000, "PLAY"))
+    mu = run("p8-guide-none", PLAY_MS + 8000, base + press(OPEN_MS + 300, "ENV") + press(OPEN_MS + 400, "ARP")
+             + press(PLAY_MS + 1000, "PLAY"))
+    seg = lambda r: rms(r["left"][int((PLAY_MS + 2500) / 1000 * RATE):])
+    a, b, c = seg(on), seg(gd), seg(mu)
+    s = gd["stats"]
+    check(s["notes_guided"] > 0 and s["notes_skipped"][2] == 0 and mu["stats"]["notes_skipped"][2] > 0
+          and c < b < a and (s["settings"] >> 20) & 15 == 2,
+          f"guide 30 % (setting), harmony muted: its notes sent quietly ({s['notes_guided']} guided, none skipped); "
+          f"harmony alone: rms {a:.0f} full, {b:.0f} as a guide, {c:.0f} muted with no guide (p8-guide.png: GUIDE)")
+    rep += lines
+    return st["ok"]
+
+
 PART_TESTS = {"part1": test_part1, "part2": test_part2, "part3": test_part3, "part4": test_part4, "part5": test_part5,
-              "part6": test_part6, "part7": test_part7}
+              "part6": test_part6, "part7": test_part7, "part8": test_part8}
 
 
 def main():

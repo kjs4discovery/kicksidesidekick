@@ -192,6 +192,9 @@ def song_from_data(data, midi_bytes, diag=None):
         diag.error(f"slug {song.slug!r}: lower-case letters, digits and '-', up to 23 characters", "song.yaml", "slug")
     song.title = _get(diag, data, "title", str, default="?")
     _ascii(diag, song.title, "title", 31)
+    song.category = _get(diag, data, "category", str, required=False, default="")   # M3, format 1.2: the list's folder
+    if song.category:
+        _ascii(diag, song.category, "category", 15)
     rights = _get(diag, data, "rights", dict, default={})
     song.rights = rights
     _get(diag, data, "rights.composition", str)

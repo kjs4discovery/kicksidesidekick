@@ -79,17 +79,18 @@ static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "M
 /* the settings (M3 part 4): kept in fm1-base's settings store (plat_store, OBJ_SETTINGS: 0xFC000 / 0xFD000, two
  * copies, the newer valid one wins; the stock firmware never uses these sectors) */
 #define SET_MAGIC 0x31534D46u            /* "FMS1" */
-enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_N };
+enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_GUIDE, S_N };
 struct settings {
     uint32_t magic, version;
     uint8_t v[8];                        /* S_* values (the rest 0) */
 };
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
-                                          "Note names (notation)", "Scrolling views show"};
-static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2};   /* how many values each has */
+                                          "Note names (notation)", "Scrolling views show", "Guide (your part)"};
+static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 3};   /* how many values each has */
 static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
-                                            {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}};
-static const uint8_t SET_DEFAULT[S_N] = {1, 0, 2, 1, 0};
+                                            {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}, {"OFF", "15 %", "30 %"}};
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 2, 1, 0, 0};
+static const uint8_t GUIDE_PCT[3] = {0, 15, 30};   /* your part, played this loud instead of muted (M3 part 8) */
 static const uint8_t COUNT_VOL[3] = {64, 96, 127};   /* the beep's channel volume */
 
 static struct {
@@ -97,6 +98,11 @@ static struct {
     struct settings set;
     uint32_t set_row, set_dirty;
     uint32_t sel, top;                   /* the list's cursor and first row */
+    int folder;                          /* M3 part 8: the folder shown: -1 the folders, 0 all songs, k category k */
+    uint32_t nfold, fsel;                /* categories found (folders 1..nfold), the folder list's cursor */
+    char fname[16][16];                  /* their names, sorted; "Other": songs with none */
+    uint8_t fl[STORE_MAX_SONGS];         /* the folder's songs: list indices (by title) */
+    uint32_t nfl, fl_seen;
     const struct song *s;
     uint32_t keys, buttons;
     uint8_t key_note[NKEYS];             /* the note each held key sent (the octave may change while it is held) */
@@ -134,7 +140,7 @@ static void settings_apply(void)
     player_count_in_bars(ui.set.v[S_COUNT_BARS] ? 2u : 1u);
     player_count_in_volume(COUNT_VOL[ui.set.v[S_COUNT_VOL] % 3u]);
     player_stats.settings = ui.set.v[0] | (uint32_t)ui.set.v[1] << 4 | (uint32_t)ui.set.v[2] << 8 |
-                            (uint32_t)ui.set.v[3] << 12 | (uint32_t)ui.set.v[4] << 16;
+                            (uint32_t)ui.set.v[3] << 12 | (uint32_t)ui.set.v[4] << 16 | (uint32_t)ui.set.v[5] << 20;
 }
 
 static void settings_load(void)
@@ -193,6 +199,13 @@ static uint32_t text_len(const char *s)
     while (s[n])
         n++;
     return n;
+}
+
+static int same_text(const char *a, const char *b)
+{
+    while (*a && *a == *b)
+        a++, b++;
+    return *a == *b;
 }
 
 static void num_cat(char *d, uint32_t v)
@@ -702,15 +715,81 @@ static void lights(void)
     plat_lights_mid(mid, ui.mid_keys & ~(ui.keys | ui.lit_keys));
 }
 
+/* ---------------------------------------------------------------- song folders (M3 part 8) --- */
+static int text_before(const char *p, const char *q)
+{
+    while (*p && lower(*p) == lower(*q))
+        p++, q++;
+    return lower(*p) < lower(*q);
+}
+
+/* a song's folder name: its category, or "Other"; a song that does not peek: "Other" */
+static const char *song_folder(uint32_t i)
+{
+    int err;
+    const struct song *s = lib_peek(i, &err);
+    if (!s)
+        s = &peeked[order[i]];
+    return !peek_err[order[i]] && s->category && s->category[0] ? s->category : "Other";
+}
+
+/* the categories (sorted, at most 16; more: in "All songs" only) and the songs of the folder shown */
+static void folders_build(void)
+{
+    uint32_t i, k, n = lib_count();
+    ui.nfold = 0;
+    for (i = 0; i < n; i++) {
+        const char *c = song_folder(i);
+        for (k = 0; k < ui.nfold && !same_text(ui.fname[k], c); k++)
+            ;
+        if (k == ui.nfold && ui.nfold < 16u) {
+            for (k = ui.nfold++; k > 0 && text_before(c, ui.fname[k - 1u]); k--)   /* insertion, sorted */
+                text_cat(ui.fname[k], ""), ui.fname[k][0] = 0, text_cat(ui.fname[k], ui.fname[k - 1u]);
+            ui.fname[k][0] = 0;
+            text_cat(ui.fname[k], c);
+        }
+    }
+    if (ui.folder > (int)ui.nfold)
+        ui.folder = 0;
+    ui.nfl = 0;
+    for (i = 0; i < n; i++)
+        if (ui.folder <= 0 || same_text(song_folder(i), ui.fname[ui.folder - 1]))
+            ui.fl[ui.nfl++] = (uint8_t)i;
+    ui.fl_seen = lib_changes + 1u;
+    player_stats.folder = (uint32_t)(ui.folder + 1);
+}
+
 static void input_list(uint32_t down)
 {
-    int32_t d = plat_enc(EN_SELECT), n = (int32_t)lib_count();
+    int32_t d = plat_enc(EN_SELECT), n;
+    if (ui.fl_seen != lib_changes + 1u)
+        folders_build();
+    if (ui.folder < 0) {                 /* the folders: All songs, then the categories */
+        n = (int32_t)ui.nfold + 1;
+        if (d)
+            ui.fsel = (uint32_t)clamp((int32_t)ui.fsel + d, 0, n - 1);
+        if ((down >> B_PLAY & 1u) || (down >> B_EDIT & 1u)) {
+            ui.folder = (int)ui.fsel;
+            ui.sel = ui.top = 0;
+            folders_build();
+            ui.redraw = 1;
+        }
+        return;
+    }
+    n = (int32_t)ui.nfl;
     if (d && n) {
         int32_t s = (int32_t)ui.sel + d;
         ui.sel = (uint32_t)clamp(s, 0, n - 1);
     }
     if (((down >> B_PLAY & 1u) || (down >> B_EDIT & 1u)) && ui.sel < (uint32_t)n)
-        open_song(ui.sel);
+        open_song(ui.fl[ui.sel]);
+    else if ((down >> B_HOME & 1u) && lib_count()) {   /* HOME: up to the folders */
+        ui.fsel = (uint32_t)ui.folder;
+        ui.folder = -1;
+        ui.top = 0;
+        ui.redraw = 1;
+    }
+    player_stats.folder = (uint32_t)(ui.folder + 1);
 }
 
 static void say_from(void)
@@ -1023,17 +1102,24 @@ static void draw_legend(int32_t y, const char *t)
 /* ------------------------------------------------------------------------ list --- */
 static void draw_list_top(void)
 {
+    char f[24] = "";
     cv_begin(240, H_TOP, C_BLACK);
-    cv_text(6, 4, &FONT_B, "SONGS", C_WHITE);
+    if (ui.folder < 0)
+        text_cat(f, "FOLDERS");
+    else if (ui.folder == 0)
+        text_cat(f, "ALL SONGS");
+    else
+        text_cat(f, ui.fname[ui.folder - 1]);
+    cv_text(6, 4, &FONT_B, f, C_WHITE);
     cv_text(234 - text_w(&FONT_XS, "v" FW_VERSION), 6, &FONT_XS, "v" FW_VERSION, C_DIM);
     if (plat_ms() < ui.msg_until) {
         char t[48] = "";
         text_cat(t, ui.msg[0]);
         text_cat(t, " ");
         text_cat(t, ui.msg[1]);
-        cv_text(70, 6, &FONT_XS, t, C_AMB);
+        cv_text(110, 6, &FONT_XS, t, C_AMB);
     } else if (!ui.flash_ok) {
-        cv_text(80, 6, &FONT_XS, "RAM ONLY", C_AMB);
+        cv_text(110, 6, &FONT_XS, "RAM ONLY", C_AMB);
     }
     cv_rect(0, H_TOP - 1, 240, 1, C_LINE);
     cv_blit(0, Y_TOP);
@@ -1058,9 +1144,46 @@ static void draw_list_empty(void)
     draw_legend(Y_LEGEND, "GLO help|keys play along");
 }
 
+/* the folders: All songs (the count), then each category (its count) */
+static void draw_folders(void)
+{
+    uint32_t r, i, k, n = ui.nfold + 1u, cnt;
+    if (ui.fsel < ui.top)
+        ui.top = ui.fsel;
+    if (ui.fsel >= ui.top + LIST_ROWS)
+        ui.top = ui.fsel - LIST_ROWS + 1u;
+    draw_list_top();
+    for (r = 0; r < LIST_ROWS; r++) {
+        char t[24] = "";
+        i = ui.top + r;
+        cv_begin(240, LIST_ROW_H, C_BLACK);
+        if (i < n) {
+            if (i == ui.fsel)
+                cv_rect(2, 1, 236, LIST_ROW_H - 2, C_LINE);
+            for (k = 0, cnt = 0; k < lib_count(); k++)
+                cnt += !i || same_text(song_folder(k), ui.fname[i - 1u]);
+            frame_rect(10, 9, 16, 12, i == ui.fsel ? C_HI : C_DIM);   /* a folder */
+            cv_rect(10, 7, 7, 3, i == ui.fsel ? C_HI : C_DIM);
+            cv_text(34, 1, &FONT_B, i ? ui.fname[i - 1u] : "All songs", i == ui.fsel ? C_WHITE : C_GRAY);
+            num_cat(t, cnt);
+            text_cat(t, cnt == 1u ? " song" : " songs");
+            cv_text(34, 19, &FONT_XS, t, i == ui.fsel ? C_HI : C_DIM);
+        }
+        cv_blit(0, H_TOP + (int32_t)r * LIST_ROW_H);
+    }
+    draw_legend(Y_LEGEND, "SELECT choose|PLAY open|GLO help");
+}
+
 static void draw_list(void)
 {
-    uint32_t r, n = lib_count();
+    uint32_t r, n;
+    if (ui.fl_seen != lib_changes + 1u)
+        folders_build();
+    if (ui.folder < 0) {
+        draw_folders();
+        return;
+    }
+    n = ui.nfl;
     if (ui.sel < ui.top)
         ui.top = ui.sel;
     if (ui.sel >= ui.top + LIST_ROWS)
@@ -1076,7 +1199,8 @@ static void draw_list(void)
         cv_begin(240, LIST_ROW_H, C_BLACK);
         if (i < n) {
             int err;
-            const struct song *s = lib_peek(i, &err);
+            uint32_t li = ui.fl[i];
+            const struct song *s = lib_peek(li, &err);
             if (sel)
                 cv_rect(2, 1, 236, LIST_ROW_H - 2, C_LINE);
             if (s) {
@@ -1091,8 +1215,8 @@ static void draw_list(void)
                 cv_text(10, 19, &FONT_XS, t, sel ? C_HI : C_DIM);
             } else {
                 char t[48] = "";
-                const struct song *pk = &peeked[order[i]];
-                text_cat(t, peek_err[order[i]] ? "(unreadable song)" : pk->title);
+                const struct song *pk = &peeked[order[li]];
+                text_cat(t, peek_err[order[li]] ? "(unreadable song)" : pk->title);
                 cv_text(10, 1, &FONT_B, t, sel ? C_WHITE : C_GRAY);
                 t[0] = 0;
                 text_cat(t, "SONG ERROR: ");
@@ -1103,7 +1227,7 @@ static void draw_list(void)
         }
         cv_blit(0, H_TOP + (int32_t)r * LIST_ROW_H);
     }
-    draw_legend(Y_LEGEND, "SELECT choose|PLAY open|GLO help");
+    draw_legend(Y_LEGEND, "SELECT song|PLAY open|HOME folders");
 }
 
 /* -------------------------------------------------------------------------- help --- */
@@ -1176,14 +1300,14 @@ static void draw_settings(void)
     cv_blit(0, 0);
     for (i = 0; i < S_N; i++) {
         int sel = i == ui.set_row;
-        cv_begin(240, 32, C_BLACK);
+        cv_begin(240, 30, C_BLACK);
         if (sel)
-            cv_rect(2, 2, 236, 28, C_LINE);
-        cv_text(10, 7, &FONT_B, SET_NAME[i], sel ? C_WHITE : C_GRAY);
-        cv_text(230 - text_w(&FONT_B, SET_VAL[i][ui.set.v[i]]), 7, &FONT_B, SET_VAL[i][ui.set.v[i]], sel ? C_HI : C_AMB);
-        cv_blit(0, 32 + i * 32);
+            cv_rect(2, 1, 236, 28, C_LINE);
+        cv_text(10, 6, &FONT_B, SET_NAME[i], sel ? C_WHITE : C_GRAY);
+        cv_text(230 - text_w(&FONT_B, SET_VAL[i][ui.set.v[i]]), 6, &FONT_B, SET_VAL[i][ui.set.v[i]], sel ? C_HI : C_AMB);
+        cv_blit(0, 32 + i * 30);
     }
-    lcd_fill(0, 32 + S_N * 32, 240, 214 - (32 + S_N * 32), C_BLACK);
+    lcd_fill(0, 32 + S_N * 30, 240, 214 - (32 + S_N * 30), C_BLACK);
     draw_legend(Y_LEGEND, "SELECT row|ALGO change|GLO back");
 }
 
@@ -1645,13 +1769,6 @@ static int chord_parts(const char *sym, char *qual, int *bass)
     if (*sym == '/')
         *bass = pc_at(sym + 1, &n);
     return root;
-}
-
-static int same_text(const char *a, const char *b)
-{
-    while (*a && *a == *b)
-        a++, b++;
-    return *a == *b;
 }
 
 struct gfound {
@@ -2359,7 +2476,8 @@ static void draw_layers(void)
         }
         num_cat(t, player_variant_of(l) > ly->variants ? ly->variants : player_variant_of(l));
         text_in(x, 55, 2, &FONT_XS, LAYER_SHORT[l], on ? C_WHITE : C_AMB);
-        text_in(x, 55, 16, &FONT_XS, on ? t : l == mine ? "YOURS" : "MUTE", on ? C_HI : C_AMB);
+        text_in(x, 55, 16, &FONT_XS, on ? t : l == mine ? (ui.set.v[S_GUIDE] ? "GUIDE" : "YOURS") : "MUTE",
+                on ? C_HI : C_AMB);
     }
     cv_blit(0, Y_LAYERS);
 }
@@ -2571,6 +2689,7 @@ static void frame_play(uint32_t now)
         ui.flash_keys = ui.lit_keys != 0;
     }
     player_stats.part = playing_yours() ? pi.part : 0xFFu;
+    player_guide(playing_yours() ? pi.part : 0xFFu, GUIDE_PCT[ui.set.v[S_GUIDE] % 3u]);
     if (ui.msg_until && now >= ui.msg_until) {
         ui.msg_until = 0;
         ui.sh_top_key = 0xFFFFFFFFu;
@@ -2728,7 +2847,7 @@ void app_frame(void)
         return;
     }
     if (ui.view == V_LIST) {
-        uint32_t key = ui.sel | (now < ui.msg_until) << 16;
+        uint32_t key = ui.sel | (now < ui.msg_until) << 16 | ui.fsel << 20 | (uint32_t)(ui.folder + 1) << 26;
         if (ui.redraw || key != ui.sh_list) {
             if (ui.redraw)
                 lcd_fill(0, 0, 240, 240, C_BLACK);
