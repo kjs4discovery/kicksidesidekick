@@ -21,6 +21,7 @@ PPQ = 480
 KICK, STICK, SNARE, HAT, OPEN_HAT, PEDAL_HAT, RIDE, CRASH, TOM_LO, TOM_HI = 36, 37, 38, 42, 46, 44, 51, 49, 45, 50
 
 # style -> what each part does; a song names one (or a part each)
+STYLE_NAMES = ("waltz", "ballad", "shuffle", "march", "pop", "train")   # (format 2.0's STYL byte: the index)
 STYLES = {
     "waltz":   dict(harmony="waltz", bass="waltz", drums="waltz"),        # 3/4: oom-pah-pah
     "ballad":  dict(harmony="ballad", bass="ballad", drums="ballad"),     # slow 4/4: held quarters, Alberti
@@ -122,12 +123,16 @@ def harmony(bars, bpb, style, swing, final_bar):
     prev2 = None
     for b, row in enumerate(bars):
         t0 = b * bpb * PPQ
-        for beat, length, c in row:
+        for cell in row:
+            beat, length, c = cell[:3]
             if c is None:
                 continue
             start, dur = t0 + beat * PPQ, length * PPQ
-            v1 = ch.voicing_level1(c)
-            v2 = ch.voicing_level2(c, prev2)
+            if len(cell) > 3:                        # (M5: the voicings as compiled: the FM-1 uses those)
+                v1, v2 = list(cell[3]), list(cell[4])
+            else:
+                v1 = ch.voicing_level1(c)
+                v2 = ch.voicing_level2(c, prev2)
             prev2 = v2
             if b == final_bar:                       # the last bar: held, at every level
                 for lv in range(1, 6):
@@ -171,7 +176,7 @@ def harmony(bars, bpb, style, swing, final_bar):
 def bass(bars, bpb, style, swing, final_bar):
     """{1..4: [(start, end, pitch, vel)]}"""
     out = {lv: _Out(swing) for lv in range(1, 5)}
-    flat = [(b, beat, length, c) for b, row in enumerate(bars) for beat, length, c in row if c is not None]
+    flat = [(b, cell[0], cell[1], cell[2]) for b, row in enumerate(bars) for cell in row if cell[2] is not None]
     for i, (b, beat, length, c) in enumerate(flat):
         start, dur = b * bpb * PPQ + beat * PPQ, length * PPQ
         root = _bass_root(c)
@@ -276,6 +281,27 @@ def drums(nbars, bpb, style, swing, pickup, section_starts, final_bar):
         for lv, hits in ((1, hits1), (2, hits2), (3, hits3)):
             out[lv] += [(t, t + 50, p, v) for t, p, v in hits]
     return out
+
+
+def canonical(notes):
+    """notes [(start, end, pitch, vel)] -> events [(tick, status, pitch, vel)] as the FM-1 makes them (format 2.0; the
+    C generator, firmware/app/gen.c, does exactly this): sorted by start, pitch, the louder first, the shorter first;
+    one note of a pitch at a start; a note ends where the next of its pitch starts; note-offs before note-ons at a
+    tick, then by pitch"""
+    seen, ns = set(), []
+    for a, e, p, v in sorted(notes, key=lambda n: (n[0], n[2], -n[3], n[1])):
+        if (a, p) in seen:
+            continue
+        seen.add((a, p))
+        ns.append([a, e, p, v])
+    nxt = {}
+    for n in reversed(ns):
+        if n[2] in nxt and nxt[n[2]] < n[1]:
+            n[1] = nxt[n[2]]
+        nxt[n[2]] = n[0]
+    ev = [(a, 144, p, v) for a, e, p, v in ns] + [(e, 128, p, 0) for a, e, p, v in ns]
+    ev.sort(key=lambda x: (x[0], x[1] == 144, x[2]))
+    return [list(x) for x in ev]
 
 
 def arrange(bars, bpb, pickup, section_starts, styles, swing):

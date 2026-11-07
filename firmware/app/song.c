@@ -64,9 +64,10 @@ static int header(struct song *s, const uint8_t *d, uint32_t n)
         return SONG_E_SHORT;
     if (d[0] != 'F' || d[1] != 'M' || d[2] != '1' || d[3] != 'S')
         return SONG_E_MAGIC;
-    if (d[4] != 1u || d[5] > 3u)          /* 1.0, 1.1 (M2), 1.2 (M3: the category), 1.3 (M4: 5 levels) */
-        return SONG_E_VERSION;
-    s->minor = d[5];
+    if ((d[4] != 1u || d[5] > 3u) && (d[4] != 2u || d[5] != 0))
+        return SONG_E_VERSION;            /* 1.0, 1.1 (M2), 1.2 (M3: the category), 1.3 (M4: 5 levels), 2.0 (M5) */
+    s->fmt2 = d[4] == 2u;
+    s->minor = s->fmt2 ? 3u : d[5];
     s->size = u32(d + 8);
     if (s->size != n || s->size > SONG_MAX_SIZE)
         return SONG_E_SIZE;
@@ -80,8 +81,8 @@ static int header(struct song *s, const uint8_t *d, uint32_t n)
     s->swing = d[31] & 1u;
     if (s->ppq < 24u || s->ppq > 960u || s->beats_per_bar < 2u || s->beats_per_bar > 7u || d[19] != 4u ||
         s->tempo_us < 240000u || s->tempo_us > 2000000u || s->bar_count < 1u || s->bar_count > MAX_BARS ||
-        s->pickup_beats >= s->beats_per_bar || (d[31] & ~1u))
-        return SONG_E_HEADER;
+        s->pickup_beats >= s->beats_per_bar || (d[31] & ~1u) || (s->fmt2 && s->ppq != 480u))
+        return SONG_E_HEADER;             /* (2.0: the generators' 480 ticks a beat) */
     s->bar_ticks = s->ppq * s->beats_per_bar;                 /* <= 6720 */
     if (s->end_tick != s->bar_count * s->bar_ticks)           /* <= 6.7 M: no overflow */
         return SONG_E_HEADER;
@@ -227,6 +228,9 @@ static int chord_events(struct song *s)
         for (k = 6; k < CEVT_REC; k++)
             if (r[k] > 127u)
                 return SONG_E_CEVT;
+        if (s->fmt2 && s->chrd[r[4] * CHRD_REC + 8] != SONG_NO_CHORD &&     /* 2.0: a chord has notes to play */
+            (!(r[6] | r[7] | r[8] | r[9] | r[10]) || !(r[11] | r[12] | r[13] | r[14] | r[15])))
+            return SONG_E_CEVT;
         last = tick;
     }
     return SONG_OK;
@@ -333,9 +337,74 @@ static int ez_events(const struct song *s, const uint8_t *c, uint32_t len, struc
     return events_ok(s, st);
 }
 
+static const char LETTER[SONG_LAYERS] = {'D', 'B', 'H', 'M'};
+static const uint8_t GEN_LEVELS[SONG_LAYERS] = {3, 4, 5, 0};   /* 2.0: the levels the FM-1 generates (melody: none) */
+
+const uint8_t *song_nt_chunk(const struct song *s, uint32_t layer, uint32_t level, uint32_t *len)
+{
+    char id[4] = {'N', 'T', LETTER[layer], (char)('0' + level)};
+    return chunk(s, fourcc(id), len);
+}
+
+/* 2.0: the style (STYL: index, swing, 0 0) */
+static int style(struct song *s)
+{
+    uint32_t len;
+    const uint8_t *c = chunk(s, fourcc("STYL"), &len);
+    if (!c)
+        return SONG_E_MISSING;
+    if (len != 4u || c[0] >= SONG_STYLES || c[1] > 1u || c[2] || c[3] || c[1] != s->swing)
+        return SONG_E_LAYR;
+    s->style = c[0];
+    return SONG_OK;
+}
+
+/* 2.0: a layer's levels: the stored ones checked (NT), every one counted; the largest sizes its build buffer */
+static int layer2(struct song *s, uint32_t l, const uint8_t *r)
+{
+    struct song_layer *ly = &s->layer[l];
+    uint32_t full = (1u << ly->variants) - 1u, v, len;
+    ly->stored = (uint16_t)u16(r + 6);
+    if ((ly->stored & ~full) || (!GEN_LEVELS[l] && ly->stored != full) ||
+        (GEN_LEVELS[l] && ly->stored != full && ly->variants != GEN_LEVELS[l]))
+        return SONG_E_LAYR;
+    ly->need = 0;
+    ly->built = 0;
+    for (v = 1; v <= ly->variants; v++) {
+        const uint8_t *c = song_nt_chunk(s, l, v, &len);
+        if ((ly->stored >> (v - 1u) & 1u) ? song_nt_notes(s, c, len, 0) < 0 : c != 0)
+            return SONG_E_EVENTS;         /* (a generated level must not be stored too) */
+    }
+    return SONG_OK;
+}
+
+static int levels2(struct song *s)
+{
+    uint32_t l, v, total = 0;
+    for (l = 0; l < SONG_LAYERS; l++) {
+        struct song_layer *ly = &s->layer[l];
+        uint32_t len, n;
+        for (v = 1; v <= ly->variants; v++) {
+            if (ly->stored >> (v - 1u) & 1u) {
+                const uint8_t *c = song_nt_chunk(s, l, v, &len);
+                n = (uint32_t)song_nt_notes(s, c, len, 0);   /* (checked: >= 0) */
+            } else {
+                n = song_gen_notes(s, l, v);
+            }
+            if (n > SONG_LEVEL_EVENTS)
+                return SONG_E_EVENTS;
+            if (2u * n > ly->need)
+                ly->need = 2u * n;
+        }
+        total += ly->need;
+        if (total > SONG_LEVEL_EVENTS)
+            return SONG_E_EVENTS;
+    }
+    return SONG_OK;
+}
+
 static int layers(struct song *s, uint8_t *buf, uint32_t room)
 {
-    static const char LETTER[SONG_LAYERS] = {'D', 'B', 'H', 'M'};
     uint32_t len, l, v, any = 0, used = 0;
     const uint8_t *c = chunk(s, fourcc("LAYR"), &len);
     if (!c || len != 4u + SONG_LAYERS * LAYR_REC || c[0] != SONG_LAYERS)
@@ -349,7 +418,7 @@ static int layers(struct song *s, uint8_t *buf, uint32_t room)
         ly->volume = r[3];
         ly->pan = r[4];
         if (ly->variants == 0) {
-            if (ly->channel != 0xFFu)
+            if (ly->channel != 0xFFu || r[6] || r[7])
                 return SONG_E_LAYR;
             continue;
         }
@@ -357,6 +426,13 @@ static int layers(struct song *s, uint8_t *buf, uint32_t room)
             ly->pan > 127u || r[5] ||
             (ly->program > 127u && ly->program != 0xFFu))
             return SONG_E_LAYR;
+        if (s->fmt2) {
+            int r2 = layer2(s, l, r);
+            if (r2)
+                return r2;
+            any = 1;
+            continue;
+        }
         for (v = 0; v < ly->variants; v++) {
             char id[4] = {'E', 'V', LETTER[l], (char)('1' + v)}, zid[4] = {'E', 'Z', LETTER[l], (char)('1' + v)};
             uint32_t elen, zlen;
@@ -370,7 +446,9 @@ static int layers(struct song *s, uint8_t *buf, uint32_t room)
         }
         any = 1;
     }
-    return any ? SONG_OK : SONG_E_LAYR;
+    if (!any)
+        return SONG_E_LAYR;
+    return s->fmt2 ? levels2(s) : SONG_OK;
 }
 
 int song_open(struct song *s, const uint8_t *data, uint32_t size, uint8_t *buf, uint32_t room)
@@ -387,7 +465,7 @@ int song_open(struct song *s, const uint8_t *data, uint32_t size, uint8_t *buf, 
     if (!dir_ok(s))
         return SONG_E_DIR;
     if ((r = meta(s)) || (r = sections(s)) || (r = chords(s)) || (r = chord_events(s)) || (r = bars(s)) ||
-        (r = layers(s, buf, room))) {
+        (s->fmt2 && (r = style(s))) || (r = layers(s, buf, room))) {
         s->opened = 0;
         return r;
     }
@@ -451,6 +529,8 @@ uint32_t song_cevt_mask(const struct song *s, uint32_t i)
     const uint8_t *r = s->chrd + s->cevt[i * CEVT_REC + 4] * CHRD_REC;
     return r[10] | (uint32_t)r[11] << 8;
 }
+
+const uint8_t *song_cevt_chord(const struct song *s, uint32_t i) { return s->chrd + s->cevt[i * CEVT_REC + 4] * CHRD_REC; }
 
 const char *song_cevt_symbol(const struct song *s, uint32_t i)
 {

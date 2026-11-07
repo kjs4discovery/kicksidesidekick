@@ -737,7 +737,7 @@ static void open_song(uint32_t i)
     player_load(ui.s);
     player_mute(0);
     for (r = 0; r < (int)SONG_LAYERS; r++)
-        player_variant((uint32_t)r, 1);
+        lib_level((uint32_t)r, 1);       /* (2.0: level 1 is built at open; a song opened again: built anew) */
     player_tempo(player_song_bpm(s));    /* every song opens at its own tempo, in its own key */
     ui.key = 0;
     ui.kb_lo = 0;
@@ -821,7 +821,7 @@ static int text_before(const char *p, const char *q)
 static const char *song_folder(uint32_t i)
 {
     int err;
-    const struct song *s = lib_peek(i, &err);
+    const struct lib_item *s = lib_peek(i, &err);
     if (!s)
         s = &peeked[order[i]];
     return !peek_err[order[i]] && s->category && s->category[0] ? s->category : "Other";
@@ -961,7 +961,7 @@ static void input_play(uint32_t down, uint32_t now)
         if (d && ui.s->layer[l].variants) {
             int32_t v = clamp((int32_t)player_variant_of(l) + (d > 0 ? 1 : -1), 1, ui.s->layer[l].variants);
             char t[8] = "LEVEL ";
-            player_variant(l, (uint32_t)v);
+            lib_level(l, (uint32_t)v);       /* (2.0: built now; the other layers play on) */
             t[6] = (char)('0' + v);
             t[7] = 0;
             app_say(LAYER_NAME[l], t);
@@ -1367,7 +1367,7 @@ static void draw_list(void)
         if (i < n) {
             int err;
             uint32_t li = ui.fl[i];
-            const struct song *s = lib_peek(li, &err);
+            const struct lib_item *s = lib_peek(li, &err);
             if (sel)
                 cv_rect(2, 1, 236, LIST_ROW_H - 2, C_LINE);
             if (s) {
@@ -1376,13 +1376,13 @@ static void draw_list(void)
                 text_cat(t, "   ");
                 num_cat(t, s->beats_per_bar);
                 text_cat(t, "/4   ");
-                num_cat(t, player_song_bpm(s));
+                num_cat(t, s->bpm);
                 text_cat(t, " BPM");
                 cv_text(10, 1, &FONT_B, s->title, sel ? C_WHITE : C_GRAY);
                 cv_text(10, 19, &FONT_XS, t, sel ? C_HI : C_DIM);
             } else {
                 char t[48] = "";
-                const struct song *pk = &peeked[order[li]];
+                const struct lib_item *pk = &peeked[order[li]];
                 text_cat(t, peek_err[order[li]] ? "(unreadable song)" : pk->title);
                 cv_text(10, 1, &FONT_B, t, sel ? C_WHITE : C_GRAY);
                 t[0] = 0;

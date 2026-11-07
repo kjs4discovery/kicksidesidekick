@@ -26,6 +26,10 @@ void player_play(int on);                 /* 1: player_start(the song's start, t
 void player_pause(void);                  /* playing: hold the position, sound off (PL_PAUSED); player_start goes on */
 void player_mute(uint32_t layers);        /* bit l: layer l muted (song.h order) */
 void player_variant(uint32_t layer, uint32_t v);   /* 1..variants; takes effect at the next block */
+void player_hold(uint32_t layers);        /* M5: bit l: layer l's events left alone (its notes released) while its
+                                           * stream is rebuilt (2.0, library.c lib_level); 0: on again, from where the
+                                           * song is */
+uint32_t player_held(void);               /* the layers the interrupt holds now (it reads none of their events) */
 void player_tempo(uint32_t bpm);          /* PL_BPM_MIN..PL_BPM_MAX */
 uint32_t player_song_bpm(const struct song *s);   /* its own tempo, whole BPM */
 void player_count_in(int on);

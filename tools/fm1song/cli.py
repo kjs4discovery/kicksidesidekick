@@ -53,7 +53,7 @@ def cmd_validate(args):
 
 def cmd_compile(args):
     try:
-        compiled, blob, items = _load(args.song, tuple(int(x) for x in args.format.split(".")))
+        compiled, blob, items = _load(args.song, tuple(int(x) for x in args.format.split(".")) if args.format else None)
     except SongError as e:
         _print_diags(e.diagnostics, args.song)
         return 1
@@ -158,9 +158,14 @@ def cmd_list(args):
         print("the FM-1 cannot keep songs: its flash is not usable (RAM ONLY)", file=args.out)
         return 1
     for e in entries:
-        print(f"  {e['slug']:24} {e['len']:6} bytes  {e['sectors']:2} sectors  {e['status']}", file=args.out)
-    print(f"{end['count']} song(s); {end['free']} of {end['sectors']} sectors free (longest run {end['largest']}); "
-          f"reads format 1.0..1.{end['minor']}", file=args.out)
+        room = f"{e['blocks']:3} blocks" if e.get("blocks") else f"{e['sectors']:2} sectors"
+        print(f"  {e['slug']:24} {e['len']:6} bytes  {room}  {e['status']}", file=args.out)
+    if end.get("blocks"):                # M5: blocks of 512 bytes, several songs a sector
+        print(f"{end['count']} song(s); {end['free_blocks']} of {end['blocks']} blocks free (512 bytes each; "
+              f"longest run {end['largest']} sectors); reads format 1.0..1.{end['minor']} and 2.0", file=args.out)
+    else:
+        print(f"{end['count']} song(s); {end['free']} of {end['sectors']} sectors free (longest run {end['largest']}); "
+              f"reads format 1.0..1.{end['minor']}", file=args.out)
     return 0
 
 
@@ -186,8 +191,23 @@ def cmd_send(args):
         print("no songs to send", file=sys.stderr)
         return 2
     device, dev = _device(args)
-    if not args.no_validate:             # an FM-1 that reads only older formats (M2: up to 1.1, M3: 1.2): compiled
-        minor = device.song_list(dev)[1]["minor"]   # for it
+    end = device.song_list(dev)[1]
+    if not args.no_validate:             # an FM-1 that reads only older formats (M2: up to 1.1, M3: 1.2, M4: 1.3):
+        minor = end["minor"]             # compiled for it
+        if end["major"] < 2 and any(read_compiled(b)["version"] == "2.0" for _, b in blobs):
+            print(f"the FM-1 reads formats up to 1.{minor}, not 2.0: sending 1.{minor} (every level as events)",
+                  file=args.out)
+            older = []
+            for path, blob in blobs:
+                if read_compiled(blob)["version"] != "2.0":
+                    older.append((path, blob))
+                elif not Path(path).is_dir():
+                    print(f"{path}: a compiled 2.0 file: send its song folder instead (the FM-1 reads up to 1.{minor})",
+                          file=sys.stderr)
+                    return 2
+                else:
+                    older.append((path, _load(path, (1, minor))[1]))
+            blobs = older
         if minor < 3:
             lost = "levels above 3" + ("" if minor >= 2 else ", the song category")
             print(f"the FM-1 reads formats up to 1.{minor}: sending 1.{minor} (without {lost})", file=args.out)
@@ -201,10 +221,17 @@ def cmd_send(args):
             blobs = older
     status = 0
     for path, blob in blobs:
-        r = device.song_send(dev, blob)
+        slug = None
+        if end["major"] >= 2:
+            try:
+                slug = read_compiled(blob)["slug"]
+            except SongError:
+                slug = None              # (--no-validate: a damaged file is the FM-1's to refuse)
+        r = device.song_send(dev, blob, slug)
         ok = r["result"] == 0
+        room = f"{r['free_blocks']} blocks free" if r.get("free_blocks") is not None else f"{r['free']} sectors free"
         print(f"{path}: {'stored' if ok else 'NOT stored: ' + device.explain(r)} "
-              f"({len(blob)} bytes; {r['songs']} song(s) on the FM-1, {r['free']} sectors free)", file=args.out)
+              f"({len(blob)} bytes; {r['songs']} song(s) on the FM-1, {room})", file=args.out)
         status |= not ok
     return status
 
@@ -271,8 +298,9 @@ def main(argv=None):
     p = sub.add_parser("compile", help="song folder -> .fm1s")
     p.add_argument("song")
     p.add_argument("-o", "--output")
-    p.add_argument("--format", choices=["1.3", "1.2", "1.1", "1.0"], default="1.3",
-                   help="1.0: the M1 layout (8-byte events), for an M1 device or tests")
+    p.add_argument("--format", choices=["2.0", "1.3", "1.2", "1.1", "1.0"], default=None,
+                   help="default: 2.0 for a song with a style (M5), else 1.3; 1.0: the M1 layout (8-byte events), "
+                        "for an M1 device or tests")
     p.set_defaults(fn=cmd_compile)
     p = sub.add_parser("info", help="summary of a .fm1s file or a song folder")
     p.add_argument("file")

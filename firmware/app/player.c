@@ -41,7 +41,8 @@ static volatile uint8_t quiet_mask, quiet_q8;   /* M4 (D027): the layers set to 
 static volatile int32_t start_want;
 static volatile uint32_t mute_want, tempo_want = 120;
 static volatile uint8_t var_want[SONG_LAYERS] = {1, 1, 1, 1};
-static volatile int8_t transpose_want, bass_oct_want;   /* bass_oct: M5, the bass layer this far up (sound only) */
+static volatile int8_t transpose_want, bass_oct_want;
+static volatile uint8_t hold_want, pub_held;   /* M5: layers held (their streams being rebuilt) */   /* bass_oct: M5, the bass layer this far up (sound only) */
 static volatile int loop_mode_want;
 static volatile uint32_t loop_from_want, loop_to_want;
 
@@ -54,6 +55,7 @@ static uint32_t bpm_cur = 120;
 static int32_t music_from;                /* the count-in ends here: clicks below it, the song's events from it */
 static uint32_t idx[SONG_LAYERS];
 static uint8_t var_cur[SONG_LAYERS] = {1, 1, 1, 1};
+static uint8_t hold_cur;
 static uint32_t mute_cur;
 static int32_t transpose_cur, bass_oct_cur;
 static uint32_t active[SONG_LAYERS][4];   /* notes sounding, per layer */
@@ -120,6 +122,9 @@ void player_variant(uint32_t layer, uint32_t v)
     if (layer < SONG_LAYERS && v >= 1u && v <= SONG_MAX_VARIANTS)
         var_want[layer] = (uint8_t)v;
 }
+
+void player_hold(uint32_t layers) { hold_want = (uint8_t)(layers & ((1u << SONG_LAYERS) - 1u)); }
+uint32_t player_held(void) { return pub_held; }
 
 void player_tempo(uint32_t b)
 {
@@ -231,7 +236,7 @@ static void seek_all(int32_t tick)
 {
     uint32_t l;
     for (l = 0; l < SONG_LAYERS; l++)
-        if (song->layer[l].variants)
+        if (song->layer[l].variants && !(hold_cur >> l & 1u))
             idx[l] = song_seek(stream(l), tick > 0 ? (uint32_t)tick : 0);
 }
 
@@ -286,7 +291,7 @@ static void run_events(int32_t limit)
     struct song_event e;
     for (l = 0; l < SONG_LAYERS; l++) {
         const struct song_stream *st;
-        if (!song->layer[l].variants)
+        if (!song->layer[l].variants || (hold_cur >> l & 1u))
             continue;
         st = stream(l);
         while (idx[l] < st->count) {
@@ -459,6 +464,33 @@ static void start(uint32_t f0, int32_t s0, int count_in)
     stop_frames = 0;
 }
 
+/* M5: holding layers (their streams are being rebuilt): newly held, their notes released; let go, they go on from
+ * the position now. The main loop writes a held layer's stream only once pub_held shows it */
+static void holds(void)
+{
+    uint32_t l, h = hold_want, t;
+    int32_t tk;
+    if (!song) {
+        hold_cur = (uint8_t)h;
+        pub_held = (uint8_t)h;
+        return;
+    }
+    for (l = 0; l < SONG_LAYERS; l++) {
+        t = 1u << l;
+        if (!song->layer[l].variants)
+            continue;
+        if ((h & t) && !(hold_cur & t) && state != PL_STOPPED)
+            release(l);
+        if (!(h & t) && (hold_cur & t)) {
+            tk = tick_of(q);
+            hold_cur &= (uint8_t)~t;
+            idx[l] = song_seek(stream(l), tk > 0 && state != PL_STOPPED ? (uint32_t)tk : 0);
+        }
+    }
+    hold_cur = (uint8_t)h;
+    pub_held = (uint8_t)h;
+}
+
 static void requests(uint32_t f0)
 {
     uint32_t l, m;
@@ -478,6 +510,7 @@ static void requests(uint32_t f0)
                                     (uint32_t)song->data[14] << 16 | (uint32_t)song->data[15] << 24;
         }
     }
+    holds();
     if (!song)
         return;
     if (play_req != play_done) {
@@ -546,7 +579,7 @@ static void requests(uint32_t f0)
             continue;
         if (v > n)
             v = n;
-        if (v != var_cur[l]) {
+        if (v != var_cur[l] && !(hold_cur >> l & 1u)) {
             int32_t t = tick_of(q);
             release(l);
             var_cur[l] = (uint8_t)v;

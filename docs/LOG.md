@@ -1323,3 +1323,27 @@ Questions for the planning chat:
 - The private songs' file parts are now within 2.5x but some are softer than the rest. Is that good enough for test
   songs, or worth a measured calibration later?
 Next: Part 2 (storage: generate levels on the FM-1, play only the chosen level, format 2.0, store packing).
+
+2026-11-06 19:40 — Step M5 Part 2 (storage, D029 A+B+C) —
+Status: done (emulator); committed; early checklist 1 written
+Did:
+- Format 2.0: chart, sections, melody, style (STYL) and only the stored levels (NT chunks, bars as patterns); the
+  FM-1 generates harmony L1-5, bass L1-4, drums L1-3 (firmware/app/gen.c, a port of arrange.py + arrange.canonical).
+- Plays one level a layer (song_build into a region per layer, 192 KiB; player_hold while a level is rebuilt).
+- Store v2: 512 B blocks, several songs a sector, delete = magic zeroed, receive straight into flash, compaction
+  (dry run on a model, one sector kept free), M4's FM1R records still read. Up to 200 songs.
+- fm1song: 2.0 by default; to an M4 FM-1 it sends 1.3; SEND carries the slug. Importer: no cutting.
+- Tests: pytest 93 (golden C vs Python), store_test ALL PASS, fuzz, m5_test p2 checks; docs updated.
+Learned / measured:
+- Our 9 songs 168,712 B (1.3) -> 11,312 B (2.0), 28 blocks in 4 sectors. All 14 songs (5 private, whole): 252 of
+  552 blocks. C and Python generators: identical events, all 14 songs, every level.
+- Package build/step-M5/part2/fm1acc-0.5.2-m5p2.fwsc, FM-1_46000502, sha256 968f0650...3301 (rebuilt from the
+  commit's tree: the same hash). Full suite on it: 276 checks ALL PASS (build/step-M5/part2/emu-full/report.md).
+  Fuzz 600 s: 768,000 files, no report. RAM .data+.bss 74,736, pool 289,312 of 344,064.
+- Choices made while away: delete writes zeros over a record's magic (NOR bit-clearing, as fl_write allows); a
+  record of <= 8 blocks stays inside its sector; 2.0 needs ppq 480 and notes in both voicings of a rooted chord.
+- HANDOFF 17:15 (trim Part 3, stop after it) followed: it narrows the prompt; checklist named
+  docs/step-M5-early-install-1.md.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 3 trimmed (mode screen, SYNTH with ANALOG, chorus, delay, arp, 20 presets), early checklist 2, STOP.

@@ -30,6 +30,16 @@ The device shows L1–L2 with the level-1 voicing and L3–L5 with the level-2 v
 show each note as it is played. `fm1song send` gives an older FM-1 (M3: up to 1.2) the first 3 levels of each
 layer.
 
+M5 (2026-11-06, D029): format **2.0** (section 2.5). The FM-1 generates harmony L1–5, bass L1–4 and drums L1–3
+itself from the chord chart, the metre and a **style** (`music.style` in song.yaml), by the same rules as
+tools/fm1song/arrange.py (`firmware/app/gen.c`; golden tests: identical events for every song and level). A song
+file carries only the chart, the sections, the melody, the style and its hand-made or imported parts, which replace
+the generated levels they stand for. The notes are stored once per different bar. Our 9 songs: 11,312 bytes
+together (1.3: 168,712). The FM-1 holds one level of each layer at a time (up to 24,576 events together, 192 KiB),
+and songs go straight into the flash (no 64 KiB limit). The store packs several songs into a sector (section 4).
+`fm1song compile` writes 2.0 for a song with a style; `fm1song send` gives an M4 FM-1 (up to 1.3) every level as
+events, when it fits.
+
 ## 1. Source: a song folder
 
 A folder named after the song's slug, holding `song.yaml` and `song.mid`. Optional: `previews/`
@@ -55,6 +65,9 @@ music:
   tempo_bpm: 84               # required: 30..250, quarter notes; one tempo per song (v1)
   pickup_beats: 1             # optional, default 0: beats played in the pickup bar (bar 0)
   feel: straight              # optional: straight | swing (information; the swing is in song.mid)
+  style: waltz                # M5, optional: waltz | ballad | shuffle | march | pop | train: the FM-1 generates
+                              # every level not in song.mid with this style (format 2.0); then song.mid needs only
+                              # melody (and any level it overrides, e.g. harmony:3)
 form:                         # required: sections in order, covering bars 1..N with no gaps
   - { section: Verse 1, bars: 1-16, chart: verse }
   - { section: Verse 2, bars: 17-32, chart: verse, pickup_beats: 1 }
@@ -177,9 +190,41 @@ player is unchanged.
 
 ### 2.4 Limits (v1)
 
+(M5: 2.0's own limits are in 2.5.)
+
 999 bars, 32 sections, 64 different chords, 2048 chord changes, 65535 events per layer variant (1.1: 8192 in all
 `EZ` streams together), 256 KiB per file (the FM-1's song store: 64 KiB), 3 variants per layer, 5 notes per
 voicing. The five starter songs are 15–32 KiB each in 1.0, 6–12 KiB in 1.1.
+
+### 2.5 Format 2.0 (M5, D029)
+
+The header, `META`, `CATG`, `SECT`, `CHRD`, `CEVT` and `BARS` as 1.3, with these differences:
+
+- header version **2.0**; ppq must be **480** (the generators' grid);
+- `CEVT`: a chord with a root must have at least one note in each voicing (the generators play them);
+- **`STYL`** (4 bytes, required): u8 style (0 waltz, 1 ballad, 2 shuffle, 3 march, 4 pop, 5 train:
+  arrange.STYLE_NAMES), u8 swing (= the header's flag), u16 0;
+- **`LAYR`**: the last u16 of a layer's record is its **stored mask** (bit v−1: level v is in the file; M4 kept it
+  0). The melody is always stored, every level. Drums, bass and harmony have 3, 4 and 5 levels, and every level not
+  in the mask is generated; with every level stored, a layer may have fewer;
+- a stored level is an **`NT` + L + V** chunk (e.g. `NTH3`), never `EV` / `EZ`: u16 patterns (≤ bars), u16 bars
+  (= bar_count), u16 per bar (its pattern, 0xFFFF: an empty bar); then each pattern: u16 notes (1..4096), per note
+  a varint offset in the bar (< one bar), a varint length (≥ 1), u8 pitch (≤ 127), u8 velocity (1..127). A varint
+  has up to 3 bytes, 7 bits each, low first, bit 7: another follows. Every bar that sounds the same uses the same
+  pattern. No note runs past the end; a level has at most 65,535 notes; the chunk ends exactly after its last
+  pattern. Only notes: controllers and bends are not stored (the importer keeps notes only);
+- a generated level is made on the FM-1 (`gen.c`) and on the laptop (`binformat.generate`) from the compiled chart:
+  per bar, the chords sounding in it (`CEVT`, `BARS`), each with its root, bass, intervals (from the `CHRD` mask)
+  and the two voicings as compiled; the style; the swing flag; the sections' first bars (drums L3's crashes);
+- every level, stored or generated, is put into one canonical order before it is played (arrange.canonical): notes
+  sorted by start, pitch, the louder first, the shorter first; one note per pitch and start; a note ends where the
+  next of its pitch starts; events by tick, note-offs first, then pitch;
+- the largest level of each layer together: at most **24,576 events** (counted before doubles are merged, two a
+  note): the FM-1 builds one level of each layer at a time into 192 KiB.
+
+The device builds a level when the song opens (level 1) and when a level knob turns (the player holds that layer
+meanwhile; the others play on). `tools/song_fuzz.sh` fuzzes the C parser and generators against the Python reader
+(`--diff`) and prints the C's events (`--events`) for the golden test (`tools/fm1song/tests/test_gen_golden.py`).
 
 ## 3. What the device does with it (M1b; M2)
 
@@ -201,34 +246,51 @@ repeat with a pickup in printed music. Whole-song loop = all sections. Held note
 M2 adds a loop of bars A–B: from A's beat 1 to the end of B, no pickup. A loop the music is outside of (moved
 while playing) is jumped to at the next bar line.
 
-## 4. On the FM-1: the song store (M2)
+## 4. On the FM-1: the song store (M2; M5: blocks)
 
 The songs live in the flash's data area, **0x97000–0xDBFFF** (69 sectors of 4 KiB; fm1-base's data area below the
 panel calibration at 0xDC000). M-VAVE's stock firmware keeps nothing there (our unit's full dump: all 0xFF from
 0x97000 to 0xDFFFF; stock's own data is at 0x93000 and 0xE9000–0xFBFFF), so going back to stock is not affected.
 `firmware/app/store.c`:
 
-- One **record** per song, on whole sectors: a 32-byte head (`FM1R`, u32 sequence number, u32 file length, u32 the
-  file's CRC-32, 12 bytes 0xFF, u32 CRC-32 of the head's first 28 bytes), then the `.fm1s` file.
-- Writing a song: the whole file is received into RAM and checked first (CRC, then everything `song_open`
-  checks); then free sectors are erased, the file written and read back, and the **head written last**. Only then
-  is an older copy of the same song (same slug) erased, head sector first. Two copies (a cut came between): the
-  higher sequence number wins, and the older is tidied away at the next send.
-- No room beside the older copy: the older copy makes way first, but only if that makes room (else `FULL`, nothing
-  erased). This is the one case in which a power cut loses the song being sent.
+- M5: the area is **552 blocks of 512 bytes**. One **record** per song on whole blocks: a 32-byte head (`FM2R`,
+  u32 sequence number, u32 file length, u32 the file's CRC-32, 12 bytes 0xFF, u32 CRC-32 of head bytes 4–27, so not
+  of the magic), then the `.fm1s` file. A record of up to 8 blocks stays inside one sector (several songs share a
+  sector: a 2.0 song takes 2–3 blocks); a longer one starts on a sector and has its sectors to itself. M4's records
+  (`FM1R`, head CRC over bytes 0–27, whole sectors, files up to 64 KiB) are still read.
+- **Deleting** writes the record's magic to zero (NOR flash: bits only go from 1 to 0); its head still gives its
+  length, so the scan steps over it. Nothing is erased then.
+- **Writing a song** (straight into the flash: M4 received it into RAM first, 64 KiB at most): room is found for
+  it (a short song into the fullest sector it fits in, keeping whole sectors for long ones); the file is written
+  there piece by piece as it arrives, then checked in place (CRC, then everything `song_open` checks); only then is
+  the **head written**. Then an older copy of the same song (same slug) is deleted. Two copies (a cut came between):
+  the higher sequence number wins, and the older is tidied away at the next send. A file refused, or a transfer cut
+  short, leaves only blocks without a head: the next compaction takes them back.
+- **Compacting**, when there is no room: first tried out on a model of the blocks, then done step by step: a sector
+  with no song in it but leftovers (deleted songs, unfinished files) is erased; else a song is moved out of the
+  sector with leftovers and the fewest songs (the copy written whole, its head last, then the original deleted), so
+  that sector can be erased next; for a long song, then the songs in the run of sectors it will take. One sector is
+  always kept free of songs, so a sector's songs can always be moved. A cut during a move leaves the original, or
+  both copies (the same song: either is fine).
+- No room even by compacting: the older copy of the song makes way first, but only if that makes room (else `FULL`,
+  nothing written). This is the one case in which a power cut loses the song being sent.
 - Every erase and write is checked against 0x97000–0xDBFFF first; nothing outside is ever touched.
 - Reading writes nothing. The list is a scan of the heads (their own CRC), after the splash, never during boot; a
   song is checked in full when it is opened (the record's CRC and `song_open`); a bad one shows `SONG ERROR`.
+- Up to 200 songs are listed (M4: 64; 69 sectors were the real cap). Our 9 songs (2.0): 28 blocks in 4 sectors;
+  with the 5 private test songs: 252 of 552 blocks.
 
 **USB** (`tools/fm1song.sh list | send | delete`, `tools/fm1song/device.py`; the FM-1 side `firmware/app/library.c`):
 SysEx in the update's framing (fm1-base `APP_USB_CMD`), commands 0x70 LIST, 0x73 SEND, 0x74 DELETE; the FM-1
-pulls a sent file with the update's 512-byte read requests and answers 0x7F RESULT. `fm1song` sends only to a
+pulls a sent file with the update's 512-byte read requests and answers 0x7F RESULT. M5: LIST's end gives the free
+blocks and "reads 2.0"; SEND may carry the song's slug (so its older copy can make way). `fm1song` sends only to a
 firmware whose identity starts `FM-1_46` (ours). A send or delete stops the song playing and returns to the list.
 
 Tested: `tools/store_test.sh` (store.c on a simulated NOR flash, a power cut at every erase / write of an add, a
-replace, a replace with no room for both copies, a delete) and `tools/m2_test.py` (the firmware in fm1-emu: sends
-over emulated USB, junk in the area, a damaged stored song, damaged files sent unchecked, a stalled transfer,
-power cuts during a send).
+replace, a replace with no room for both copies, a delete, an add that compacts for a long and for a short song;
+songs sharing sectors; a refused file; M4's records) and `tools/m5_test.py` (the firmware in fm1-emu: sends over
+emulated USB, junk in the area, a damaged stored song, damaged files sent unchecked, a stalled transfer, power cuts
+during a send, a 192 KiB file, an M4 unit's store).
 
 ## 5. Deferred (not in v1)
 

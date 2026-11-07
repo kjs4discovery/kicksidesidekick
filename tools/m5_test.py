@@ -176,20 +176,35 @@ def prepare_flash():
             + press(6200, "GLO"))
     shutil.copy(h["flash"], d / "songs.bin")
     FLASH["songs"] = d / "songs.bin"
+    f = bytearray((d / "songs.bin").read_bytes())  # M5: an empty song area with the hint off (the settings kept)
+    f[AREA[0]:AREA[1]] = b"\xff" * (AREA[1] - AREA[0])
+    (d / "empty-quiet.bin").write_bytes(f)
+    FLASH["empty_quiet"] = d / "empty-quiet.bin"
     return r
 
 
-def records(path):
-    """the song store's records in a flash image: [(offset, file length)] (store.h's layout)"""
+def records(path, dead=False):
+    """the song store's live records in a flash image: [(offset, file length)] (store.h's layout; M5: blocks of 512
+    bytes, "FM2R" heads with their CRC over all but the magic, deleted ones with the magic zeroed; M4's "FM1R" on
+    whole sectors). dead: the deleted ones instead"""
     f = Path(path).read_bytes()
     out, off = [], AREA[0]
     while off < AREA[1]:
-        if f[off:off + 4] == b"FM1R" and zlib.crc32(f[off:off + 28]) == struct.unpack_from("<I", f, off + 28)[0]:
-            n = struct.unpack_from("<I", f, off + 8)[0]
-            out.append((off, n))
+        m, n = f[off:off + 4], struct.unpack_from("<I", f, off + 8)[0]
+        crc2 = zlib.crc32(f[off + 4:off + 28]) == struct.unpack_from("<I", f, off + 28)[0]
+        if m in (b"FM2R", bytes(4)) and crc2 and 32 <= n <= 256 * 1024:
+            span = (32 + n + 511) // 512
+            span = span if span <= 8 else (span + 7) // 8 * 8
+            if (m == b"FM2R") != dead:
+                out.append((off, n))
+            off += span * 512
+        elif m == b"FM1R" and zlib.crc32(f[off:off + 28]) == struct.unpack_from("<I", f, off + 28)[0] and \
+                (off - AREA[0]) % 4096 == 0:
+            if not dead:
+                out.append((off, n))
             off += (32 + n + 4095) // 4096 * 4096
         else:
-            off += 4096
+            off += 512
     return out
 
 
@@ -379,7 +394,7 @@ def test_store(all_songs, sent, rep):
           f"each stored byte for byte ({sum(len(b) for b in want.values())} bytes, format "
           f"1.{'/1.'.join(str(v) for v in sorted({b[5] for b in want.values()}))})")
     li = run("store-list", 30000, [], host=f"{SEND} list --emu-pipe")
-    check(all(re.search(rf"{s} +\d+ bytes +\d+ sectors +ok", li["out"]) for s in slugs) and li["ops"] == 0,
+    check(all(re.search(rf"{s} +\d+ bytes +\d+ (?:sectors|blocks) +ok", li["out"]) for s in slugs) and li["ops"] == 0,
           f"fm1song list: every song, ok; nothing written by listing")
     lst = run("store-songs", 4500, [])
     check(not lst["halt"], "the song list with every song (store-songs.png)")
@@ -433,17 +448,18 @@ def test_store(all_songs, sent, rep):
     bad_struct.write_bytes(b)
     rf = run("store-refused", 60000, [], host=f"{SEND} send --emu-pipe --no-validate {bad_crc} {bad_struct}")
     check(rf["out"].count("NOT stored") == 2 and "CRC" in rf["out"] and "refused the song" in rf["out"]
-          and rf["ops"] == 0, "damaged files sent unchecked (--no-validate): both refused by the FM-1 (bad CRC; a "
-                              "missing chunk), nothing written")
+          and records(rf["flash"]) == records(FLASH["songs"]),
+          "damaged files sent unchecked (--no-validate): both refused by the FM-1 (bad CRC; a missing chunk), not "
+          "stored, every song as it was (M5: received into the flash, checked there; no head written)")
 
-    # the laptop stops answering after 3 of the reads
+    # the laptop stops answering after the first read (M5: a 2.0 song is about 2-3 reads of 512 bytes)
     good_path = OUT / "runs" / "good.fm1s"
     good_path.write_bytes(good)
-    st = run("store-stall", 60000, [], host=f"{sys.executable} -I {ROOT}/tools/m2_host.py stall {good_path} 3")
-    check("result 3" in st["out"] and st["ops"] == 0, "the laptop stops answering half way: the FM-1 gives up "
-                                                      "(transfer stopped), nothing written")
+    st = run("store-stall", 60000, [], host=f"{sys.executable} -I {ROOT}/tools/m2_host.py stall {good_path} 1")
+    check("result 3" in st["out"] and records(st["flash"]) == records(FLASH["songs"]),
+          "the laptop stops answering half way: the FM-1 gives up (transfer stopped), nothing stored")
     st2 = run("store-stall-after", 30000, [], flash=st["flash"], host=f"{SEND} list --emu-pipe")
-    check(all(re.search(rf"{s} +\d+ bytes +\d+ sectors +ok", st2["out"]) for s in slugs),
+    check(all(re.search(rf"{s} +\d+ bytes +\d+ (?:sectors|blocks) +ok", st2["out"]) for s in slugs),
           "after it: every song still there, ok")
 
     # power cuts during a send: four songs stored, the fifth sent and cut at several points
@@ -462,8 +478,8 @@ def test_store(all_songs, sent, rep):
                  cut=k)
         c2 = run(f"store-cut-{k}-after", 30000, [], flash=c1["flash"], host=f"{SEND} list --emu-pipe")
         others = [s for s in slugs if s != last_slug]
-        intact = all(re.search(rf"{s} +\d+ bytes +\d+ sectors +ok", c2["out"]) for s in others)
-        lastok = re.search(rf"{last_slug} +\d+ bytes +\d+ sectors +(\S+)", c2["out"])
+        intact = all(re.search(rf"{s} +\d+ bytes +\d+ (?:sectors|blocks) +ok", c2["out"]) for s in others)
+        lastok = re.search(rf"{last_slug} +\d+ bytes +\d+ (?:sectors|blocks) +(\S+)", c2["out"])
         if not intact or (lastok and lastok.group(1) != "ok") or c2["halt"]:
             bad.append(k)
         if k == cuts[len(cuts) // 2]:
@@ -976,7 +992,8 @@ def test_part4(all_songs, rep):
     sc, t = settings_script(OPEN_MS + 200, [(0, 1), (1, 1), (2, -1)])   # (M4: from MEDIUM, the new default)
     r1 = run("p4-settings", t + 600, open_song(g) + sc)
     run("p4-settings-screen", t - 300, open_song(g) + sc[:-2])
-    want = 0 | 1 << 4 | 0 << 8 | 1 << 12 | 1 << 20 | 1 << 24    # (M4: quiet 50 %, key lights on)
+    want = 0 | 1 << 4 | 0 << 8 | 1 << 12 | 1 << 20 | 1 << 24 | 1 << 28   # (M4: quiet 50 %, key lights on; M5: the
+                                                                          # test flash's hint off)
     r2b = run("p4-settings-restart", PLAY_MS + 3000, open_song(g) + ["1500:pot:4096"] + press(PLAY_MS, "PLAY"),
               flash=r1["flash"])
     s2 = r2b["stats"]
@@ -1139,7 +1156,7 @@ def test_part8(all_songs, rep):
     cats = sorted({c["category"] for c in all_songs})
     folk = sorted((c for c in all_songs if c["category"] == "Folk"), key=lambda c: c["title"].lower())
     k = cats.index("Folk") + 1                         # the folders: All songs, then the categories, sorted
-    r0 = run("p8-all", 4000, [])
+    r0 = run("p8-all", 4600, [])                      # (M5: the splash is 4 s)
     r1 = run("p8-folders", 5300, press(4600, "HOME"))
     r2 = run("p8-folk", 6000, press(4600, "HOME") + [f"4800:e0:{k}"] + press(5200, "PLAY"))
     r3 = run("p8-folk-open", 7000, press(4600, "HOME") + [f"4800:e0:{k}"] + press(5200, "PLAY") + press(5800, "PLAY"))
@@ -1339,7 +1356,7 @@ def test_m4p4(all_songs, rep):
         n = {l: len(c["layers"][l]["variants"]) for l in ("harmony", "bass", "drums")}
         f = ladder_facts(c)
         h = [f[("harmony", k)] for k in range(1, 6)]
-        okc = (c["version"] == "1.3" and n == {"harmony": 5, "bass": 4, "drums": 3}
+        okc = (c["version"] == "2.0" and n == {"harmony": 5, "bass": 4, "drums": 3}   # (M5: 2.0, the levels generated)
                and h[0][0] < h[1][0] and h[1][0] == h[2][0]           # L2, L3: the same rhythm, more than L1
                and h[3][1] == 1 and h[4][1] == 1                      # L4, L5: one note at a time
                and h[3][0] > h[1][0] * 0.5 and h[4][2] >= 12          # L5 spans an octave or more in a chord
@@ -1416,10 +1433,10 @@ def test_m4p5(all_songs, rep):
         c = read_compiled(compile_folder(f)[0])
         n = {l: len(c["layers"][l]["variants"]) for l in c["layers"]}
         cs.append(c)
-        check(c["version"] == "1.3" and n.get("harmony") == 5 and n.get("bass") == 4 and n.get("drums") == 3 and
-              c["category"] == "Private test", f"{f.name}: format 1.3, every level ({n}), category Private test, "
+        check(c["version"] == "2.0" and n.get("harmony") == 5 and n.get("bass") == 4 and n.get("drums") == 3 and
+              c["category"] == "Private test", f"{f.name}: format 2.0 (M5), every level ({n}), category Private test, "
               f"{c['size']} bytes, {c['bar_count']} bars")
-    r = run("m4p5-send", 180000, [], flash="empty", host=f"{SEND} send --emu-pipe " + " ".join(str(f) for f in priv))
+    r = run("m4p5-send", 180000, [], flash="empty_quiet", host=f"{SEND} send --emu-pipe " + " ".join(str(f) for f in priv))
     check(r["out"].count(": stored (") == len(priv), f"all {len(priv)} sent over emulated USB and stored")
     fl = r["flash"]
     shutil.copy(fl, OUT / "flash" / "private.bin")
@@ -1430,9 +1447,9 @@ def test_m4p5(all_songs, rep):
         start = (bpb - c["pickup_beats"]) * c["ppq"] if c["pickup_beats"] else 0
         sc = ([f"4150:e0:{i}"] if i else []) + press_raw(OPEN_MS, "PLAY") + press_raw(OPEN_MS + 100, "ARP") \
             + [f"{OPEN_MS + 200}:e4:9", f"{OPEN_MS + 300}:e3:9", f"{OPEN_MS + 400}:e2:9"] + press_raw(PLAY_MS, "PLAY")
-        r = run(f"m4p5-{c['slug']}", int(PLAY_MS + ms + 2500), sc, flash=str(OUT / "flash" / "private.bin"))
+        r = run(f"m4p5-{c['slug']}", int(PLAY_MS + song_ms(c) + 2500), sc, flash=str(OUT / "flash" / "private.bin"))
         s = r["stats"]
-        want = ticks_to_frames(c, c["end_tick"] - start)
+        want = ticks_to_frames(c, c["end_tick"] - s["start_tick"])      # (from the count-in's first beat)
         got = s["end_frames"] - s["start_frames"]
         nb = min(c["bar_count"], 64)
         check(s["ends"] == 1 and abs(got - want) <= BLOCK and s["deferred"] == 0 and max(s["voices"][:nb]) <= 24
@@ -1617,7 +1634,157 @@ def test_m5p1(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS.update({"m5p1": test_m5p1})
+def long_song(bars_x, fmt, out):
+    """a long test song (Four Chords' form repeated bars_x times, melody once) compiled in fmt -> its folder, bytes"""
+    import yaml
+    d = OUT / f"long-{bars_x}"
+    if d.exists():
+        shutil.rmtree(d)
+    shutil.copytree(ROOT / "songs/four-chords", d)
+    y = yaml.safe_load((d / "song.yaml").read_text())
+    form = []
+    for k in range(bars_x):
+        for sec in y["form"]:
+            a, b = (int(x) for x in sec["bars"].split("-"))
+            form.append({**sec, "section": f"{sec['section']} {k + 1}"[:15], "bars": f"{a + 32 * k}-{b + 32 * k}"})
+    y["form"] = form
+    y["slug"], y["title"] = f"long-{bars_x}", f"Long Test {bars_x}"
+    (d / "song.yaml").write_text(yaml.safe_dump(y, sort_keys=False))
+    blob = compile_folder(d, fmt)[0]
+    out.write_bytes(blob)
+    return d, blob
+
+
+def test_m5p2(all_songs, rep):
+    """M5 part 2 (D029): format 2.0 (the FM-1 generates the levels; one level of each layer at a time), songs straight
+    into the flash, the store in blocks (several songs a sector)"""
+    lines, st, check = checker("M5 part 2: storage (format 2.0, the block store)")
+    slugs = [c["slug"] for c in all_songs]
+    O = OPEN_MS
+    sizes = {c["slug"]: c["size"] for c in all_songs}
+    check(all(c["version"] == "2.0" for c in all_songs),
+          f"all {len(all_songs)} songs in format 2.0: {sum(sizes.values())} bytes together (M4's 1.3: 168,712)")
+    recs = records(FLASH["songs"])
+    blocks = sum(min((32 + n + 511) // 512, 8) for _, n in recs)
+    secs = len({(o - AREA[0]) // 4096 for o, _ in recs})
+    check(len(recs) == len(all_songs) and secs < len(recs),
+          f"stored in {blocks} blocks of 512 bytes in {secs} sectors (several songs a sector; M4: 45 sectors)")
+    # a level changed while playing: built on the FM-1 (the other layers play on, untouched)
+    g = slugs.index("saints")
+    c = all_songs[g]
+    base = open_song(g) + press(PLAY_MS, "PLAY")
+    a = run("m5p2-steady", PLAY_MS + 9000, base)
+    b = run("m5p2-switch", PLAY_MS + 9000, base + [f"{PLAY_MS + 3000}:e4:4", f"{PLAY_MS + 6000}:e3:3"])
+    sa, sb = a["stats"], b["stats"]
+    check(sb["notes_on"][0] == sa["notes_on"][0] and sb["notes_on"][3] == sa["notes_on"][3] and
+          sb["notes_on"][2] > sa["notes_on"][2] and sb["deferred"] == 0 and not b["halt"],
+          f"harmony L1 -> L5 and bass L1 -> L4 while playing ({c['title']}): drums and melody note for note as "
+          f"without ({sb['notes_on'][0]}, {sb['notes_on'][3]} notes), harmony {sa['notes_on'][2]} -> "
+          f"{sb['notes_on'][2]} notes, no deferred block")
+    k = run("m5p2-levels-end", int(PLAY_MS + song_ms(c) + 2500),
+            open_song(g) + [f"{O + 200}:e4:9", f"{O + 300}:e3:9", f"{O + 400}:e2:9"] + press(PLAY_MS, "PLAY"))
+    ks = k["stats"]
+    start = (int(c["time_signature"][0]) - c["pickup_beats"]) * c["ppq"] if c["pickup_beats"] else 0
+    want = ticks_to_frames(c, c["end_tick"] - ks["start_tick"])     # (from the count-in's first beat)
+    got = ks["end_frames"] - ks["start_frames"]
+    check(ks["ends"] == 1 and abs(got - want) <= BLOCK and ks["deferred"] == 0,
+          f"at harmony L5, bass L4, drums L3 (generated on the FM-1): played to the end on time ({got} / {want:.0f})")
+    # every level's notes as the laptop's generators make them: the FM-1's note count per layer at each level, 6 s
+    bad = []
+    for lv, knob in ((5, "e4"), (4, "e3"), (3, "e2")):
+        r = run(f"m5p2-count-{lv}", PLAY_MS + 6000, open_song(g) + [f"{O + 200}:{knob}:{lv - 1}"] + press(PLAY_MS, "PLAY"))
+        layer = {"e4": 2, "e3": 1, "e2": 0}[knob]
+        name = LAYER_ORDER[layer]
+        t1 = r["stats"]["last_tick"]
+        evs = c["layers"][name]["variants"][lv]
+        n = sum(1 for e in evs if e[1] == 144 and start <= e[0] < t1)
+        if abs(r["stats"]["notes_on"][layer] - n) > 6:
+            bad.append((name, lv, r["stats"]["notes_on"][layer], n))
+    check(not bad, f"harmony L5, bass L4, drums L3: the FM-1 plays as many notes as the laptop's generators make "
+                   f"(to within a block) {bad or ''}")
+    # a file over M4's 64 KiB: straight into the flash
+    f1 = OUT / "runs" / "long-4-v10.fm1s"
+    _, big = long_song(4, (1, 0), f1)
+    r = run("m5p2-big-send", 240000, [], flash="empty_quiet", host=f"{SEND} send --emu-pipe --no-validate {f1}")
+    rb = records(r["flash"])
+    check("stored (" in r["out"] and len(big) > 64 * 1024 and len(rb) == 1 and rb[0][1] == len(big),
+          f"a {len(big)}-byte song (M4: at most 65,536, in RAM) received straight into the flash and stored")
+    rp = run("m5p2-big-play", PLAY_MS + 4000, press(O, "PLAY") + press(PLAY_MS, "PLAY"), flash=r["flash"])
+    check(rp["stats"]["starts"] == 1 and rms(rp["left"][int((PLAY_MS + 1500) / 1000 * RATE):]) > 50,
+          "and it plays")
+    # a refused file leaves nothing: a damaged copy (its CRC right, a chunk wrong)
+    bad_f = OUT / "runs" / "bad.fm1s"
+    bb = bytearray(compile_folder(ROOT / "songs/saints")[0])
+    bb[4] = 3                                    # version 3.0: refused by the FM-1 after it is received
+    struct.pack_into("<I", bb, 12, 0)
+    struct.pack_into("<I", bb, 12, zlib.crc32(bytes(bb)))
+    bad_f.write_bytes(bb)
+    rr = run("m5p2-refused", 60000, [], host=f"{SEND} send --emu-pipe --no-validate {bad_f}")
+    rl = run("m5p2-refused-list", 30000, [], flash=rr["flash"], host=f"{SEND} list --emu-pipe")
+    check("NOT stored" in rr["out"] and f"{len(all_songs)} song(s)" in rl["out"] and
+          len(records(rr["flash"])) == len(all_songs),
+          "a file refused after it was received (format 3.0): not stored, nothing else changed")
+    # M4's store: its records (FM1R, whole sectors, format 1.3) still read and played
+    m4 = bytearray(FLASH["empty_quiet"].read_bytes())
+    off = AREA[0]
+    for sl in ("saints", "amazing-grace"):
+        blob = compile_folder(ROOT / "songs" / sl, (1, 3))[0]
+        h = bytearray(b"\xff" * 32)
+        h[0:4] = b"FM1R"
+        struct.pack_into("<III", h, 4, 1, len(blob), zlib.crc32(blob))
+        struct.pack_into("<I", h, 28, zlib.crc32(bytes(h[:28])))
+        m4[off:off + 32] = h
+        m4[off + 32:off + 32 + len(blob)] = blob
+        off += (32 + len(blob) + 4095) // 4096 * 4096
+    fm4 = OUT / "runs" / "m4-store.flash"
+    fm4.write_bytes(m4)
+    l4 = run("m5p2-m4-list", 30000, [], flash=fm4, host=f"{SEND} list --emu-pipe")
+    p4 = run("m5p2-m4-play", PLAY_MS + 4000, press(O, "PLAY") + press(PLAY_MS, "PLAY"), flash=fm4)
+    s4 = run("m5p2-m4-send", 90000, [], flash=fm4, host=f"{SEND} send --emu-pipe {ROOT}/songs/saints")
+    check("2 song(s)" in l4["out"] and p4["stats"]["starts"] == 1 and
+          rms(p4["left"][int((PLAY_MS + 1500) / 1000 * RATE):]) > 50 and "stored (" in s4["out"] and
+          len(records(s4["flash"])) == 2 and any(f[0:4] == b"FM2R" for f in [s4["flash"].read_bytes()[o:o + 4]
+                                                                            for o, _ in records(s4["flash"])]),
+          "an M4 unit's songs (FM1R records, format 1.3): listed and played; one sent again replaces its M4 copy")
+    # the fallback: an M4 FM-1 (its own package) gets 1.3 from fm1song send, and plays it
+    m4pkg = ROOT / "build/step-M4/final/fm1acc-0.5.0-m4.fwsc"
+    if m4pkg.exists():
+        m4flash = OUT / "flash" / "m4-empty.bin"          # (the emulator runs the app in the flash: M4's own)
+        m4flash.unlink(missing_ok=True)
+        subprocess.run([str(EMU), "--fwsc", str(m4pkg), "--flash", str(m4flash), "--bench", "1500"],
+                       env={**os.environ, "FM1_BENCH_NOKEYS": "1"}, capture_output=True, check=True)
+        fb = run("m5p2-m4-fallback", 90000, [], flash=str(m4flash), pkg=m4pkg,
+                 host=f"{SEND} send --emu-pipe {ROOT}/songs/saints")
+        fp = run("m5p2-m4-fallback-play", PLAY_MS + 4000, press(O, "PLAY") + press(PLAY_MS, "PLAY"),
+                 flash=fb["flash"], pkg=m4pkg)
+        rb = records(fb["flash"])
+        v = fb["flash"].read_bytes()[rb[0][0] + 32 + 4:rb[0][0] + 32 + 6] if rb else b""
+        check("sending 1.3" in fb["out"] and "stored (" in fb["out"] and v == bytes([1, 3]) and
+              fp["stats"]["starts"] == 1 and rms(fp["left"][int((PLAY_MS + 1500) / 1000 * RATE):]) > 50,
+              "the fallback: fm1song send to an M4 FM-1 (its own package) sends 1.3 (every level as events); it "
+              "stores and plays it")
+    # every song together: ours and (when on this machine) the private ones, whole
+    priv = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
+        if (ROOT / "songs/private").is_dir() else []
+    if priv:
+        folders = " ".join(str(f) for f in sorted((ROOT / "songs").iterdir()) if (f / "song.yaml").is_file())
+        ra = run("m5p2-all", 300000, [], flash="empty_quiet",
+                 host=f"{SEND} send --emu-pipe {folders} " + " ".join(str(f) for f in priv))
+        la = run("m5p2-all-list", 30000, [], flash=ra["flash"], host=f"{SEND} list --emu-pipe")
+        n = len(all_songs) + len(priv)
+        m = re.search(r"(\d+) of (\d+) blocks free", la["out"])
+        free = int(m.group(1)) if m else 0
+        check(ra["out"].count(": stored (") == n and f"{n} song(s)" in la["out"],
+              f"all {n} songs on one FM-1 (ours and the {len(priv)} private ones, whole): {free} of 552 blocks still "
+              f"free, room for about {free * 512 // 1300} more songs like ours")
+        whole = [f.name for f in priv if "only the first" not in (f / "IMPORT-REPORT.txt").read_text()]
+        check(len(whole) == len(priv), f"the private songs imported whole (no bars cut): {', '.join(whole)}")
+    lines.append(f"  - sizes (2.0): " + ", ".join(f"{k} {v}" for k, v in sizes.items()))
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS.update({"m5p1": test_m5p1, "m5p2": test_m5p2})
 
 
 if __name__ == "__main__":

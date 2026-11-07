@@ -5,8 +5,11 @@
  *                                      the ones the parser accepts; any out-of-bounds read or UB aborts
  *   song_fuzz --diff FILE...           print "<rc> FILE" per file: tools/fm1song's tests compare it with the
  *                                      Python reader (the two must accept and refuse the same files)
+ *   song_fuzz --events FILE            print every level's events, "layer level tick status d1 d2" (2.0: as
+ *                                      song_build makes them): the golden test against the Python generators
  * Each mutated file is a malloc of exactly its size, so a read one byte past it is caught; so is the decode buffer.
- * Seeds: v1.1 files (delta-coded events) and v1.0 files (8-byte events), so both readers are fuzzed. */
+ * Seeds: v2.0 (M5: generated levels, NT chunks), v1.3, v1.1 (delta-coded events) and v1.0 (8-byte events), so
+ * every reader is fuzzed. A 2.0 song accepted is built at every level, each into a buffer of exactly its size. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -106,9 +109,9 @@ static uint8_t *mutate(const uint8_t *src, uint32_t n, uint32_t *out_n)
 static volatile uint32_t sink;
 static uint8_t *dec;                    /* the decode buffer: exactly SONG_DECODE_BYTES (malloc), so ASan sees overruns */
 
-static void walk(const struct song *s)
+static void walk_streams(const struct song *s)
 {
-    uint32_t l, v, i, b;
+    uint32_t l, v, i;
     struct song_event e;
     for (l = 0; l < SONG_LAYERS; l++)
         for (v = 0; v < s->layer[l].variants; v++) {
@@ -120,6 +123,63 @@ static void walk(const struct song *s)
             sink += song_seek(st, rnd(s->end_tick + 2));
             sink += song_seek(st, 0) + song_seek(st, s->end_tick);
         }
+}
+
+/* 2.0: each level built (into exactly its layer's need), then fn on the song */
+static void each_level(struct song *s, void (*fn)(const struct song *, uint32_t, uint32_t))
+{
+    uint32_t l, v;
+    for (l = 0; l < SONG_LAYERS; l++)
+        for (v = 1; v <= s->layer[l].variants; v++) {
+            uint32_t room = s->layer[l].need * 8u;
+            uint8_t *b = malloc(room ? room : 1u);
+            if (song_build(s, l, v, b, room) != SONG_OK) {
+                fprintf(stderr, "song_build %u %u failed\n", l, v);
+                abort();
+            }
+            fn(s, l, v);
+            free(b);
+            s->layer[l].var[0].ev = 0;    /* (freed: nothing reads it again) */
+            for (uint32_t k = 0; k < SONG_MAX_VARIANTS; k++)
+                s->layer[l].var[k].count = 0;
+        }
+}
+
+static void walk_level(const struct song *s, uint32_t l, uint32_t v)
+{
+    const struct song_stream *st = &s->layer[l].var[v - 1u];
+    struct song_event e;
+    uint32_t i, last = 0;
+    for (i = 0; i < st->count; i++) {
+        song_event_get(st, i, &e);
+        if (e.tick < last || (e.status != 0x80u && e.status != 0x90u)) {
+            fprintf(stderr, "level %u %u: events out of order\n", l, v);
+            abort();
+        }
+        last = e.tick;
+        sink += e.tick + e.d1 + e.d2;
+    }
+    sink += song_seek(st, rnd(s->end_tick + 2));
+}
+
+static void print_level(const struct song *s, uint32_t l, uint32_t v)
+{
+    const struct song_stream *st = &s->layer[l].var[v - 1u];
+    struct song_event e;
+    uint32_t i;
+    for (i = 0; i < st->count; i++) {
+        song_event_get(st, i, &e);
+        printf("%u %u %u %u %u %u\n", l, v, e.tick, e.status, e.d1, e.d2);
+    }
+}
+
+static void walk(struct song *s)
+{
+    uint32_t i, b;
+    if (s->fmt2)
+        each_level(s, walk_level);
+    else
+        walk_streams(s);
     for (i = 0; i < s->ncevt; i++) {
         const uint8_t *vo = song_cevt_voicing(s, i, 1 + (i & 1));
         sink += song_cevt_tick(s, i) + (uint32_t)strlen(song_cevt_symbol(s, i)) + vo[0] + vo[4];
@@ -139,11 +199,29 @@ static void walk(const struct song *s)
 int main(int argc, char **argv)
 {
     struct song s;
-    uint8_t *seed[16];
-    uint32_t seed_n[16], nseeds = 0, i;
+    uint8_t *seed[64];
+    uint32_t seed_n[64], nseeds = 0, i;
     unsigned long long runs = 0, accepted = 0, per_err[17] = {0};
     time_t until;
     dec = malloc(SONG_DECODE_BYTES);
+    if (argc == 3 && !strcmp(argv[1], "--events")) {
+        uint32_t n;
+        uint8_t *d = load(argv[2], &n);
+        int r = d ? song_open(&s, d, n, dec, SONG_DECODE_BYTES) : -99;
+        if (r != SONG_OK) {
+            fprintf(stderr, "%s: %d\n", argv[2], r);
+            return 1;
+        }
+        if (s.fmt2) {
+            each_level(&s, print_level);
+        } else {
+            for (uint32_t l = 0; l < SONG_LAYERS; l++)
+                for (uint32_t v = 1; v <= s.layer[l].variants; v++)
+                    print_level(&s, l, v);
+        }
+        free(d);
+        return 0;
+    }
     if (argc >= 3 && !strcmp(argv[1], "--diff")) {
         for (i = 2; i < (uint32_t)argc; i++) {
             uint32_t n;
@@ -160,7 +238,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: song_fuzz SECONDS SEED.fm1s... | song_fuzz --diff FILE...\n");
         return 2;
     }
-    for (i = 2; i < (uint32_t)argc && nseeds < 16; i++) {
+    for (i = 2; i < (uint32_t)argc && nseeds < 64; i++) {
         seed[nseeds] = load(argv[i], &seed_n[nseeds]);
         if (!seed[nseeds] || song_open(&s, seed[nseeds], seed_n[nseeds], dec, SONG_DECODE_BYTES) != SONG_OK) {
             fprintf(stderr, "%s: not a valid seed\n", argv[i]);

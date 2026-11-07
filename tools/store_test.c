@@ -4,7 +4,7 @@
  * power cut at the Nth erase or write leaves that operation half done (half the sector erased, half the bytes
  * written) and nothing after it; then the "FM-1" starts again and scans.
  *
- *   store_test A.fm1s B.fm1s ...    A: a song in two versions (the 1.1 file, then its 1.0 file: same slug), the rest
+ *   store_test A.fm1s B.fm1s ...    A: a song in two versions (a short file, then a long one: same slug), the rest
  *                                   other songs. Checks, printing one line each:
  *   1. a flash full of junk (another firmware's leftovers): no songs, nothing written by a scan
  *   2. add, list, read back, delete, add again; a file is stored byte for byte
@@ -14,6 +14,10 @@
  *      new or gone (the one case it may go)
  *   6. deleting, cut at every operation: the others intact, the song there or gone
  *   7. adding a new song, cut at every operation: the others intact, the song there or not
+ *   M5 (blocks): 8. short songs share sectors (how many fit); 9. a long song into an area with room only after
+ *   compacting (sectors erased, songs moved), cut at every operation: every song intact, the new one there or not;
+ *   10. receiving: a refused file (store_abort) leaves nothing, a write outside the room is refused; 11. M4's
+ *   records (FM1R, whole sectors) are read, deleted, and their room taken back
  *   and after every cut: a new add of the song works. Nothing is ever erased or written outside the area. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -206,9 +210,9 @@ static void setup_tight(void)
     add(&A10);                            /* the big version stored; the small one (A11) must take its room */
     for (i = 0; i < nothers; i++)
         add(&others[i]);
-    /* fill the rest with copies of a small song under new slugs, until A11 beside A10 has no room */
+    /* fill the rest with copies of the short song under new slugs, until A11 beside A10 has no room */
     pad = malloc(STORE_FILE_MAX);
-    for (k = 0; store_largest_free() * STORE_SECTOR >= STORE_HEAD + A11.n; k++) {
+    for (k = 0;; k++) {
         struct song s;
         memcpy(pad, A11.d, A11.n);
         song_peek(&s, pad, A11.n);
@@ -244,6 +248,66 @@ static int ok_delete(void)
 {
     int a = stored_as(A11.slug, &A11);
     return a >= 0 && others_intact(nothers < 2u ? nothers : 2u);
+}
+
+static void wr32t(uint8_t *p, uint32_t v)
+{
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+
+/* fill songs: copies of a short song under the slugs fill0, fill1, ... (the bytes are kept, to compare) */
+static struct file fills[STORE_MAX_SONGS];
+static uint8_t fill_gone[STORE_MAX_SONGS];
+static uint32_t nfill;
+
+static int add_fill(const struct file *base, uint32_t k)
+{
+    struct song s;
+    struct file *f = &fills[k];
+    free(f->d);
+    f->d = malloc(base->n);
+    f->n = base->n;
+    memcpy(f->d, base->d, base->n);
+    song_peek(&s, f->d, f->n);
+    snprintf((char *)s.slug, 24, "fill%u", k);
+    strcpy(f->slug, s.slug);
+    fill_gone[k] = 0;
+    nfill = k + 1u;
+    if (store_add(f->d, f->n, f->slug) == STORE_OK)
+        return STORE_OK;
+    fill_gone[k] = 1;                     /* (not stored: full) */
+    return STORE_E_FULL;
+}
+
+static int fills_intact(void)
+{
+    uint32_t k;
+    for (k = 0; k < nfill; k++)
+        if (stored_as(fills[k].slug, &fills[k]) != (fill_gone[k] ? 0 : 1))
+            return 0;
+    return 1;
+}
+
+/* the area filled with short songs, then every other one deleted: room in many sectors, no whole free run */
+static void setup_compact(void)
+{
+    uint32_t k;
+    wipe();
+    for (k = 0; k < STORE_MAX_SONGS; k++)
+        if (add_fill(&others[k % nothers], k) != STORE_OK)
+            break;
+    for (k = 0; k + 1u < nfill; k += 2u) {
+        store_delete(fills[k].slug);
+        fill_gone[k] = 1;
+    }
+}
+static int ok_compact(void)
+{
+    int a = stored_as(newf->slug, newf);
+    return a >= 0 && fills_intact() && recovers();
 }
 
 int main(int argc, char **argv)
@@ -318,11 +382,86 @@ int main(int argc, char **argv)
     cuts("replace a song", setup_replace, act_replace, ok_replace);
     newf = &A11;
     setup_tight();
-    check(store_largest_free() * STORE_SECTOR < STORE_HEAD + A11.n && add(&A11) == STORE_OK &&
-          stored_as(A11.slug, &A11) == 1, "no room for both copies: the older one makes way");
+    check(add(&A11) == STORE_OK && stored_as(A11.slug, &A11) == 1, "no room for both copies: the older one makes way");
     cuts("replace a song with no room for both copies", setup_tight, act_replace, ok_tight);
     cuts("delete a song", setup_delete, act_delete, ok_delete);
     cuts("add a new song", setup_new, act_replace, ok_new);
+
+    /* 8 */
+    wipe();
+    nfill = 0;
+    for (k = 0; k < STORE_MAX_SONGS; k++)
+        if (add_fill(&others[k % nothers], k) != STORE_OK)
+            break;
+    {
+        char t[128];
+        snprintf(t, sizeof t, "short songs share sectors: %u of %u-byte songs fit (M4: 69 at most)", store_count(),
+                 others[0].n);
+        check(store_count() > 69u && fills_intact(), t);
+    }
+
+    /* 9 */
+    setup_compact();
+    check(store_largest_free() * STORE_SECTOR < STORE_HEAD + A10.n && store_free_blocks() * STORE_BLOCK >
+          STORE_HEAD + A10.n, "the long song fits only by compacting (setup)");
+    store_compactions = store_moves = 0;
+    check(add(&A10) == STORE_OK && stored_as(A10.slug, &A10) == 1 && fills_intact() && store_moves > 0,
+          "compacting: songs moved, sectors erased, the long song stored, every other song intact");
+    {
+        char t[96];
+        snprintf(t, sizeof t, "  (%u songs moved, %u sectors erased)", store_moves, store_compactions);
+        puts(t);
+    }
+    newf = &A10;
+    cuts("add a long song by compacting", setup_compact, act_replace, ok_compact);
+    newf = &A11;
+    cuts("add a short song by compacting", setup_compact, act_replace, ok_compact);
+
+    /* 10 */
+    wipe();
+    add(&others[0]);
+    {
+        uint32_t at;
+        static const uint8_t junk[64];
+        r = store_begin(A11.n, A11.slug, &at);
+        n = r == STORE_OK && store_write(0, A11.d, A11.n / 2u) == STORE_OK;
+        store_abort();
+        store_scan();
+        check(n && stored_as(A11.slug, &A11) == 0 && store_count() == 1u && others_intact(1),
+              "receiving: a refused file leaves no song");
+        r = store_begin(A11.n, A11.slug, &at);
+        k = store_refused;
+        check(r == STORE_OK && store_write(A11.n - 8u, junk, 64) == STORE_E_RANGE && store_refused == k + 1u,
+              "receiving: a write past the room given is refused");
+        store_refused = 0;
+        store_abort();
+        check(store_write(0, junk, 4) == STORE_E_STATE && store_commit() == STORE_E_STATE,
+              "receiving: nothing to write or commit without store_begin");
+        check(add(&A11) == STORE_OK && stored_as(A11.slug, &A11) == 1, "then a song stored over the leftovers");
+    }
+
+    /* 11 */
+    wipe();
+    {
+        uint8_t h[STORE_HEAD];
+        uint32_t at = STORE_LO + 5u * STORE_SECTOR;
+        memset(h, 0xFF, sizeof h);
+        memcpy(h, "FM1R", 4);
+        wr32t(h + 4, 3);
+        wr32t(h + 8, A11.n);
+        wr32t(h + 12, song_crc32(A11.d, A11.n, 0));
+        wr32t(h + 28, song_crc32(h, 28, 0));
+        memcpy(flash + at, h, sizeof h);
+        memcpy(flash + at + STORE_HEAD, A11.d, A11.n);
+        store_scan();
+        check(store_count() == 1u && stored_as(A11.slug, &A11) == 1, "an M4 record (FM1R) is read");
+        check(store_delete(A11.slug) == STORE_OK && store_count() == 0, "an M4 record is deleted");
+        for (k = 0; k < STORE_MAX_SONGS; k++)
+            if (add_fill(&others[k % nothers], k) != STORE_OK)
+                break;
+        check(flash[at] == 0xFFu || !memcmp(flash + at, "FM2R", 4) || flash[at] == 0,
+              "its room is taken back when the area fills");
+    }
 
     check(store_refused == 0, "never an erase or write outside 0x97000..0xDBFFF");
     printf("%s\n", failures ? "FAILURES" : "ALL PASS");

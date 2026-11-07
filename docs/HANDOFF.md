@@ -579,3 +579,17 @@ weekly usage is limited: respect "finish the current part, then stop".
 The generated bass is an octave too high (E2..D#3 roots); write it in the real octave, with a
 setting "Bass sound: REAL / +1 OCTAVE (speaker)" (default +1 OCTAVE), tab = real notes,
 bass-clef notation written an octave up (bass guitar convention). Details in docs/plan-M5.md.
+
+---
+
+## 2026-11-06 17:15 — from the planning chat — usage is nearly spent: trim Part 3, stop after it
+
+The user is at ~90 % of their weekly usage and wants synth mode in. So:
+1. Finish Part 2 and write docs/step-M5-early-install-1.md as planned.
+2. Part 3, TRIMMED to a simple test: the mode screen (LEARN / SYNTH, mascot) and SYNTH mode
+   with the ANALOG engine only (PHASE later), 8 voices, our own chorus + delay (reverb later),
+   a simple arpeggiator (up / down / up-down, tempo rate), OCT, knobs (cutoff, resonance,
+   attack, release, chorus, delay), SELECT for presets, **20 of our own synthwave presets**.
+3. Write docs/step-M5-early-install-2.md (full suite on that build) and **STOP**. Do NOT start
+   Part 4 (views) or Part 5; they move to the next milestone.
+Keep LOG entries short to save usage.

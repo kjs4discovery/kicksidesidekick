@@ -20,6 +20,7 @@ music:
   tempo_bpm: 112
   pickup_beats: 3
   feel: straight
+  style: march                  # the FM-1 generates harmony 1-5, bass 1-4, drums 1-3 (D029)
 
 form:
   - { section: Chorus 1, bars: 1-16, chart: chorus }

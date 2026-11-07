@@ -30,7 +30,7 @@ SONG_ERRORS = {-1: "SHORT", -2: "MAGIC", -3: "VERSION", -4: "SIZE", -5: "CRC", -
                -15: "EVENTS", -16: "TOO BIG"}
 STORE_ERRORS = {-1: "the song area is full (delete a song first)", -2: "too big", -3: "a flash erase failed",
                 -4: "a flash write failed", -5: "not found", -6: "outside the song area (refused)",
-                -7: "no flash"}
+                -7: "no flash", -8: "a send out of order (try again)"}
 WAIT = {"first": 5.0, "idle": 10.0}
 
 
@@ -155,17 +155,21 @@ def _wait(link, want, serve=None, first=WAIT["first"]):
 
 
 def song_list(dev):
-    """-> ([{slug, len, sectors, status}], {count, free, largest, sectors, minor, result})"""
+    """-> ([{slug, len, sectors, blocks, status}], {count, free, largest, sectors, minor, result, major, free_blocks,
+    blocks}) (M5's FM-1: major 2, it reads 2.0; the store in 512-byte blocks; older: major 1, blocks None)"""
     entries = []
 
     def want(cmd, body):
         if cmd == SC_ENTRY and len(body) == 32:
-            entries.append({"slug": body[7:31].split(b"\0")[0].decode("ascii", "replace"),
+            entries.append({"slug": body[7:29].split(b"\0")[0].decode("ascii", "replace"),
                             "len": body[4] | body[5] << 8 | body[6] << 16, "sectors": body[3],
+                            "blocks": body[30] | body[31] << 8 or None,
                             "status": ("ok", "DAMAGED (record CRC)", "UNREADABLE")[min(body[2], 2)]})
         elif cmd == SC_END and len(body) >= 6:
+            m5 = len(body) >= 11
             return {"count": body[0], "free": body[1], "largest": body[2], "sectors": body[3], "minor": body[4],
-                    "result": body[5]}
+                    "result": body[5], "major": body[10] if m5 else 1,
+                    "free_blocks": body[6] | body[7] << 8 if m5 else None, "blocks": body[8] | body[9] << 8 if m5 else None}
         return None
 
     dev.link.drain()
@@ -177,7 +181,8 @@ def song_list(dev):
 def _result(cmd):
     def want(c, body):
         if c == SC_RESULT and len(body) >= 5 and body[0] == cmd:
-            return {"result": body[1], "detail": struct.unpack("b", body[2:3])[0], "songs": body[3], "free": body[4]}
+            return {"result": body[1], "detail": struct.unpack("b", body[2:3])[0], "songs": body[3], "free": body[4],
+                    "free_blocks": body[5] | body[6] << 8 if len(body) >= 7 else None}
         return None
     return want
 
@@ -191,11 +196,15 @@ def explain(r):
     return text
 
 
-def song_send(dev, blob):
-    """one compiled song into the FM-1's store -> its result dict (result 0: stored)"""
+def song_send(dev, blob, slug=None):
+    """one compiled song into the FM-1's store -> its result dict (result 0: stored). slug: an M5 FM-1 (it reads 2.0)
+    is told the song's slug, so the song's older copy can make way if the store has no room for both"""
     dev.link.drain()
-    dev.link.send(I.frame(SC_SEND, struct.pack("<II", len(blob), zlib.crc32(blob))))
-    return _wait(dev.link, _result(SC_SEND), serve=blob)
+    body = struct.pack("<II", len(blob), zlib.crc32(blob))
+    if slug is not None:
+        body += slug.encode("ascii")[:23].ljust(24, b"\0")
+    dev.link.send(I.frame(SC_SEND, body))
+    return _wait(dev.link, _result(SC_SEND), serve=blob, first=60.0)   # (M5: it may compact the store first)
 
 
 def song_delete(dev, slug):

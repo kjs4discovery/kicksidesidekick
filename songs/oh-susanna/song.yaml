@@ -20,6 +20,7 @@ music:
   tempo_bpm: 150
   pickup_beats: 1
   feel: straight
+  style: train                  # the FM-1 generates harmony 1-5, bass 1-4, drums 1-3 (D029)
 
 form:
   - { section: Verse 1, bars: 1-8, chart: verse }

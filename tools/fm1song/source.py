@@ -14,6 +14,8 @@ from .smf import read_midi
 
 FORMAT = "fm1-song/1"
 LAYERS = ["drums", "bass", "harmony", "melody"]      # fixed order everywhere (compiled file, device buttons)
+GEN_STYLES = ("waltz", "ballad", "shuffle", "march", "pop", "train")   # tools/fm1song/arrange.py STYLES, in order
+GEN_LEVELS = {"harmony": 5, "bass": 4, "drums": 3}  # the generated levels of a layer (format 2.0)
 MAX_VARIANTS = 5                  # M4 (format 1.3): up to 5 levels a layer; 1.2 and older: 3
 MODES = ["major", "minor", "dorian", "mixolydian", "lydian", "phrygian", "locrian"]
 KEEP_CC = {1: "modulation", 7: "volume", 10: "pan", 11: "expression", 64: "sustain", 91: "reverb", 93: "chorus"}
@@ -33,6 +35,7 @@ class Layer:
         self.name, self.channel, self.program, self.volume, self.pan = name, channel, program, volume, pan
         self.variants = {}               # n -> [(tick, status, d1, d2)], status 0x80/0x90/0xB0/0xE0
         self.descriptions = {}
+        self.levels = 0                  # 2.0: how many levels (generated or stored); 0: len(variants) (1.x)
 
 
 class Song:
@@ -225,6 +228,12 @@ def song_from_data(data, midi_bytes, diag=None):
     if feel not in ("straight", "swing"):
         diag.error(f"feel {feel!r}: straight or swing", "song.yaml", "music.feel")
     song.swing = feel == "swing"
+    # M5 (format 2.0, D029): a style -> the FM-1 generates harmony 1-5, bass 1-4, drums 1-3 from the chord chart;
+    # song.mid then holds only the melody and the levels made by hand or imported (they replace the generated ones)
+    song.style = _get(diag, data, "music.style", str, required=False, default=None)
+    if song.style is not None and song.style not in GEN_STYLES:
+        diag.error(f"style {song.style!r}: one of {', '.join(GEN_STYLES)}", "song.yaml", "music.style")
+        song.style = None
     diag.check()                                   # the rest needs a valid metre
 
     midi = read_midi(midi_bytes, diag)
@@ -420,6 +429,12 @@ def _read_layers(song, data, midi, chart_events, diag):
 
     for name, layer in song.layers.items():
         have = sorted(layer.variants)
+        if song.style and name in GEN_LEVELS:   # generated: any of its levels may be in song.mid (they override)
+            layer.levels = GEN_LEVELS[name]
+            for n in have:
+                if n > layer.levels:
+                    diag.error(f"{name}:{n}: a generated {name} has levels 1..{layer.levels}", "song.mid")
+            continue
         if not have:
             diag.error(f"layer {name} is in song.yaml but song.mid has no {name} track", "song.mid")
             continue

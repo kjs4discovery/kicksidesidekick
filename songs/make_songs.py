@@ -340,8 +340,7 @@ def arrange(s):
             mel.append((a, max(a + 10, e - 15), n(pitch), 90))
         t += d
     assert t <= nbars * bar_ticks, (s["title"], t / PPQ, nbars * bpb)   # (a melody may end before the last bar ends)
-    tracks = {"melody:1": mel}
-    tracks.update(arr.arrange(bars, bpb, s["pickup"], section_starts, arr.STYLES[s["style"]], swing))
+    tracks = {"melody:1": mel}           # (M5, format 2.0: the FM-1 generates the rest from the chart and the style)
     return tracks, nbars
 
 
@@ -378,8 +377,8 @@ def build_midi(s, tracks):
                  (0, meta_key(sharps.get(key, 0), 0))]
     out = [("conductor", conductor)]
     programs = dict(s["layers"])
-    order = ["melody:1"] + [f"harmony:{k}" for k in range(1, 6)] + [f"bass:{k}" for k in range(1, 5)] + \
-        [f"drums:{k}" for k in range(1, 4)]
+    order = [n for n in ["melody:1"] + [f"harmony:{k}" for k in range(1, 6)] + [f"bass:{k}" for k in range(1, 5)]
+             + [f"drums:{k}" for k in range(1, 4)] if n in tracks]
     for name in order:
         layer = name.split(":")[0]
         chan = CHANNELS[layer] - 1
@@ -459,6 +458,7 @@ music:
   tempo_bpm: {s['tempo']}
   pickup_beats: {s['pickup']}
   feel: {s['feel']}
+  style: {s['style']}                  # the FM-1 generates harmony 1-5, bass 1-4, drums 1-3 (D029)
 
 form:
 {chr(10).join(form)}

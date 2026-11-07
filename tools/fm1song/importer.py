@@ -16,12 +16,11 @@ from .smf import read_midi
 
 PPQ = 480
 GRID = PPQ // 4                         # quantize to sixteenths
-# the device's limits for one song (format 1.3): all levels' events decoded together, the file, and a share of the
-# song store (69 sectors for every song). The import fits a song into BUDGET_EVENTS (and the compiled file into
-# BUDGET_BYTES): the file's harmony and drums on an eighth grid first, then, if still over, the first sections that
-# fit (reported). Lifting this needs the device to decode one level a layer at a time and receive to flash (later)
-BUDGET_EVENTS = 15000
-BUDGET_BYTES = 56 * 1024
+# the device's limit for one song (M5, format 2.0): the largest level of each layer together, as the FM-1 holds one
+# level a layer at a time (it receives into the flash: the file's size is no longer the limit; M4 cut songs to fit
+# 1.3's every level in 64 KiB). Only over BUDGET_EVENTS: the file's harmony and drums on an eighth grid first, then,
+# if still over, the first sections that fit (reported)
+BUDGET_EVENTS = 24000                   # (the FM-1: 24576)
 QUALS = ["", "m", "7", "m7", "maj7", "sus4", "dim"]
 DRUM_CH = 9
 
@@ -55,6 +54,8 @@ class Imported:
     programs: dict                      # layer -> GM program 1..128
     levels: dict                        # layer -> {level: "from the file" / "generated: ..."}
     report: list = field(default_factory=list)
+    style: str = "pop"                  # M5 (format 2.0): the FM-1 generates the levels not from the file
+    stored: set = field(default_factory=set)   # the track names written to song.mid (from the file)
 
 
 # --------------------------------------------------------------------------------------------- reading the file
@@ -361,6 +362,14 @@ def events_of(imp):
     return sum(2 * len(v) for v in imp.tracks.values())
 
 
+def largest_levels(imp):
+    """the events of the largest level of each layer together: what the FM-1 holds at once (format 2.0)"""
+    by = {}
+    for n, v in imp.tracks.items():
+        by[n.split(":")[0]] = max(by.get(n.split(":")[0], 0), 2 * len(v))
+    return sum(by.values())
+
+
 def to_eighths(notes):
     """starts on eighths; at most one attack of a pitch an eighth (strums and rolls simplified)"""
     g = PPQ // 2
@@ -498,7 +507,9 @@ def build(midi, title, slug, roles=None, style=None, report=None, eighths=False,
             tracks[f"drums:{lv}"] = gen[f"drums:{lv}"]
         levels["drums"] = {lv: "generated: " + arr.LEVEL_TEXT["drums"][lv] for lv in (1, 2, 3)}
         rep.append("drums: none in the file: all levels generated")
-    return Imported(title, slug, bpb, tempo, pickup, key, nbars, chart_bars, tracks, progs, levels, rep)
+    stored = {n for n in tracks if n == "melody:1" or (levels.get(n.split(":")[0], {}).get(int(n.split(":")[1]), "")
+                                                       .find("generated") != 0)}
+    return Imported(title, slug, bpb, tempo, pickup, key, nbars, chart_bars, tracks, progs, levels, rep, sty, stored)
 
 
 # --------------------------------------------------------------------------------------------- writing it
@@ -508,7 +519,8 @@ CHANNELS = dict(drums=10, bass=3, harmony=2, melody=1)
 def song_mid(imp):
     from .smf import meta_tempo, meta_timesig, write_midi
     out = [("conductor", [(0, meta_tempo(round(60_000_000 / imp.tempo))), (0, meta_timesig(imp.bpb, 4))])]
-    for name in sorted(imp.tracks, key=lambda n: (["melody", "harmony", "bass", "drums"].index(n.split(":")[0]), n)):
+    for name in sorted((n for n in imp.tracks if n in imp.stored),   # (2.0: the generated levels are the FM-1's)
+                       key=lambda n: (["melody", "harmony", "bass", "drums"].index(n.split(":")[0]), n)):
         layer = name.split(":")[0]
         chan = CHANNELS[layer] - 1
         evs = []
@@ -583,6 +595,7 @@ music:
   tempo_bpm: {imp.tempo}
   pickup_beats: {imp.pickup}
   feel: straight
+  style: {imp.style}                  # the FM-1 generates the levels not from the file (format 2.0)
 
 form:
 {chr(10).join(form)}
@@ -606,20 +619,20 @@ def import_file(path, out, title=None, slug=None, category="Imported", rights="T
     slug = slug or re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:23].strip("-")
     rep = [f"import of {path.name}"]
     imp = build(midi, title, slug, roles, style, rep)
-    if events_of(imp) > BUDGET_EVENTS:  # over the device's budget: simplify, then shorten (reported)
+    if largest_levels(imp) > BUDGET_EVENTS:   # (M5: one level of each layer at once; over: simplify, then shorten)
         full = imp.nbars
         rep2 = [f"import of {path.name}"]
         imp = build(midi, title, slug, roles, style, rep2, eighths=True)
-        note = [f"{events_of(imp)} events with every level: the file's harmony and drums simplified to "
+        note = [f"{largest_levels(imp)} events in the largest levels: the file's harmony and drums simplified to "
                 f"eighths (at most 4 notes at once) to fit the FM-1 (budget {BUDGET_EVENTS} events)"]
         bars = imp.nbars
-        while events_of(imp) > BUDGET_EVENTS and bars > 8:
+        while largest_levels(imp) > BUDGET_EVENTS and bars > 8:
             bars = (bars - 1) // 8 * 8 + (1 if imp.pickup else 0)
             rep2 = [f"import of {path.name}"]
             imp = build(midi, title, slug, roles, style, rep2, eighths=True, max_bars=bars)
         if imp.nbars < full:
             note.append(f"still over: only the first {imp.nbars} of {full} bars are kept (whole 8-bar sections), "
-                        f"{events_of(imp)} events")
+                        f"{largest_levels(imp)} events")
         rep = rep2 + note
     out.mkdir(parents=True, exist_ok=True)
     (out / "song.mid").write_bytes(song_mid(imp))

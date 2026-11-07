@@ -57,14 +57,18 @@ Other options:
    | drums | L1, L2, L3 | **L2 = the file's drums**; L1 = simplified from them (kick, snare and hi-hat on the beats); L3 = the file's drums with generated fills every 4 bars |
 
    With no drums (or bass, or harmony) in the file, those levels are all generated.
-6. **Fits the FM-1:** a song may have at most about 15,000 events with every level, and its file must stay under the
-   FM-1's 64 KiB.
-   - A long song first gets its file harmony and drums on an eighth grid, with at most 4 notes at once.
-   - If it is still too big, only the first whole 8-bar sections that fit are kept. The report says so.
-   - The song store holds 69 sectors (about 276 KB) for all songs: our 9 songs take 45. Send imported songs as
-     space allows (`fm1song list` shows the free sectors; `fm1song delete` makes room).
-7. **Writes** `song.mid`, `song.yaml` (sections of 8 bars named Part 1, Part 2, …) and the report. The folder is
-   checked by compiling it.
+6. **Fits the FM-1** (M5, format 2.0): the song is written in 2.0. The FM-1 generates the levels that are not from
+   the file (the style: `--style`, or from the metre and tempo), so the file holds only the melody and the file's
+   own parts, each bar pattern once. Songs are no longer cut: the FM-1 holds one level of each layer at a time (up to
+   24,576 events together) and receives a song straight into its flash (no 64 KiB limit).
+   - Only if the largest levels together are still over 24,000 events, the file's harmony and drums go on an eighth
+     grid (at most 4 notes at once), and then, as a last resort, the song is shortened to whole 8-bar sections. The
+     report says so. (The five private test songs fit whole.)
+   - The store has 552 blocks of 512 bytes; a 2.0 song of ours takes 2–3, an imported one 17–90 (`fm1song list`
+     shows the free blocks; `fm1song delete` makes room).
+7. **Writes** `song.mid` (M5: the melody and the levels from the file; the generated ones are the FM-1's),
+   `song.yaml` (with `style:`; sections of 8 bars named Part 1, Part 2, …) and the report. The folder is checked by
+   compiling it.
 
 ## After importing
 
@@ -80,3 +84,6 @@ Other options:
 their conversions. Both are in .gitignore: never committed, and to be removed before beta. They were converted
 with `songs/private/import_all.sh` (also ignored), using only the files' content, category "Private test", rights
 "private test only, remove before beta". The roles chosen per file and the reasons are in docs/LOG.md (M4 Part 5).
+
+M5 Part 2: re-imported whole as 2.0 (no bars cut): Creep 8,676 bytes (90 bars), True Colors 8,788 (80), Let It Be
+14,080 (66), Rockin' 45,948 (147), Zombie 24,456 (213).

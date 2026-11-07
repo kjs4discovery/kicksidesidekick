@@ -30,13 +30,18 @@ def blobs10():
 
 
 @pytest.fixture(scope="module")
+def blobs13():
+    return [compile_folder(f, (1, 3))[0] for f in SONGS]
+
+
+@pytest.fixture(scope="module")
 def blobs11():
     return [compile_folder(f, (1, 1))[0] for f in SONGS]
 
 
 def test_header_layout(blobs):
     b = blobs[0]
-    assert b[:4] == b"FM1S" and b[4:6] == bytes([1, 3])
+    assert b[:4] == b"FM1S" and b[4:6] == bytes([2, 0])       # M5: our songs (with a style) are 2.0
     assert struct.unpack_from("<I", b, 8)[0] == len(b)
     assert HEADER.size == 32 and len(b) % 4 == 0
 
@@ -66,7 +71,7 @@ def test_checksum(blobs):
 
 
 @pytest.mark.parametrize("offset,value,expect", [
-    (0, b"FM1X", "magic"), (4, b"\x02", "version"), (8, b"\x00\x00\x01\x00", "header says"),
+    (0, b"FM1X", "magic"), (4, b"\x03", "version"), (8, b"\x00\x00\x01\x00", "header says"),
     (16, b"\x10\x00", "metre"), (18, b"\x09", "metre"), (20, b"\x01\x00\x00\x00", "tempo"),
     (28, b"\x00\x00", "bars"), (30, b"\x05", "pickup"), (6, b"\xff\x00", "chunks"),
 ])
@@ -77,9 +82,9 @@ def test_header_fields(blobs, offset, value, expect):
         read_compiled(fix_crc(b))
 
 
-def test_v10_to_v13_same_music(blobs, blobs10, blobs11):
+def test_v10_to_v13_same_music(blobs13, blobs10, blobs11):
     """1.0 / 1.1 / 1.2 carry the first 3 levels of each layer; 1.3 (M4) all of them (harmony 5, bass 4, drums 3)"""
-    for a, b, c in zip(blobs10, blobs11, blobs):
+    for a, b, c in zip(blobs10, blobs11, blobs13):
         ca, cb, cc = read_compiled(a), read_compiled(b), read_compiled(c)
         assert ca["version"] == "1.0" and cb["version"] == "1.1" and cc["version"] == "1.3" and len(b) < len(a) * 0.6
         for k in ("chord_events", "bars", "sections", "chords", "title", "key"):
@@ -126,9 +131,22 @@ def rebuild(blob, edit):
     return fix_crc(bytes(out))
 
 
-def test_ez_rules(blobs, blobs10):
+def test_v20_same_music_smaller(blobs, blobs13):
+    """2.0 (M5): the generated levels are made by the reader (the FM-1) from the chart and style: the same notes as
+    1.3, which stores them"""
+    for a, b in zip(blobs13, blobs):
+        ca, cb = read_compiled(a), read_compiled(b)
+        assert cb["version"] == "2.0" and len(b) < len(a) * 0.2
+        for k in ("chord_events", "bars", "sections", "chords", "title", "key", "category"):
+            assert ca[k] == cb[k]
+        for name, ly in ca["layers"].items():
+            assert cb["layers"][name]["variants"] == ly["variants"], name
+        assert cb["stored"] == {"melody": [1]} or "melody" in cb["stored"]
+
+
+def test_ez_rules(blobs13, blobs10):
     from fm1song.binformat import ez_encode
-    b = blobs[0]
+    b = blobs13[0]
     read_compiled(rebuild(b, lambda c: None))                   # the rebuild itself is faithful
     bad = {
         "EZ in a 1.0 file": lambda c: None,
@@ -218,7 +236,7 @@ def test_fuzz_yaml():
             pass
 
 
-def test_device_parser_agrees(blobs, blobs10, blobs11, tmp_path):
+def test_device_parser_agrees(blobs, blobs10, blobs11, blobs13, tmp_path):
     """the C parser (firmware/app/song.c, via build/fuzz/song_fuzz --diff) accepts exactly what this reader accepts"""
     import subprocess
     from conftest import ROOT
@@ -227,7 +245,7 @@ def test_device_parser_agrees(blobs, blobs10, blobs11, tmp_path):
         pytest.skip("build tools/song_fuzz first (tools/song_fuzz.sh)")
     rng = random.Random(4)
     files, expect = [], {}
-    seeds = blobs + blobs10 + blobs11
+    seeds = blobs + blobs10 + blobs11 + blobs13
     for k in range(3000):
         b = mutate(rng, rng.choice(seeds))
         if k % 4:
