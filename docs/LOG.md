@@ -1347,3 +1347,24 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 3 trimmed (mode screen, SYNTH with ANALOG, chorus, delay, arp, 20 presets), early checklist 2, STOP.
+
+2026-11-06 21:30 — Step M5 Part 3 (trimmed per HANDOFF 17:15: mode screen + SYNTH) —
+Status: done (emulator); committed; early checklist 2 written; STOP for review (Parts 4-5: next milestone)
+Did:
+- Mode screen after the splash (mascot, LEARN / SYNTH, cursor on LEARN; SELECT, PLAY). Rescue unaffected.
+- SYNTH: Felucca-Engines' ANALOG only (MIT files vendored in firmware/vendor/felucca-engines, VENDORED.md); our
+  host (8 voices, ADSR, PWM LFO), chorus, ping-pong delay (dotted eighth at the tempo), arpeggiator (up/down/up-down,
+  1/4 1/8 1/16, 60-200 BPM), OCT, knobs (K1-K4 cut res atk rel, ALGO chorus, PRESET delay), 21 presets of ours.
+- Delay/chorus lines reuse the song buffer; a SEND in SYNTH mode is refused (result 9); LIST reports the mode.
+- tools/vsynth_test.sh (laptop, ASan/UBSan): 21 presets sound, no clipping, voices end, arp steps.
+Learned / measured:
+- Package build/step-M5/part3/fm1acc-0.5.3-m5p3.fwsc, FM-1_46000503, sha256 ee11165d...d4ce. Full suite on it:
+  286 checks ALL PASS (build/step-M5/part3/emu/report.md).
+- Budget: image 448,736 B; RAM .data+.bss 76,032 of 98,304; pool 289,312 of 344,064; SYNTH 8 voices (SYNC SCREAM,
+  chorus + delay): longest render 24 % of a block (emulated).
+- Choices: no reverb, no PHASE, no random/latch (trimmed); mode fixed until power-off; ARP toggles on release (so
+  ARP held + SELECT sets the tempo); fixed velocity (the keys have none).
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M5-early-install-2.md (it supersedes -1 unless that was run).
+Next: STOP. Parts 4 (views) and 5 move to the next milestone, per HANDOFF.

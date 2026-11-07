@@ -53,7 +53,7 @@ OPEN_MS, PLAY_MS = 4400, 6200                  # after the splash (M5: 4 s): ope
 LAYERS_BTN = ("FX", "SCL", "ENV", "LFO")         # the layer buttons: drums, bass, harmony, melody
 HOLD = 1000                                      # a hold that makes a layer your part (the firmware: 900 ms)
 STATS = struct.Struct("<14I64I64I64i4I4I4I3I64H64B256I256I" + "iiIIiIIIIiIIIi4I3I")   # PL_STATS_TEMPOS 64
-STATS4 = struct.Struct("<10I")                  # version 4 (M3): part key_flashes mid_keys loop_step settings saves
+STATS4 = struct.Struct("<17I")                  # version 4 (M3): part key_flashes mid_keys loop_step settings saves
                                                # notes_guided folder
 FIELDS = ("magic version blocks render_max budget starts start_frames ends end_frames last_tick loops loop_from "
           "loop_to ntempo").split()
@@ -117,11 +117,16 @@ def tap(ms, name, n=1):
     return [x for k in range(n) for x in (f"{ms + 150 * k}:{name}!", f"{ms + 150 * k + 70}:{name}^!")]
 
 
-def run(name, ms, script, flash_id=None, flash="songs", host=None, cut=None, pkg=None):
+MODE_MS = 4050                                  # M5 part 3: the mode screen after the splash: PLAY here picks LEARN
+
+
+def run(name, ms, script, flash_id=None, flash="songs", host=None, cut=None, pkg=None, mode="LEARN"):
     """one emulator run. flash: a prepared image's name ("songs", "empty"), a path, or None (a blank chip); host: a
     command playing the laptop over USB (FM1_USB_HOST; the run ends soon after it does); cut: FM1_FLASH_CUT. Layer
     presses written M3's way are translated (m3_presses); events marked "!" (hold, tap) are M4's own"""
     script = m3_presses([e for e in script if not e.endswith("!")]) + [e[:-1] for e in script if e.endswith("!")]
+    if mode == "LEARN" and not (pkg and "m4" in Path(str(pkg)).name):   # (M4's packages have no mode screen)
+        script += [f"{MODE_MS}:PLAY", f"{MODE_MS + 60}:PLAY^"]
     script = sorted(script, key=lambda e: int(e.split(":")[0]))
     d = OUT / "runs"
     d.mkdir(parents=True, exist_ok=True)
@@ -234,7 +239,9 @@ def stats(ram):
     s["notes_guided"], s["folder"], s["hints"], s["splash_notes"] = 0, 0, 0, 0
     if s["version"] >= 4:
         (s["part"], s["key_flashes"], s["mid_keys"], s["loop_step"], s["settings"], s["settings_saves"],
-         s["notes_guided"], s["folder"], s["hints"], s["splash_notes"]) = STATS4.unpack_from(ram, i + STATS.size)
+         s["notes_guided"], s["folder"], s["hints"], s["splash_notes"], s["mode"], s["synth_notes"],
+         s["synth_voices_max"], s["synth_preset"], s["arp_steps"], s["synth_peak"],
+         s["synth_render_max"]) = STATS4.unpack_from(ram, i + STATS.size)
     return s
 
 
@@ -511,7 +518,7 @@ def test_boot(rep):
     sp = run("boot-splash", 2800, [])
     li = run("boot-list", 4300, [])
     cream = sp["lcd"].getpixel((20, 20))
-    check(sp["stats"]["ui_view"] == 16 and cream[0] > 200 and cream[2] < 230 and li["stats"]["ui_view"] == 0,
+    check(sp["stats"]["ui_view"] >= 16 and cream[0] > 200 and cream[2] < 230 and li["stats"]["ui_view"] == 0,
           f"the splash (the logo, boot-splash.png) is still up at 2.8 s; the song list at 3.3 s (boot-list.png)")
     pk = run("boot-play-in-splash", 4300, press(2000, "PLAY"))
     check(pk["stats"]["ui_view"] == 0 and pk["stats"]["starts"] == 0,
@@ -1784,7 +1791,76 @@ def test_m5p2(all_songs, rep):
     return st["ok"]
 
 
-PART_TESTS.update({"m5p1": test_m5p1, "m5p2": test_m5p2})
+def test_m5p3(all_songs, rep):
+    """M5 part 3 (D030, trimmed: HANDOFF 2026-11-06 17:15): the mode screen, SYNTH mode on Felucca-Engines' ANALOG"""
+    lines, st, check = checker("M5 part 3: the mode screen, SYNTH mode")
+    m = run("m5p3-mode", 4700, [], mode=None)
+    check(m["stats"]["ui_view"] == 6 and m["stats"]["mode"] == 0,
+          "after the splash: the mode screen (the mascot, LEARN / SYNTH, the cursor on LEARN; m5p3-mode.png)")
+    l = run("m5p3-learn", 4700, [])
+    check(l["stats"]["ui_view"] == 0 and l["stats"]["mode"] == 1, "PLAY on LEARN: the song list, as before")
+    pick = ["4050:e0:1", f"4200:PLAY", f"4260:PLAY^"]       # SELECT to SYNTH, PLAY
+    m2 = run("m5p3-mode-synth-cursor", 4150, ["4050:e0:1"], mode=None)
+    chord = ["5000:C4", "5000:E4", "5000:G4", "6500:C4^", "6500:E4^", "6500:G4^"]
+    s1 = run("m5p3-synth", 7000, pick + chord, mode=None)
+    ss = s1["stats"]
+    snd = rms(s1["left"][int(5.2 * RATE):int(6.4 * RATE)])
+    check(ss["mode"] == 2 and ss["ui_view"] == 7 and ss["synth_notes"] == 3 and snd > 300 and
+          ss["synth_peak"] < 8388607, f"SELECT + PLAY: SYNTH (m5p3-synth.png); a chord of 3 keys: 3 voices, sound "
+          f"(rms {snd:.0f}), no clipping (peak {ss['synth_peak']} of 8388607)")
+    check(m2["stats"]["ui_view"] == 6, "the mode screen's cursor moves to SYNTH (m5p3-mode-synth-cursor.png)")
+    # presets: SELECT; every one sounds (5 keys held 1 s each)
+    bad, peaks = [], []
+    n = 21
+    for i in range(0, n, 4):
+        sc = pick + ([f"4600:e0:{i}"] if i else []) + [f"5000:{k}" for k in ("C4", "E4", "G4", "B4")] + \
+            [f"6000:{k}^" for k in ("C4", "E4", "G4", "B4")]
+        r1 = run(f"m5p3-preset-{i}", 6200, sc, mode=None)
+        v = rms(r1["left"][int(5.1 * RATE):int(6.0 * RATE)])
+        peaks.append((i, round(v)))
+        if r1["stats"]["synth_preset"] != i or v < 50 or r1["stats"]["synth_peak"] >= 8388607:   # (RISER: a 6 s attack)
+            bad.append((i, r1["stats"]["synth_preset"], round(v)))
+    check(not bad, f"presets by SELECT: each sounds, none clips (rms of 0, 4, .. 20: {peaks}) {bad or ''}")
+    # the arpeggiator: a preset with one (OCTAVE BOUNCE, 3rd), and ARP on preset 1 (press and release)
+    a1 = run("m5p3-arp-preset", 7000, pick + ["4600:e0:2", "5000:C4", "5000:G4", "6800:C4^", "6800:G4^"], mode=None)
+    a2 = run("m5p3-arp-button", 7500, pick + ["4600:ARP", "4700:ARP^", "5000:C4", "5000:E4", "5000:G4",
+                                              "7200:C4^", "7200:E4^", "7200:G4^"], mode=None)
+    a3 = run("m5p3-arp-seq", 7500, pick + ["4600:ARP", "4700:ARP^", "4800:SEQ", "4900:SEQ^", "5000:GLO", "5100:GLO^",
+                                           "5200:C4", "5200:G4", "7200:C4^", "7200:G4^"], mode=None)
+    check(a1["stats"]["arp_steps"] >= 12 and a2["stats"]["arp_steps"] >= 3 and   # (1/16 at 120 BPM: 8 a second)
+          a3["stats"]["arp_steps"] > a2["stats"]["arp_steps"],
+          f"the arpeggiator: OCTAVE BOUNCE's own up-down 1/16 ({a1['stats']['arp_steps']} steps in 1.8 s); ARP on "
+          f"preset 1, up 1/8 at 120 BPM ({a2['stats']['arp_steps']} in 2.2 s); SEQ, GLO: down 1/16 "
+          f"({a3['stats']['arp_steps']} in 2 s; m5p3-arp-seq.png)")
+    # the knobs and the octave (the screen: m5p3-knobs.png)
+    run("m5p3-knobs", 6000, pick + ["4600:e2:-10", "4700:e3:10", "4800:e4:5", "4900:e5:-5", "5000:e1:4", "5100:OCTUP",
+                                    "5200:OCTUP^"], mode=None)
+    oc = run("m5p3-oct", 6000, pick + ["4600:OCTUP", "4700:OCTUP^", "5000:C4", "5500:C4^"], mode=None)
+    check(oc["stats"]["key_note_last"] == 72, f"OCT+: the keys an octave up (C4 key -> {oc['stats']['key_note_last']})")
+    # CPU: 8 voices of the busiest sound (SYNC SCREAM, 5th), chorus and delay on
+    keys8 = ("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
+    cp = run("m5p3-cpu", 7000, pick + ["4600:e0:4"] + [f"5000:{k}" for k in keys8] + [f"6800:{k}^" for k in keys8],
+             mode=None)
+    c = cp["stats"]
+    load = c["synth_render_max"] / c["budget"] if c["budget"] else 9
+    check(c["synth_voices_max"] == 8 and load < 0.8 and not cp["halt"],
+          f"8 voices of SYNC SCREAM with chorus and delay: the longest render {load * 100:.0f} % of its block time "
+          f"(emulated CPU)")
+    # learning and SYNTH never at once: a song sent in SYNTH mode is refused, nothing written
+    f = OUT / "runs" / "saints-synth.fm1s"
+    f.write_bytes(compile_folder(ROOT / "songs/saints")[0])
+    sn = run("m5p3-send", 30000, pick, mode=None, host=f"{sys.executable} -I {ROOT}/tools/m2_host.py synth-send {f}")
+    check("result 9" in sn["out"] and "SYNTH mode" in sn["out"] and records(sn["flash"]) == records(FLASH["songs"]),
+          "a song sent in SYNTH mode: refused (switch off, LEARN, send), the store unchanged")
+    # an unknown flash chip: SYNTH still plays (it needs no flash)
+    uf = run("m5p3-flash-unknown", 7000, pick + chord, flash_id="c84017", mode=None)
+    check(uf["stats"]["mode"] == 2 and rms(uf["left"][int(5.2 * RATE):int(6.4 * RATE)]) > 300 and not uf["halt"],
+          "unknown flash id c84017: SYNTH mode plays, no crash")
+    rep += lines
+    return st["ok"]
+
+
+PART_TESTS.update({"m5p1": test_m5p1, "m5p2": test_m5p2, "m5p3": test_m5p3})
 
 
 if __name__ == "__main__":

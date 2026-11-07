@@ -4,6 +4,7 @@
 #
 #   m2_host.py stall FILE.fm1s N     start a send, answer the FM-1's first N read requests, then go quiet
 #                                    (a cable pulled half way): the FM-1 must give up and store nothing
+#   m2_host.py synth-send FILE.fm1s     (M5) ask LIST until the FM-1 is in SYNTH mode, then send: it must refuse
 import sys
 import time
 import zlib
@@ -36,7 +37,23 @@ def stall(path, n):
     return 1
 
 
+def synth_send(path):
+    blob = Path(path).read_bytes()
+    dev = device.connect(device.PipeBackend())
+    for _ in range(200):
+        end = device.song_list(dev)[1]
+        if end.get("mode") == 2:
+            r = device.song_send(dev, blob)
+            print(f"result {r['result']}: {device.explain(r)}", file=sys.stderr)
+            return 0
+        time.sleep(0.2)
+    print("never in SYNTH mode", file=sys.stderr)
+    return 1
+
+
 if __name__ == "__main__":
     if sys.argv[1:2] == ["stall"]:
         sys.exit(stall(sys.argv[2], int(sys.argv[3])))
+    if sys.argv[1:2] == ["synth-send"]:
+        sys.exit(synth_send(sys.argv[2]))
     sys.exit("usage: m2_host.py stall FILE.fm1s N")

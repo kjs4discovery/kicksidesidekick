@@ -16,9 +16,9 @@ credits = "Built on fm1-base and felucca-bsp (MPL-2.0). GM sounds: Sonivox EAS (
 
 # Sonivox EAS, upstream, vendored in firmware/vendor/sonivox (Apache-2.0): compiled at -O2 as separate units,
 # with our configuration and host layer from eas/ (ours). The 22.05 kHz wavetable set wt_200k_G (GM).
-include = ["eas", "../vendor/sonivox/arm-wt-22k/host_src", "../vendor/sonivox/arm-wt-22k/lib_src"]
+include = ["../vendor/felucca-engines/src", "eas", "../vendor/sonivox/arm-wt-22k/host_src", "../vendor/sonivox/arm-wt-22k/lib_src"]
 device_include = ["eas/fm1inc"]   # the C library header EAS wants, for the firmware only (ours)
-o2 = ["synth.c", "player.c", "song.c", "gen.c", "store.c", "eas/eas_host_fw.c",
+o2 = ["synth.c", "vsynth.c", "player.c", "song.c", "gen.c", "store.c", "eas/eas_host_fw.c",
       "../vendor/sonivox/arm-wt-22k/host_src/eas_config.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_chorus.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_chorusdata.c",

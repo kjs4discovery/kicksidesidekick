@@ -107,6 +107,10 @@ struct player_stats {
     uint32_t folder;                      /* the song list's folder (ui.c): 0 the folders, 1 all songs, 1 + k category k */
     uint32_t hints;                       /* M5: the controls hint shown (ui.c) */
     uint32_t splash_notes;                /* M5: the start-up melody's notes played (ui.c) */
+    /* M5 part 3: SYNTH mode (ui.c, synth.c, vsynth.c) */
+    uint32_t mode;                        /* 0 not chosen yet (the mode screen), 1 LEARN, 2 SYNTH */
+    uint32_t synth_notes, synth_voices_max, synth_preset, arp_steps, synth_peak;
+    uint32_t synth_render_max;            /* the longest SYNTH render (ticks24; budget as player_stats.budget) */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

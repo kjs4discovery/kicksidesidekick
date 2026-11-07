@@ -58,7 +58,7 @@ static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 18
 #define BOX_H 44
 #define BOX_STEP 60
 
-enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT };
+enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH };   /* (M5: the mode screen, SYNTH) */
 /* the play screen's views (EDIT); PV_CHORD: the part's main view (the chord, or your part's note or hit) */
 enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_ROLL, PV_NOTATION, PV_GRID, PV_DNOTE, PV_N };
 static const uint8_t VIEWS[SONG_LAYERS][8] = {   /* each part's views in EDIT's order (PV_N ends a list) */
@@ -354,12 +354,11 @@ static void lcd_done(void)               /* the last blit has reached the LCD (i
 /* -------------------------------------------------------------------------- splash --- */
 /* the logo (logo_gen.h: tools/logo_to_c.py from firmware/assets/tmp-logo.jpg), its name and version under it. Called
  * by the platform at power-on, before anything else of the app runs; the list comes SPLASH_MS after power-on */
-void app_splash(void)
+static void draw_logo(int32_t oy)         /* (M5: the mode screen's mascot too) */
 {
     const uint8_t *p = LOGO_RLE, *end = LOGO_RLE + sizeof LOGO_RLE;
     uint32_t y0 = 0, x = 0, y = 0, band;
-    int32_t ox = (240 - (int32_t)LOGO_W) / 2, oy = 12;
-    lcd_fill(0, 0, 240, 240, LOGO_BG);
+    int32_t ox = (240 - (int32_t)LOGO_W) / 2;
     while (y0 < LOGO_H) {                /* in bands the canvas can hold */
         band = LOGO_H - y0 < 112u ? LOGO_H - y0 : 112u;
         cv_begin(LOGO_W, band, LOGO_BG);
@@ -376,6 +375,13 @@ void app_splash(void)
         cv_blit((uint32_t)ox, (uint32_t)oy + y0);
         y0 += band;
     }
+}
+
+void app_splash(void)
+{
+    int32_t oy = 12;
+    lcd_fill(0, 0, 240, 240, LOGO_BG);
+    draw_logo(oy);
     cv_begin(240, 40, LOGO_BG);
     text_in(0, 240, 0, &FONT_B, APP_NAME, RGB(60, 50, 40));
     text_in(0, 240, 22, &FONT_XS, "v" FW_VERSION, RGB(150, 136, 118));
@@ -1101,9 +1107,21 @@ static void input_play(uint32_t down, uint32_t now)
     }
 }
 
+#include "synthui.c"
+
 static void input(void)
 {
     uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k, now = plat_ms();
+    if (!ui.splash && (ui.view == V_MODE || ui.view == V_SYNTH)) {   /* M5: the mode screen, SYNTH mode */
+        if (ui.view == V_MODE)
+            mode_input(keys, btn, down);
+        else
+            synth_input(keys, btn, down);
+        ui.keys = keys;
+        ui.released = ui.buttons & ~btn;
+        ui.buttons = btn;
+        return;
+    }
     for (k = 0; k < NKEYS; k++) {
         uint32_t bit = 1u << k;
         if ((keys & bit) && !(ui.keys & bit)) {
@@ -3372,6 +3390,8 @@ void app_ui_init(void)
     ui.flash_ok = plat_data(PLAT_DATA_LO) != 0;   /* 0: the platform refused the chip (fm1-base main_fm1.c) */
     settings_load();
     ui.splash = plat_ms() < SPLASH_MS;   /* (after a restore or a resource install: no splash, straight back) */
+    ui.view = ui.splash ? V_MODE : V_LIST;   /* M5: after the splash, LEARN or SYNTH (no splash: learning, as before) */
+    player_stats.mode = ui.splash ? 0 : 1u;
     if (!ui.splash)
         lcd_fill(0, 0, 240, 240, C_BLACK);
     ui.redraw = 1;
@@ -3409,7 +3429,8 @@ void app_frame(void)
         ui.splash = 0;
         ui.redraw = 1;
     }
-    if (ui.lib_seen != lib_changes) {     /* songs sent or deleted: back to the list, from the top */
+    if (ui.lib_seen != lib_changes && ui.view != V_MODE && ui.view != V_SYNTH) {   /* songs sent or deleted: back to
+                                                                                  * the list, from the top */
         ui.lib_seen = lib_changes;
         ui.view = V_LIST;
         ui.sel = ui.top = 0;
@@ -3420,6 +3441,12 @@ void app_frame(void)
     player_stats.ui_view = (uint32_t)ui.view + (ui.splash ? 16u : 0u);
     if (ui.splash)
         return;
+    if (ui.view == V_MODE || ui.view == V_SYNTH) {
+        if (ui.view == V_MODE ? ui.redraw : synth_dirty(now))
+            ui.view == V_MODE ? draw_mode() : draw_synth();
+        ui.redraw = 0;
+        return;
+    }
     if (ui.view == V_HINT) {
         if (ui.redraw)
             draw_hint();

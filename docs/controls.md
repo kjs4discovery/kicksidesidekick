@@ -440,3 +440,35 @@ Built: ![harmony notation L1](step-M4/m4p3-harm-notation1.png) ![L2](step-M4/m4p
 
 ![the controls hint](step-M5/m5p1-hint.png) ![the bass tab](step-M5/m5p1-tab.png)
 ![bass notation](step-M5/m5p1-bass-notation.png) ![L5 lights](step-M5/m5p1-l5.png)
+
+### Part 2: storage (no new controls)
+
+- A song opens at level 1 of each layer as before; turning a level knob builds that level on the FM-1 (format 2.0):
+  the layer changes at once, the others play on.
+- While a song arrives over USB the FM-1 may show **MAKING ROOM** for a moment (it compacts its store).
+
+### Part 3: the mode screen and SYNTH mode (trimmed, HANDOFF 2026-11-06 17:15)
+
+- **Every power-on, after the splash:** the mascot and two boxes, **LEARN** / **SYNTH**, the cursor on LEARN.
+  SELECT moves it; PLAY (or EDIT) chooses. LEARN is the play-along app as before. The mode stays until the FM-1 is
+  switched off. The power-on rescue (REC, or OCT- + OCT+ held at power-on) comes before it, as before.
+- **SYNTH** (8 voices, Felucca-Engines' ANALOG engine with our own host, chorus, delay, arpeggiator, 21 presets):
+
+| Control | Does |
+|---|---|
+| keys | play (fixed velocity); OCT- / OCT+ shift them by octaves |
+| SELECT | the preset (21, ours: NEON PAD, MIDNIGHT STRINGS, OCTAVE BOUNCE, SUNSET LEAD, SYNC SCREAM, ...) |
+| K1 / K2 / K3 / K4 | cutoff / resonance / attack / release |
+| ALGORITHM / PRESET | chorus / delay (a dotted eighth at the tempo, ping-pong) |
+| ARP (press, release) | the arpeggiator on / off (its last pattern; UP at first) |
+| ARP held + SELECT | the tempo, 60–200 BPM (the arpeggio and the delay follow it) |
+| SEQ | the pattern: UP, DOWN, UP-DOWN |
+| GLO | the rate: 1/4, 1/8, 1/16 |
+| MASTER | the volume |
+
+  Some presets bring their own arpeggio (OCTAVE BOUNCE up-down 1/16, CHIP BLIP and LASER ARP up, GRID PULSE down).
+  A song sent over USB while in SYNTH mode is refused: switch off, choose LEARN, send. Later (not in this build):
+  the PHASE engine, reverb, a random pattern, latch.
+
+![the mode screen](step-M5/m5p3-mode.png) ![SYNTH](step-M5/m5p3-synth.png)
+![arpeggiator on](step-M5/m5p3-arp-seq.png) ![knobs turned](step-M5/m5p3-knobs.png)

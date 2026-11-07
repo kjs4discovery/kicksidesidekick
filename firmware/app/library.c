@@ -8,8 +8,8 @@
  * USB (fm1-base APP_USB_CMD; the update's SysEx framing, F0 pack7(00 59 cmd len24 body ~sum) F7). The laptop sends:
  *   0x70 LIST                    -> 0x71 ENTRY per song {index, count, status, sectors, len u24, slug[23], blocks
  *                                   u16}, then 0x72 END {count, free sectors, longest free run, sectors, minor,
- *                                   result, free blocks u16, blocks u16, major} (M5: the fields after result; major 2:
- *                                   it reads 2.0 too)
+ *                                   result, free blocks u16, blocks u16, major, mode} (M5: the fields after result;
+ *                                   major 2: it reads 2.0 too; mode 2: SYNTH, sends refused)
  *   0x73 SEND {len u32, crc u32[, slug[24]]} -> the FM-1 makes room (store_begin), pulls the file with the update's
  *                                   read requests (plat_host_read) straight into the flash (M5; M4: into RAM, 64 KiB
  *                                   at most), checks its CRC and the whole song (song_open) in place, then commits it
@@ -24,6 +24,7 @@
  *
  * A send or delete stops the song playing and goes back to the list (the file being played may be rewritten). */
 #include "store.h"
+#include "vsynth.h"
 
 #define SC_LIST 0x70u
 #define SC_ENTRY 0x71u
@@ -31,7 +32,8 @@
 #define SC_SEND 0x73u
 #define SC_DELETE 0x74u
 #define SC_RESULT 0x7Fu
-enum { SR_OK, SR_NO_FLASH, SR_SIZE, SR_TRANSFER, SR_CRC, SR_INVALID, SR_STORE, SR_NOT_FOUND, SR_BAD };
+enum { SR_OK, SR_NO_FLASH, SR_SIZE, SR_TRANSFER, SR_CRC, SR_INVALID, SR_STORE, SR_NOT_FOUND, SR_BAD,
+       SR_SYNTH };                       /* M5: in SYNTH mode (the song buffer is the synth's): restart in LEARN */
 
 #define LIB_DEC_BYTES (SONG_BUILD_BYTES > SONG_DECODE_BYTES ? SONG_BUILD_BYTES : SONG_DECODE_BYTES)
 static uint8_t piece[512] __attribute__((aligned(4)));                          /* a song being received: a piece */
@@ -238,7 +240,8 @@ static void sc_list(void)
     b[8] = (uint8_t)STORE_BLOCKS;
     b[9] = (uint8_t)(STORE_BLOCKS >> 8);
     b[10] = 2;                           /* M5: and 2.0 */
-    ota_send_msg(SC_END, b, 11);
+    b[11] = (uint8_t)player_stats.mode;  /* M5 part 3: 0 the mode screen, 1 LEARN, 2 SYNTH (sends refused) */
+    ota_send_msg(SC_END, b, 12);
 }
 
 static void sc_send(const uint8_t *body, uint32_t n)
@@ -250,6 +253,10 @@ static void sc_send(const uint8_t *body, uint32_t n)
     int r;
     if (n != 8u && n != 32u) {
         sc_result(SC_SEND, SR_BAD, 0);
+        return;
+    }
+    if (vsynth_active()) {               /* (song_open would decode into the synth's delay lines) */
+        sc_result(SC_SEND, SR_SYNTH, 0);
         return;
     }
     len = rd32le(body);

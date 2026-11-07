@@ -22,9 +22,10 @@ import fm1_install as I  # noqa: E402
 OURS = "FM-1_46"                       # our firmware's identity prefix (firmware/app/fm1.toml id_prefix)
 SC_LIST, SC_ENTRY, SC_END, SC_SEND, SC_DELETE, SC_RESULT = 0x70, 0x71, 0x72, 0x73, 0x74, 0x7F
 RESULTS = {0: "ok", 1: "the FM-1's flash is not usable (RAM ONLY): it cannot keep songs",
-           2: "the file is too big for the FM-1 (64 KiB at most)", 3: "the transfer stopped (USB)",
+           2: "the file is too big for the FM-1 (M5: 256 KiB at most; M4: 64 KiB)", 3: "the transfer stopped (USB)",
            4: "the file arrived damaged (CRC)", 5: "the FM-1 refused the song", 6: "the FM-1 could not store it",
-           7: "no such song on the FM-1", 8: "the FM-1 did not understand the request (an older firmware?)"}
+           7: "no such song on the FM-1", 8: "the FM-1 did not understand the request (an older firmware?)",
+           9: "the FM-1 is in SYNTH mode: switch it off and on, choose LEARN, then send"}
 SONG_ERRORS = {-1: "SHORT", -2: "MAGIC", -3: "VERSION", -4: "SIZE", -5: "CRC", -6: "HEADER", -7: "DIRECTORY",
                -8: "MISSING", -9: "META", -10: "SECTIONS", -11: "CHORDS", -12: "CHANGES", -13: "BARS", -14: "LAYERS",
                -15: "EVENTS", -16: "TOO BIG"}
@@ -169,7 +170,8 @@ def song_list(dev):
             m5 = len(body) >= 11
             return {"count": body[0], "free": body[1], "largest": body[2], "sectors": body[3], "minor": body[4],
                     "result": body[5], "major": body[10] if m5 else 1,
-                    "free_blocks": body[6] | body[7] << 8 if m5 else None, "blocks": body[8] | body[9] << 8 if m5 else None}
+                    "free_blocks": body[6] | body[7] << 8 if m5 else None, "blocks": body[8] | body[9] << 8 if m5 else None,
+                    "mode": body[11] if len(body) >= 12 else None}
         return None
 
     dev.link.drain()

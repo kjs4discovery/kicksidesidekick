@@ -10,6 +10,7 @@
 #include "eas_synth.h"
 #include "plat.h"
 #include "player.h"
+#include "vsynth.h"
 
 uint32_t fw_eas_pool_used(void);          /* eas/eas_host_fw.c */
 uint32_t fw_eas_pool_size(void);
@@ -68,6 +69,7 @@ void synth_midi(uint8_t status, uint8_t d1, uint8_t d2)
 
 void synth_panic(void)
 {
+    vsynth_all_off();
     panic_req = 1;
     player_panic();
 }
@@ -80,6 +82,14 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     if (!ready || n != SYNTH_BLOCK) {
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
+        return;
+    }
+    if (vsynth_active()) {                /* M5: SYNTH mode: our synth instead of EAS and the song player */
+        t0 = plat_ticks24();
+        vsynth_render(lr, n, master_q12);
+        t = plat_ticks24() - t0;
+        if (t > player_stats.synth_render_max)
+            player_stats.synth_render_max = t;
         return;
     }
     if (panic_req) {
