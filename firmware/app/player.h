@@ -111,6 +111,16 @@ struct player_stats {
     uint32_t mode;                        /* 0 not chosen yet (the mode screen), 1 LEARN, 2 SYNTH */
     uint32_t synth_notes, synth_voices_max, synth_preset, arp_steps, synth_peak;
     uint32_t synth_render_max;            /* the longest SYNTH render (ticks24; budget as player_stats.budget) */
+    /* M6 (16 words: tools/m6_test.py reads them by these names) */
+    uint32_t mode_switches;               /* back to the mode screen (HOME held, Settings > Switch mode) */
+    uint32_t zoom;                        /* the scrolling / staff views' zoom: the ticks a 240-pixel screen shows */
+    uint32_t uke;                         /* the chord boxes: 0 guitar, 1 ukulele (the setting) */
+    uint32_t roll_keys;                   /* the melody roll's piano-key labels drawn (rows, the last frame) */
+    uint32_t jam, jam_notes;              /* SYNTH's drum jam: on; its drum notes played */
+    uint32_t shift;                       /* SYNTH: the SHIFT layer held (the K1-K4 second set) */
+    uint32_t fx_reverb, fx_crush;         /* SYNTH: the reverb and bit-crush amounts (0..127) */
+    uint32_t arp_pattern, arp_rate;       /* SYNTH: ARP_*, RATE_* now */
+    uint32_t m6_pad[5];
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

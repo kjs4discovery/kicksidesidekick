@@ -25,6 +25,7 @@ uint32_t vsynth_presets(void);
 const char *vsynth_preset_name(uint32_t i);
 void vsynth_start(void *mem, uint32_t bytes);   /* bytes >= VS_MEM_BYTES, 4-aligned; from then on synth.c renders this */
 int vsynth_active(void);
+void vsynth_stop(void);                   /* M6: EAS renders again; the memory is free once a render running now ends */
 void vsynth_preset(uint32_t i);           /* load preset i: its sound, its knob values and its arpeggio (if any) */
 uint32_t vsynth_preset_arp(uint32_t i, uint32_t *rate);   /* preset i's arpeggio: ARP_* (ARP_OFF: none), its rate */
 int32_t vsynth_knob(uint32_t k);          /* the knob's value now */

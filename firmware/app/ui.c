@@ -16,6 +16,7 @@
 #include "song.h"
 #include "logo_gen.h"
 #include "guitar.h"
+#include "ukulele.h"
 
 static void ui_busy(const char *a, const char *b);
 static void text_cat(char *d, const char *s);
@@ -65,15 +66,28 @@ enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH,  
 #define WIPE_HOLD_MS 2000u               /* PLAY held this long on the WIPE screen: the songs are erased */
 static void wipe_open(int back);
 /* the play screen's views (EDIT); PV_CHORD: the part's main view (the chord, or your part's note or hit) */
-enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_ROLL, PV_NOTATION, PV_GRID, PV_DNOTE, PV_N };
+enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_ROLL, PV_NOTATION, PV_GRID, PV_DNOTE,
+       PV_MTAB,                          /* M6: the melody's tab (guitar, or ukulele: the setting) */
+       PV_BARS,                          /* M6: the harmony's bar view (the roll: chords as stacked bars) */
+       PV_N };
 static const uint8_t VIEWS[SONG_LAYERS][8] = {   /* each part's views in EDIT's order (PV_N ends a list) */
     {PV_GRID, PV_DNOTE, PV_N},                                    /* drums (M4: only these two, the user's note) */
     {PV_CHORD, PV_KEYS, PV_CHART, PV_TAB, PV_NOTATION, PV_N},     /* bass */
-    {PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_NOTATION, PV_N},  /* harmony (M4: + the notation, a grand staff) */
-    {PV_CHORD, PV_KEYS, PV_CHART, PV_ROLL, PV_NOTATION, PV_N},    /* melody */
+    {PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_NOTATION, PV_BARS, PV_N},   /* harmony (M4: + the notation, a grand
+                                                                             * staff; M6: + the bar view) */
+    {PV_CHORD, PV_KEYS, PV_CHART, PV_ROLL, PV_NOTATION, PV_MTAB, PV_N},     /* melody (M6: + its tab) */
 };
 static const char *const VIEW_NAME[PV_N] = {"MAIN", "KEYBOARD", "CHART", "GUITAR", "BASS TAB", "MELODY ROLL",
-                                            "NOTATION", "DRUM GRID", "DRUM NOTATION"};
+                                            "NOTATION", "DRUM GRID", "DRUM NOTATION", "GUITAR TAB", "BAR VIEW"};
+static const char *view_name(uint32_t v);   /* (M6: the ukulele setting renames two)
+                                              * the scrolling and staff views: SELECT zooms there (M6) */
+#define ZOOMS 7u
+static const uint8_t ZOOM_Q[ZOOMS] = {2, 3, 4, 6, 8, 12, 16};   /* the span, in quarters of the M5 one (1.25 bars
+                                                                 * ahead; the notation 36 px a beat) */
+#define ZOOM_STAFF_MAX 4u                /* the notation views: up to twice the span (the noteheads keep apart) */
+static int view_staff(int view);
+static int view_zooms(int view);
+static void scroll_setup(int view);
 #define L_DRUMS 0u
 #define L_BASS 1u
 #define L_HARM 2u
@@ -90,7 +104,9 @@ static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "M
  * copies, the newer valid one wins; the stock firmware never uses these sectors) */
 #define SET_MAGIC 0x31534D46u            /* "FMS1" */
 enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_QUIET, S_LIGHTS, S_VIEWS, S_BASS_OCT, S_HINT,
-       S_WIPE,                           /* M5.1: a screen (WIPE SONG STORE), no value */
+       S_MODE,                           /* M6: back to the mode screen (LEARN / SYNTH), no value */
+       S_UKE,                            /* M6: chord boxes and the melody's tab: GUITAR / UKULELE */
+       S_WIPE,                           /* M5.1: a screen (WIPE SONG STORE), no value; the last row */
        S_N };
 struct settings {
     uint32_t magic, version;
@@ -104,18 +120,20 @@ struct settings {
 #define SV(i) (*((uint32_t)(i) < 8u ? &ui.set.v[(i)] : &ui.set.v2[(uint32_t)(i) - 8u]))
 #define HINT_TIMES 10u                   /* the controls hint shows itself this many times, then stays off */
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
-                                          "Note names (notation)", "Scrolling views show", "Quiet level",
+                                          "Note names (notation)", "Zoom at start", "Quiet level",
                                           "Key lights", "Views (hide some)", "Bass sound", "Controls hint",
-                                          "Wipe song store"};
-static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2, 1};   /* how many values each has (Views: a screen) */
+                                          "Switch mode", "Chord boxes, tab", "Wipe song store"};
+static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2, 1, 2, 1};   /* how many values each has (Views: a screen) */
 static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
                                             {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}, {"25 %", "50 %", ""},
                                             {"OFF", "ON", ""}, {">", "", ""}, {"REAL", "+1 OCTAVE", ""},
-                                            {"OFF", "ON", ""}, {">", "", ""}};
+                                            {"OFF", "ON", ""}, {">", "", ""}, {"GUITAR", "UKULELE", ""},
+                                            {">", "", ""}};
 /* (M4: count-in volume MEDIUM, the user's note; the quiet level 50 %, "half volume") */
 /* (M5: the bass +1 octave on the small speaker; the controls hint on) */
-static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0};
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0};
 static const uint8_t QUIET_PCT[2] = {25, 50};   /* a layer set to QUIET (D027: M3's guide volume became this) */
+#define HOME_HOLD_MS 2000u               /* M6: HOME held this long, from any screen: the mode screen */
 #define HOLD_MS 900u                     /* a layer button held this long: your part (D027); shorter: its volume */
 enum { VOL_FULL, VOL_QUIET, VOL_MUTED };
 static const uint8_t COUNT_VOL[3] = {64, 96, 127};   /* the beep's channel volume */
@@ -125,6 +143,7 @@ static struct {
     int wipe_back;                       /* M5.1: the view WIPE returns to; */
     uint32_t wipe_t0, wipe_done;         /* when PLAY went down on it (0: not held); 1 + the result once done */
     uint32_t wipe_armed;                 /* PLAY seen up since it opened: only a new press counts */
+    uint32_t home_t, home_armed;         /* M6: when HOME went down (0: up); HOME seen up since power-on */
     struct settings set;
     uint32_t set_row, set_dirty;
     uint32_t sel, top;                   /* the list's cursor and first row */
@@ -148,6 +167,8 @@ static struct {
     uint32_t keymode_until;              /* the KEY mode: SELECT changes the key until then (0: off) */
     int pview;                           /* PV_*: the view now; pv_of[l]: the last one used for each part */
     int32_t sc_x0, sc_span;              /* the scrolling view's now line and ticks ahead (scroll_setup) */
+    uint32_t zoom;                       /* M6: ZOOM_Q's index (SELECT in the scrolling and staff views) */
+    uint32_t tempomode_until;            /* M6: the TEMPO mode (REC): SELECT sets the tempo there until then */
     uint8_t pv_of[SONG_LAYERS];
     uint32_t vs_row;                     /* the Views settings screen's cursor (M4) */
     uint32_t mine;                       /* your part (D027): chosen by holding its button; harmony when a song opens */
@@ -173,6 +194,7 @@ static void settings_apply(void)
     player_bass_octave(SV(S_BASS_OCT) ? 12 : 0);
     player_count_in_bars(SV(S_COUNT_BARS) ? 2u : 1u);
     player_count_in_volume(COUNT_VOL[SV(S_COUNT_VOL) % 3u]);
+    player_stats.uke = SV(S_UKE);
     player_stats.settings = SV(0) | (uint32_t)SV(1) << 4 | (uint32_t)SV(2) << 8 |
                             (uint32_t)SV(3) << 12 | (uint32_t)SV(4) << 16 | (uint32_t)SV(5) << 20 |
                             (uint32_t)SV(6) << 24 | (uint32_t)SV(8) << 28;
@@ -228,6 +250,15 @@ static uint32_t view_ok(uint32_t l, uint32_t v)
         if (!view_hidden(l, VIEWS[l][i]))
             return VIEWS[l][i];
     return VIEWS[l][0];
+}
+
+static const char *view_name(uint32_t v)
+{
+    if (SV(S_UKE) && v == PV_GUITAR)
+        return "UKULELE";
+    if (SV(S_UKE) && v == PV_MTAB)
+        return "UKULELE TAB";
+    return v < PV_N ? VIEW_NAME[v] : "";
 }
 
 static void settings_save(void)
@@ -758,6 +789,8 @@ static void open_song(uint32_t i)
     ui.key = 0;
     ui.kb_lo = 0;
     ui.keymode_until = 0;
+    ui.tempomode_until = 0;
+    ui.zoom = SV(S_ZOOM) ? 4u : 2u;      /* M6: the zoom at start (the setting: 1.5 or 3 bars), SELECT from there */
     player_transpose(0);
     set_from_bar(first_bar());
     ui.from_tick = (int32_t)section_from(0);
@@ -990,8 +1023,25 @@ static void input_play(uint32_t down, uint32_t now)
     }
     if (down >> B_SAVE & 1u) {           /* the KEY mode on / off */
         ui.keymode_until = ui.keymode_until ? 0 : now + KEYMODE_MS;
+        ui.tempomode_until = 0;
         ui.sh_legend = 0;
         ui.sh_top_key = 0xFFFFFFFFu;
+    }
+    if (ui.tempomode_until && now >= ui.tempomode_until) {
+        ui.tempomode_until = 0;
+        ui.sh_legend = 0;
+    }
+    if (down >> B_REC & 1u) {            /* M6: the TEMPO mode on / off (in the zooming views SELECT zooms) */
+        ui.tempomode_until = ui.tempomode_until ? 0 : now + KEYMODE_MS;
+        ui.keymode_until = 0;
+        ui.sh_legend = 0;
+        ui.sh_top_key = 0xFFFFFFFFu;
+        if (ui.tempomode_until) {
+            char t[16] = "";
+            num_cat(t, player_tempo_of());
+            text_cat(t, " BPM");
+            app_say("TEMPO: SELECT", t);
+        }
     }
     if (down >> B_EDIT & 1u) {           /* the next of your part's views (VIEWS), the hidden ones skipped (M4) */
         const uint8_t *v = VIEWS[yours()];
@@ -1010,7 +1060,7 @@ static void input_play(uint32_t down, uint32_t now)
         ui.pv_of[yours()] = (uint8_t)ui.pview;
         player_stats.view = (uint32_t)ui.pview;
         ui.redraw = 1;
-        app_say("VIEW", VIEW_NAME[ui.pview]);
+        app_say("VIEW", view_name((uint32_t)ui.pview));
     }
     d = plat_enc(EN_SELECT);
     if (d && ui.keymode_until) {         /* the key: a semitone a click, all twelve keys, the nearest way (-5..+6) */
@@ -1026,6 +1076,24 @@ static void input_play(uint32_t down, uint32_t now)
         app_say("KEY", t);
         d = 0;
     }
+    if (d && !ui.tempomode_until && view_zooms(ui.pview)) {   /* M6: the scrolling and staff views: zoom */
+        uint32_t z = (uint32_t)clamp((int32_t)ui.zoom + (d > 0 ? 1 : -1), 0,
+                                     (int32_t)(view_staff(ui.pview) ? ZOOM_STAFF_MAX : ZOOMS - 1u));
+        char t[24] = "";
+        if (z == ui.zoom && view_staff(ui.pview) && ui.zoom > ZOOM_STAFF_MAX)
+            z = ZOOM_STAFF_MAX;
+        ui.zoom = z;
+        scroll_setup(ui.pview);
+        num_cat(t, player_stats.zoom * 10u / bar_ticks() / 10u);
+        text_cat(t, ".");
+        num_cat(t, player_stats.zoom * 10u / bar_ticks() % 10u);
+        text_cat(t, " BARS");
+        app_say(d > 0 ? "ZOOM OUT" : "ZOOM IN", t);
+        ui.redraw = 1;
+        d = 0;
+    }
+    if (d && ui.tempomode_until)
+        ui.tempomode_until = now + KEYMODE_MS;
     if (d) {                             /* tempo: 1 BPM a click; turned quickly, 5 */
         int32_t step = (d > 1 || d < -1 || now - ui.tempo_ms < 90u) ? 5 : 1;
         ui.tempo_ms = now;
@@ -1122,6 +1190,22 @@ static void input_play(uint32_t down, uint32_t now)
 static void input(void)
 {
     uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k, now = plat_ms();
+    if (!(btn >> B_HOME & 1u)) {         /* M6: HOME held 2 s, from any screen (not the WIPE question): the mode
+                                          * screen. A HOME held since power-on (GLO + HOME: WIPE) never counts */
+        ui.home_t = 0;
+        ui.home_armed = 1;
+    } else if (!ui.home_t) {
+        ui.home_t = now | 1u;
+    } else if (ui.home_armed && !ui.splash && ui.view != V_MODE && ui.view != V_WIPE &&
+               now - ui.home_t >= HOME_HOLD_MS) {
+        ui.home_armed = 0;               /* (once a hold) */
+        if (ui.view == V_SETTINGS || ui.view == V_VIEWSET)
+            settings_save();
+        mode_leave();
+        ui.keys = keys;
+        ui.buttons = btn;
+        return;
+    }
     if (!ui.splash && (ui.view == V_MODE || ui.view == V_SYNTH)) {   /* M5: the mode screen, SYNTH mode */
         if (ui.view == V_MODE)
             mode_input(keys, btn, down);
@@ -1251,6 +1335,11 @@ static void input(void)
             ui.vs_row = 0;
             ui.redraw = 1;
             v = 0;
+        }
+        if (v && ui.set_row == S_MODE) {    /* M6: the mode screen */
+            settings_save();
+            mode_leave();
+            return;
         }
         if (v && ui.set_row == S_WIPE) {    /* M5.1: WIPE SONG STORE, asked first */
             wipe_open(V_SETTINGS);
@@ -1466,17 +1555,18 @@ static void draw_list(void)
  * what each does here (docs/controls.md). Two bands: the canvas holds 144 rows */
 static void draw_help(void)
 {
-    static const char *const ENC[5][2] = {{"MASTER", "volume"}, {"SELECT", "tempo (BPM)"},
+    static const char *const ENC[5][2] = {{"MASTER", "volume"}, {"SELECT", "tempo / zoom"},
                                           {"PRESETS", "start: section"}, {"ALGORITHM", "start: bar; loop A/B"},
                                           {"OCT- OCT+", "keys' octave"}};
     static const char *const ENC_LIST[5][2] = {{"MASTER", "volume"}, {"SELECT", "choose a song"},
                                                {"PRESETS", "-"}, {"ALGORITHM", "-"}, {"OCT- OCT+", "keys' octave"}};
     static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX..LFO", "mute a layer"},
-                                          {"PLAY", "play / pause"}, {"HOME", "stop / list"}, {"SEQ", "loop: A, B, off"},
+                                          {"PLAY", "play / pause"}, {"HOME", "stop, list"}, {"SEQ", "loop: A, B, off"},
                                           {"ARP", "count-in"}, {"EDIT", "view"}, {"SAVE", "key (SELECT)"},
-                                          {"keys", "play along"}};
+                                          {"HOME", "held: mode"}};   /* (M6; the keys play along: plain) */
     static const char *const BTN_LIST[9][2] = {{"PLAY", "open"}, {"EDIT", "open"},
-                                               {"HOME", "folders"}, {"keys", "play along"}, {"", ""}, {"", ""},
+                                               {"HOME", "folders"}, {"keys", "play along"}, {"", ""},
+                                               {"HOME", "held: mode"},
                                                {"", ""}, {"", ""}, {"", ""}};
     const char *const (*e)[2] = ui.back == V_PLAY ? ENC : ENC_LIST;
     const char *const (*b)[2] = ui.back == V_PLAY ? BTN : BTN_LIST;
@@ -1504,6 +1594,7 @@ static void draw_help(void)
         }
         cv_text(116, 184 - y0, &FONT_XS, "GLO", C_GRAY);
         cv_text(152, 184 - y0, &FONT_XS, "again: settings", C_HI);
+
         if (band) {
             cv_rect(0, 200 - y0, 240, 1, C_LINE);
             num_cat(t, plat_cpu_pct());
@@ -1598,7 +1689,7 @@ static void draw_viewset(void)
                 continue;
             text_cat(t, LN[l]);
             text_cat(t, ": ");
-            text_cat(t, VIEWS[l][i] == PV_CHORD ? (l == L_HARM ? "CHORD" : "NOTE") : VIEW_NAME[VIEWS[l][i]]);
+            text_cat(t, VIEWS[l][i] == PV_CHORD ? (l == L_HARM ? "CHORD" : "NOTE") : view_name(VIEWS[l][i]));
             cv_begin(240, SET_ROW_H, C_BLACK);
             if (sel)
                 cv_rect(2, 1, 236, SET_ROW_H - 2, C_LINE);
@@ -2115,6 +2206,7 @@ struct gfound {
     char frets[7], fingers[7];
     int kind;                            /* 0 none, 1 open, 2 barre, 3 the shape without its slash bass */
     int base;                            /* the barre's fret */
+    int n;                               /* M6: strings (6 guitar, 4 ukulele) */
 };
 
 /* a shape for a chord symbol (in the key now): an open shape from the table (matched by pitch class, so C#/Db alike),
@@ -2126,6 +2218,7 @@ static void guitar_find(const char *sym, struct gfound *g)
     uint32_t i, k;
     g->kind = 0;
     g->base = 0;
+    g->n = 6;
     if (r < 0)
         return;
     for (pass = 0; pass < 2; pass++) {   /* with the slash bass, then without */
@@ -2167,25 +2260,76 @@ static void guitar_find(const char *sym, struct gfound *g)
     }
 }
 
-/* a chord box at x, y: 6 strings (low E left) sw apart, 4 frets fh apart; o / x above; dots with fingers; a barre */
+/* M6: a ukulele shape for a chord symbol (ukulele.h): an open one (by pitch class), else the lowest movable one; a
+ * slash chord: its chord's shape (kind 3; a uke has no bass to play it with) */
+static void uke_find(const char *sym, struct gfound *g)
+{
+    char q[12], eq[12];
+    int b, eb, er, r = chord_parts(sym, q, &b), best = 99;
+    uint32_t i, k, bi = 0;
+    g->kind = 0;
+    g->base = 0;
+    g->n = 4;
+    if (r < 0)
+        return;
+    for (i = 0; i < sizeof UKE_OPEN / sizeof UKE_OPEN[0]; i++) {
+        er = chord_parts(UKE_OPEN[i].name, eq, &eb);
+        if (er == r && same_text(eq, q)) {
+            for (k = 0; k < 4u; k++) {
+                g->frets[k] = UKE_OPEN[i].frets[k];
+                g->fingers[k] = UKE_OPEN[i].fingers[k];
+            }
+            g->kind = b >= 0 ? 3 : 1;
+            return;
+        }
+    }
+    for (i = 0; i < sizeof UKE_MOVE / sizeof UKE_MOVE[0]; i++) {
+        int fret;
+        if (!same_text(UKE_MOVE[i].quality, q))
+            continue;
+        fret = (r + 12 - (int)UKE_MOVE[i].root) % 12;
+        fret = fret ? fret : 12;
+        if (fret < best)
+            best = fret, bi = i;
+    }
+    if (best == 99)
+        return;
+    for (k = 0; k < 4u; k++) {
+        g->frets[k] = (char)('0' + best + (UKE_MOVE[bi].frets[k] - '0'));
+        g->fingers[k] = UKE_MOVE[bi].fingers[k];
+    }
+    g->kind = b >= 0 ? 3 : 2;
+    g->base = best;
+}
+
+static void fret_find(const char *sym, struct gfound *g)   /* M6: the setting's instrument */
+{
+    if (SV(S_UKE))
+        uke_find(sym, g);
+    else
+        guitar_find(sym, g);
+}
+
+/* a chord box at x, y: 6 strings (low E left; M6: or a ukulele's 4, G left) sw apart, 4 frets fh apart; o / x above;
+ * dots with fingers; a barre */
 static void draw_chord_box(int32_t x, int32_t y, const struct gfound *g, int32_t sw, int32_t fh, uint16_t c)
 {
-    int32_t i, lo = 99, first = -1, last = -1, base;
-    for (i = 0; i < 6; i++)
+    int32_t i, lo = 99, first = -1, last = -1, base, n = g->n;
+    for (i = 0; i < n; i++)
         if (g->frets[i] > '0' && g->frets[i] - '0' < lo)
             lo = g->frets[i] - '0';
     base = lo <= 4 || lo == 99 ? 1 : lo; /* up the neck: the lowest fret is the box's first */
-    for (i = 0; i < 6; i++)
+    for (i = 0; i < n; i++)
         cv_rect(x + i * sw, y, 1, 4 * fh, C_GRAY);
     for (i = 0; i <= 4; i++)
-        cv_rect(x, y + i * fh, 5 * sw + 1, i == 0 && base == 1 ? 3 : 1, C_GRAY);
+        cv_rect(x, y + i * fh, (n - 1) * sw + 1, i == 0 && base == 1 ? 3 : 1, C_GRAY);
     if (base > 1) {
         char t[8] = "";
         num_cat(t, (uint32_t)base);
         text_cat(t, "fr");
         cv_text(x - text_w(&FONT_XS, t) - 4, y + 2, &FONT_XS, t, C_GRAY);
     }
-    for (i = 0; i < 6; i++)              /* the barre: finger 1 on the lowest fret across strings */
+    for (i = 0; i < n; i++)              /* the barre: finger 1 on the lowest fret across strings */
         if (g->fingers[i] == '1' && g->frets[i] - '0' == lo) {
             if (first < 0)
                 first = i;
@@ -2193,7 +2337,7 @@ static void draw_chord_box(int32_t x, int32_t y, const struct gfound *g, int32_t
         }
     if (g->kind == 2 && last > first)
         cv_rect(x + first * sw, y + (lo - base) * fh + fh / 2 - fh / 5, (last - first) * sw + 1, 2 * (fh / 5) + 1, c);
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < n; i++) {
         int32_t cx = x + i * sw, f = g->frets[i] - '0';
         if (g->frets[i] == 'x') {
             cv_line(cx - 3, y - 11, cx + 3, y - 5, C_DIM);
@@ -2221,12 +2365,16 @@ static void draw_guitar_view(int st, const struct pinfo *pi, int32_t k, int32_t 
         int32_t kc = k >= 0 ? k : next;
         const char *sym = kc >= 0 ? chord_name((uint32_t)kc) : "";
         cv_text(6, 0, &FONT_L, sym, C_HI);
-        guitar_find(sym, &g);
+        fret_find(sym, &g);
         if (g.kind) {
-            draw_chord_box(96, 30, &g, 16, 22, C_HI);
+            draw_chord_box(g.n == 4 ? 112 : 96, 30, &g, 16, 22, C_HI);
             cv_text(6, 40, &FONT_XS, "x: not played", C_DIM);
             cv_text(6, 54, &FONT_XS, "o: open string", C_DIM);
-            text_cat(t, g.kind == 1 ? "guitar: open shape" : g.kind == 2 ? "guitar: barre at fret " :
+            if (k >= 0 && (pi->cue & 15u))   /* M6: the rhythm icon under them, blinking at each attack */
+                draw_cue(12, 74, pi->cue & 15u, (pi->cue >> 4) & 1u);
+            text_cat(t, g.n == 4 ? (g.kind == 1 ? "ukulele: open shape" : g.kind == 2 ? "ukulele: from fret " :
+                                    "ukulele: this shape, without ") :
+                        g.kind == 1 ? "guitar: open shape" : g.kind == 2 ? "guitar: barre at fret " :
                         "guitar: this shape, the bass plays ");
             if (g.kind == 2)
                 num_cat(t, (uint32_t)g.base);
@@ -2251,9 +2399,9 @@ static void draw_guitar_view(int st, const struct pinfo *pi, int32_t k, int32_t 
     cv_text(190, 4, &FONT_XS, st == PL_STOPPED ? "FIRST" : "NEXT", C_DIM);
     if (pi->next[0] && next >= 0) {
         cv_text(190, 18, text_w(&FONT_M, pi->next) <= 48 ? &FONT_M : &FONT_XS, pi->next, C_AMB);
-        guitar_find(chord_name((uint32_t)next), &gn);
+        fret_find(chord_name((uint32_t)next), &gn);
         if (gn.kind)
-            draw_chord_box(196, 64, &gn, 8, 11, C_AMB);
+            draw_chord_box(gn.n == 4 ? 204 : 196, 64, &gn, 8, 11, C_AMB);
     }
     cv_text(6, 126, &FONT_XS, t, C_GRAY);
     cv_blit(0, Y_CHORD);
@@ -2265,13 +2413,25 @@ static void draw_guitar_view(int st, const struct pinfo *pi, int32_t k, int32_t 
  * zoom setting doubles the span (about 3 bars) */
 #define NOW_X 44
 
+static int view_staff(int view) { return view == PV_NOTATION || view == PV_DNOTE; }
+static int view_zooms(int view)          /* M6: SELECT zooms these */
+{
+    return view_staff(view) || view == PV_TAB || view == PV_ROLL || view == PV_GRID || view == PV_MTAB ||
+           view == PV_BARS;
+}
+
+static uint32_t zoom_of(int view)
+{
+    return view_staff(view) && ui.zoom > ZOOM_STAFF_MAX ? ZOOM_STAFF_MAX : ui.zoom;
+}
+
 static void scroll_setup(int view)
 {
-    uint32_t zoom = SV(S_ZOOM) ? 2u : 1u;
-    int st = view == PV_NOTATION || view == PV_DNOTE;
+    uint32_t q = ZOOM_Q[zoom_of(view)];
+    int st = view_staff(view);
     ui.sc_x0 = st ? 84 : NOW_X;
-    ui.sc_span = (int32_t)(st ? (uint32_t)(240 - 84) * ui.s->ppq / 36u * zoom :
-                           bar_ticks() * 5u / 4u * zoom);
+    ui.sc_span = (int32_t)(st ? (uint32_t)(240 - 84) * ui.s->ppq / 36u * q / 4u : bar_ticks() * 5u * q / 16u);
+    player_stats.zoom = (uint32_t)ui.sc_span * 240u / (uint32_t)(240 - ui.sc_x0);   /* (the ticks on the screen) */
 }
 
 static int32_t scroll_span(void) { return ui.sc_span; }
@@ -2329,31 +2489,49 @@ static void scroll_now_line(int32_t y0, int32_t y1)
  * hand's position is played there (the nearest string), an open string costs nothing, a shift costs by its length.
  * The position comes from the 8 notes before, so a note always gets the same string and fret, wherever the view
  * starts. *s, *f: the string (0 E .. 3 G) and fret */
-static void bass_fingering(const struct song_stream *st, uint32_t k, uint32_t *s, uint32_t *f)
+/* M6: a fretted instrument's strings for the tabs: the bass (M3), the guitar and the ukulele (the melody's tab) */
+struct tuning {
+    uint8_t n, top;                      /* strings; the highest fret used */
+    uint8_t open[6];                     /* lowest string first (as a tab draws them: bottom line first) */
+    const char *name[6];
+};
+static const struct tuning T_BASS = {4, 15, {28, 33, 38, 43}, {"E", "A", "D", "G"}};   /* E1 A1 D2 G2 */
+static const struct tuning T_GUITAR = {6, 15, {40, 45, 50, 55, 59, 64}, {"E", "A", "D", "G", "B", "e"}};
+static const struct tuning T_UKE = {4, 12, {67, 60, 64, 69}, {"G", "C", "E", "A"}};
+/* (the ukulele, as a uke tab draws it: A on top, the re-entrant G4 at the bottom) */
+
+/* a playable fingering for note k of stream st (M5 for the bass, M6 any tuning): a hand position over up to 4 frets,
+ * moved as little as it can, open strings when they fit; the notes before k (up to 8) set where the hand is.
+ * Notes out of range move by octaves into it */
+static void tab_fingering(const struct tuning *tu, const struct song_stream *st, uint32_t k, uint32_t *s, uint32_t *f)
 {
-    static const uint8_t OPEN[4] = {28, 33, 38, 43};   /* E1 A1 D2 G2 */
     struct song_event e;
-    uint32_t j = k, back = 0, pos = 0, ps = 0;
+    uint32_t j = k, back = 0, pos = 0, ps = 0, lo = 127, hi = 0, c;
+    for (c = 0; c < tu->n; c++) {
+        lo = tu->open[c] < lo ? tu->open[c] : lo;
+        hi = tu->open[c] + tu->top > hi ? tu->open[c] + tu->top : hi;
+    }
+    *s = *f = 0;
     while (j > 0 && back < 8u) {         /* back to 8 notes before */
         song_event_get(st, --j, &e);
         if (e.status == 0x90u)
             back++;
     }
     for (; j <= k; j++) {
-        uint32_t n, c, best = 0xFFFFFFFFu, bs = 0, bf = 0;
+        uint32_t n, best = 0xFFFFFFFFu, bs = 0, bf = 0;
         song_event_get(st, j, &e);
         if (e.status != 0x90u)
             continue;
         n = moved(e.d1);
-        while (n < OPEN[0])
-            n += 12u;                    /* (below the low E: an octave up) */
-        while (n > OPEN[3] + 15u)
+        while (n < lo)
+            n += 12u;                    /* (below the lowest string: an octave up) */
+        while (n > hi)
             n -= 12u;
-        for (c = 0; c < 4u; c++) {
+        for (c = 0; c < tu->n; c++) {
             uint32_t fr, cost;
-            if (n < OPEN[c] || n - OPEN[c] > 15u)
+            if (n < tu->open[c] || n - tu->open[c] > tu->top)
                 continue;
-            fr = n - OPEN[c];
+            fr = n - tu->open[c];
             if (fr == 0u)
                 cost = 2u;               /* an open string */
             else if (pos && fr >= pos && fr <= pos + 3u)
@@ -2372,30 +2550,30 @@ static void bass_fingering(const struct song_stream *st, uint32_t k, uint32_t *s
     }
 }
 
-/* the bass tab (M3 part 6): 4 strings (G top, E bottom), the bass part at its level as fret numbers on the string
- * it is played on (first position: the highest string with a fret 0..4; above that the G string), a line for how
- * long it lasts, its name under the tab; played dim, sounding white, coming amber */
+/* the tabs (M3 part 6: the bass; M6: the melody on guitar or ukulele): a line a string (the lowest at the bottom),
+ * the part at its level as fret numbers on the string it is played on (tab_fingering), a line for how long it lasts,
+ * its name under the tab; played dim, sounding white, coming amber */
 static void draw_tab_view(int32_t now, const struct pinfo *pi)
 {
-    static const uint8_t OPEN[4] = {28, 33, 38, 43};   /* E1 A1 D2 G2 */
-    static const char *const SNAME[4] = {"E", "A", "D", "G"};
-    const struct song_stream *st = layer_stream(L_BASS);
+    const struct tuning *tu = pi->part == L_BASS ? &T_BASS : SV(S_UKE) ? &T_UKE : &T_GUITAR;
+    uint32_t l = pi->part == L_BASS ? L_BASS : L_MELODY;
+    const struct song_stream *st = layer_stream(l);
     struct song_event e;
-    int32_t ys[4], i, x0 = 16;
+    int32_t ys[6], i, x0 = 16, gap = tu->n == 6u ? 14 : 20, yb = tu->n == 6u ? 98 : 92;
     uint32_t k;
     char t[48] = "";
     cv_begin(240, H_VIEW, C_BLACK);
-    for (i = 0; i < 4; i++) {
-        ys[i] = 92 - i * 20;
-        cv_text(2, ys[i] - 8, &FONT_XS, SNAME[i], C_DIM);
+    for (i = 0; i < (int32_t)tu->n; i++) {
+        ys[i] = yb - i * gap;
+        cv_text(2, ys[i] - 8, &FONT_XS, tu->name[i], C_DIM);
         cv_rect(x0, ys[i], 240 - x0, 1, C_GRAY);
     }
-    scroll_grid(now, ys[3] - 6, ys[0] + 6, 1);
+    scroll_grid(now, ys[tu->n - 1u] - 6, ys[0] + 6, 1);
     if (st)
         for (k = song_seek(st, (uint32_t)(scroll_from(now) - (int32_t)bar_ticks() > 0 ?
                                           scroll_from(now) - (int32_t)bar_ticks() : 0)); k < st->count; k++) {
-            uint32_t n, end, s;
-            int32_t x, xe, f;
+            uint32_t n, end, s, uf;
+            int32_t x, xe;
             uint16_t c;
             char fr[4] = "";
             song_event_get(st, k, &e);
@@ -2403,14 +2581,9 @@ static void draw_tab_view(int32_t now, const struct pinfo *pi)
                 break;
             if (e.status != 0x90u)
                 continue;
-            n = moved(e.d1);
             end = note_end(st, k, e.d1, e.tick);
-            {
-                uint32_t uf;
-                bass_fingering(st, k, &s, &uf);   /* (M5: a hand position; the real notes, E and A strings) */
-                f = (int32_t)uf;
-                n = OPEN[s] + uf;
-            }
+            tab_fingering(tu, st, k, &s, &uf);   /* (M5: a hand position; the real notes) */
+            n = tu->open[s] + uf;
             x = scroll_x((int32_t)e.tick, now);
             xe = scroll_x((int32_t)end, now);
             if (xe < x0 || x >= 240)
@@ -2418,18 +2591,18 @@ static void draw_tab_view(int32_t now, const struct pinfo *pi)
             c = (int32_t)end <= now ? C_DIM : (int32_t)e.tick <= now ? C_WHITE : C_AMB;
             if (xe > x + 12)
                 cv_rect(x + 12, ys[s] - 1, xe - x - 12, 3, (int32_t)end <= now ? C_LINE : DARK_AMB);
-            num_cat(fr, (uint32_t)f);
+            num_cat(fr, uf);
             cv_rect(x - 1, ys[s] - 8, text_w(&FONT_B, fr) + 3, 16, C_BLACK);
             cv_text(x, ys[s] - 9, &FONT_B, fr, c);
             cv_text(x, ys[0] + 10, &FONT_XS, names()[n % 12u], c == C_WHITE ? C_WHITE : C_GRAY);
         }
-    scroll_now_line(ys[3] - 10, ys[0] + 10);
-    text_cat(t, "BASS L");
-    num_cat(t, player_variant_of(L_BASS));
+    scroll_now_line(ys[tu->n - 1u] - 10, ys[0] + 10);
+    text_cat(t, l == L_BASS ? "BASS L" : tu == &T_UKE ? "UKULELE, MELODY L" : "GUITAR, MELODY L");
+    num_cat(t, player_variant_of(l));
     if (pi->big[0]) {
         text_cat(t, ": ");
         text_cat(t, pi->big);
-        if (pi->next[0]) {
+        if (pi->next[0] && l == L_BASS) {
             text_cat(t, ", next ");
             text_cat(t, pi->next);
         }
@@ -2461,13 +2634,18 @@ static void scroll_chords(int32_t now, int32_t y, int32_t clip)
 
 /* ------------------------------------------------------ the melody roll (M3 part 7, melody) --- */
 /* the melody's notes as bars sliding to the now line, higher notes higher (the song's melody range at this level, in
- * the key now, fills the height), their names above them; the chords above */
+ * the key now, fills the height), their names above them; the chords above. M6: on the left a vertical piano
+ * keyboard, a key for each row (the rows are pitches, as the drum grid's labels are its drums): the notes sounding
+ * light their keys, each C is named */
+#define RK_W 22                          /* the keyboard's width; the notes are drawn right of it */
+#define RK_WHITE RGB(196, 196, 204)
+#define RK_BLACK RGB(16, 16, 20)
 static void draw_roll_view(int32_t now, const struct pinfo *pi)
 {
     const struct song_stream *st = layer_stream(pi->part);
     struct song_event e;
-    uint32_t k, lo = 127, hi = 0, n;
-    int32_t y0 = 26, y1 = 118;
+    uint32_t k, lo = 127, hi = 0, n, lit[4] = {0, 0, 0, 0};
+    int32_t y0 = 26, y1 = 118, clip = RK_W + 2;
     char t[48] = "";
     cv_begin(240, H_VIEW, C_BLACK);
     if (st)
@@ -2483,11 +2661,13 @@ static void draw_roll_view(int32_t now, const struct pinfo *pi)
         lo = 60, hi = 72;
     if (hi - lo < 12u)
         lo = hi > 12u ? hi - 12u : 0;
+    if (hi - lo > 120u)
+        lo = hi - 120u;
     for (n = lo; n <= hi; n++)           /* a faint line for each C and G */
         if (n % 12u == 0u || n % 12u == 7u)
-            cv_rect(16, y1 - (int32_t)((n - lo) * (uint32_t)(y1 - y0) / (hi - lo)), 224, 1, C_LINE);
+            cv_rect(clip, y1 - (int32_t)((n - lo) * (uint32_t)(y1 - y0) / (hi - lo)), 240 - clip, 1, C_LINE);
     scroll_grid(now, y0 - 4, y1 + 6, 0);
-    scroll_chords(now, 0, 16);
+    scroll_chords(now, 0, clip);
     if (st)
         for (k = song_seek(st, (uint32_t)(scroll_from(now) - (int32_t)bar_ticks() > 0 ?
                                           scroll_from(now) - (int32_t)bar_ticks() : 0)); k < st->count; k++) {
@@ -2501,16 +2681,49 @@ static void draw_roll_view(int32_t now, const struct pinfo *pi)
                 continue;
             n = moved(e.d1);
             end = note_end(st, k, e.d1, e.tick);
+            if ((int32_t)e.tick <= now && now < (int32_t)end && n >= lo && n <= hi)
+                lit[(n - lo) / 32u] |= 1u << ((n - lo) % 32u);
             x = scroll_x((int32_t)e.tick, now);
             xe = scroll_x((int32_t)end, now);
-            if (xe < 16 || x >= 240)
+            if (xe < clip || x >= 240)
                 continue;
             y = y1 - (int32_t)((n - lo) * (uint32_t)(y1 - y0) / (hi - lo));
             c = (int32_t)end <= now ? C_DIM : (int32_t)e.tick <= now ? C_HI : C_AMB;
-            cv_rect(x < 16 ? 16 : x, y - 3, xe - (x < 16 ? 16 : x) - 1 > 2 ? xe - (x < 16 ? 16 : x) - 1 : 2, 7, c);
-            if (x >= 16)
+            cv_rect(x < clip ? clip : x, y - 3, xe - (x < clip ? clip : x) - 1 > 2 ? xe - (x < clip ? clip : x) - 1 : 2,
+                    7, c);
+            if (x >= clip && pi->part != L_HARM)   /* (M6: the bar view's chords: their notes stacked, no names) */
                 cv_text(x + 1, y - 18, &FONT_XS, names()[n % 12u], (int32_t)end <= now ? C_DIM : C_GRAY);
         }
+    {                                    /* M6: the keyboard: each pitch's key spans halfway to its neighbours */
+        int32_t top = y1 + (int32_t)((uint32_t)(y1 - y0) / (hi - lo) / 2u) + 1;
+        for (n = lo; n <= hi; n++) {
+            int32_t yc = y1 - (int32_t)((n - lo) * (uint32_t)(y1 - y0) / (hi - lo));
+            int32_t yt = n == hi ? yc - (int32_t)((uint32_t)(y1 - y0) / (hi - lo) / 2u) - 1 :
+                         y1 - (int32_t)((2u * (n - lo) + 1u) * (uint32_t)(y1 - y0) / (2u * (hi - lo)));
+            int on = (lit[(n - lo) / 32u] >> ((n - lo) % 32u)) & 1u;
+            if (top - yt < 1)
+                yt = top - 1;
+            if (is_black(n)) {
+                cv_rect(0, yt, RK_W, top - yt, RK_WHITE);
+                cv_rect(0, yt, RK_W * 3 / 5, top - yt, on ? C_HI : RK_BLACK);
+            } else {
+                cv_rect(0, yt, RK_W, top - yt, on ? C_HI : RK_WHITE);
+                if (n % 12u == 0u || n % 12u == 5u)   /* between E-F and B-C: a line */
+                    cv_rect(0, top - 1, RK_W, 1, C_DIM);
+            }
+            top = yt;
+        }
+        for (n = lo; n <= hi; n++)       /* each C named, on its key (after the keys: a name may overlap the next) */
+            if (n % 12u == 0u) {
+                int32_t yc = y1 - (int32_t)((n - lo) * (uint32_t)(y1 - y0) / (hi - lo));
+                char c[4] = "C";
+                int on = (lit[(n - lo) / 32u] >> ((n - lo) % 32u)) & 1u;
+                num_cat(c, n / 12u - 1u);
+                cv_rect(RK_W - text_w(&FONT_T, c) - 2, yc - 4, text_w(&FONT_T, c) + 2, 9, on ? C_HI : RK_WHITE);
+                cv_text(RK_W - text_w(&FONT_T, c) - 1, yc - 4, &FONT_T, c, C_BLACK);
+            }
+        player_stats.roll_keys = hi - lo + 1u;
+    }
     scroll_now_line(y0 - 8, y1 + 8);
     text_cat(t, LAYER_NAME[pi->part]);
     text_cat(t, " L");
@@ -3069,6 +3282,10 @@ static void draw_cursor(int32_t beat, int st)
 }
 
 /* the layers (M4, D027): the level and FULL / QUIET, or MUTE; your part with an amber bar on top and a double frame */
+/* M6: the layer boxes' colours (each text at least 4.5:1 on its box: tools/m6_test.py reads these lines) */
+#define LB_QUIET_BG RGB(64, 46, 14)      /* QUIET: a dark amber box ... */
+#define LB_QUIET_FG RGB(255, 214, 150)   /* ... and light amber text (M5's grey on brown: 1.5:1, unreadable) */
+#define LB_NONE_FG RGB(128, 128, 136)    /* a layer the song has none of (on black) */
 static void draw_layers(void)
 {
     uint32_t l, mine = yours();
@@ -3080,12 +3297,12 @@ static void draw_layers(void)
         char t[8] = "L";
         if (!ly->variants) {
             frame_rect(x, 1, 55, H_LAYERS - 2, C_LINE);
-            text_in(x, 55, 2, &FONT_XS, LAYER_SHORT[l], C_DIM);
-            text_in(x, 55, 16, &FONT_XS, "-", C_DIM);
+            text_in(x, 55, 2, &FONT_XS, LAYER_SHORT[l], LB_NONE_FG);
+            text_in(x, 55, 16, &FONT_XS, "-", LB_NONE_FG);
             continue;
         }
         if (on)
-            cv_rect(x, 3, 55, H_LAYERS - 4, ui.vol[l] == VOL_QUIET ? RGB(52, 46, 30) : C_LINE);
+            cv_rect(x, 3, 55, H_LAYERS - 4, ui.vol[l] == VOL_QUIET ? LB_QUIET_BG : C_LINE);
         else
             frame_rect(x, 3, 55, H_LAYERS - 4, C_AMB);
         if (l == mine) {                 /* your part */
@@ -3100,7 +3317,7 @@ static void draw_layers(void)
             const char *vtx = ui.vol[l] == VOL_QUIET ? "QUIET" : "FULL";
             int32_t w = text_w(&FONT_XS, t) + 5 + text_w(&FONT_XS, vtx), x0 = x + (55 - w) / 2;
             cv_text(x0, 16, &FONT_XS, t, C_HI);
-            cv_text(x0 + text_w(&FONT_XS, t) + 5, 16, &FONT_XS, vtx, ui.vol[l] == VOL_QUIET ? C_DIM : C_GRAY);
+            cv_text(x0 + text_w(&FONT_XS, t) + 5, 16, &FONT_XS, vtx, ui.vol[l] == VOL_QUIET ? LB_QUIET_FG : C_GRAY);
         }
     }
     cv_blit(0, Y_LAYERS);
@@ -3161,6 +3378,10 @@ static const char *legend_play(int st)
 {
     if (ui.keymode_until)
         return "SELECT key|SAVE done";
+    if (ui.tempomode_until)              /* M6 */
+        return "SELECT tempo|REC done";
+    if (view_zooms(ui.pview) && st != PL_STOPPED && (plat_ms() / 3000u) % 3u == 2u)
+        return "SELECT zoom|REC tempo|EDIT view";
     if (ui.loop_step == 1)
         return "ALGO bar A|PRESETS section|SEQ set|HOME cancel";
     if (ui.loop_step == 2)
@@ -3357,8 +3578,7 @@ static void frame_play(uint32_t now)
               (uint32_t)ui.loop_step << 14 ^ (ui.loop_step ? ui.a_bar << 16 ^ ui.b_bar << 22 : 0u) ^
               (uint32_t)count << 8 ^ (uint32_t)(k + 1) << 12 ^ pi.part << 28;
     if (ui.pview != PV_CHORD) {          /* the other views: the chord band, strip and cursor's place */
-        int scroll = ui.pview == PV_TAB || ui.pview == PV_ROLL || ui.pview == PV_NOTATION || ui.pview == PV_GRID ||
-                     ui.pview == PV_DNOTE;
+        int scroll = view_zooms(ui.pview);
         if (scroll)
             scroll_setup(ui.pview);
         view_key = big_key ^ (uint32_t)left << 22 ^ (uint32_t)(ui.pview == PV_CHART ? bar : 0) << 3 ^
@@ -3374,8 +3594,10 @@ static void frame_play(uint32_t now)
                 draw_guitar_view(st, &pi, k, next);
             else if (ui.pview == PV_TAB)
                 draw_tab_view(tb, &pi);
-            else if (ui.pview == PV_ROLL)
+            else if (ui.pview == PV_ROLL || ui.pview == PV_BARS)
                 draw_roll_view(tb, &pi);
+            else if (ui.pview == PV_MTAB)
+                draw_tab_view(tb, &pi);
             else if (ui.pview == PV_NOTATION && pi.part == L_HARM)
                 draw_harmony_notation(tb);
             else if (ui.pview == PV_NOTATION)

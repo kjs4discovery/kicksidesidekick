@@ -94,6 +94,13 @@ void vsynth_start(void *mem, uint32_t bytes)
 
 int vsynth_active(void) { return active; }
 
+void vsynth_stop(void)
+{
+    off_req++;                            /* (the voices: silent when it starts again) */
+    __asm__ volatile("" ::: "memory");
+    active = 0;
+}
+
 void vsynth_preset(uint32_t i)
 {
     uint32_t k;

@@ -347,14 +347,45 @@ def loudness(notes, length):
     return (e / length) ** 0.5
 
 
-def match_loudness(notes, ref, length):
+def match_loudness(notes, ref, length, window=0):
     """the part's velocities scaled so its loudness model equals ref's (the generated level it replaces): loudness
-    goes with the velocity squared, so the factor is the square root of the ratio"""
+    goes with the velocity squared, so the factor is the square root of the ratio. M6: with window (ticks), each
+    window of the song on its own (a file's loud chorus as loud as the generated level there, not only the song's
+    average: the user heard imported levels much louder in places); a window where either is silent keeps the
+    whole song's factor; each factor within 1/3..3 of it. -> (notes, the whole song's factor)"""
     a, b = loudness(notes, length), loudness(ref, length)
     if a <= 0 or b <= 0:
         return notes, 1.0
     k = (b / a) ** 0.5
-    return [(s, e, p, max(1, min(127, round(v * k)))) for s, e, p, v in notes], k
+    if not window:
+        return [(s, e, p, max(1, min(127, round(v * k)))) for s, e, p, v in notes], k
+    ks = {}
+    for w0 in range(0, length, window):
+        mine = [n for n in notes if w0 <= n[0] < w0 + window]
+        theirs = [n for n in ref if w0 <= n[0] < w0 + window]
+        span = min(window, length - w0)
+        a_w, b_w = loudness(mine, span), loudness(theirs, span)
+        kw = (b_w / a_w) ** 0.5 if a_w > 0 and b_w > 0 else k
+        ks[w0 // window] = min(3 * k, max(k / 3, kw))
+    out = [(s, e, p, max(1, min(127, round(v * ks.get(s // window, k))))) for s, e, p, v in notes]
+    flat = [(s, e, p, max(1, min(127, round(v * k)))) for s, e, p, v in notes]
+    LOUDNESS_SPREAD.append((window_spread(flat, ref, length, window), window_spread(out, ref, length, window)))
+    return out, k
+
+
+LOUDNESS_SPREAD = []                     # (M6) per match: ((lo, hi) before, (lo, hi) after), for the report
+
+
+def window_spread(notes, ref, length, window):
+    """the softest and loudest window of notes against ref (loudness ratio; 1 = as loud), windows where both sound"""
+    rs = []
+    for w0 in range(0, length, window):
+        span = min(window, length - w0)
+        a = loudness([n for n in notes if w0 <= n[0] < w0 + window], span)
+        b = loudness([n for n in ref if w0 <= n[0] < w0 + window], span)
+        if a > 0 and b > 0:
+            rs.append(a / b)
+    return (min(rs), max(rs)) if rs else (1.0, 1.0)
 
 
 # --------------------------------------------------------------------------------------------- the whole import
@@ -481,18 +512,21 @@ def build(midi, title, slug, roles=None, style=None, report=None, eighths=False,
             own = (classify_harmony if layer == "harmony" else classify_bass)(q[layer], chart, bpb)
         for lv in range(1, top + 1):
             if lv == own:                # as loud as the level it replaces (M5: the file parts were up to 5x louder)
-                tracks[f"{layer}:{lv}"], k = match_loudness(q[layer], gen[f"{layer}:{lv}"], nbars * bar)
+                tracks[f"{layer}:{lv}"], k = match_loudness(q[layer], gen[f"{layer}:{lv}"], nbars * bar, 4 * bar)
                 levels[layer][lv] = "from the file"
-                rep.append(f"{layer}: the file's part at level {lv} scaled to the generated level's loudness "
-                           f"(velocity x {k:.2f})")
+                (b0, b1), (a0, a1) = LOUDNESS_SPREAD[-1]
+                rep.append(f"{layer}: the file's part at level {lv} scaled to the generated level's loudness, "
+                           f"every 4 bars (velocity x {k:.2f} on average; its 4-bar windows against the generated "
+                           f"level: {b0:.2f}..{b1:.2f}x with one factor for the song (M5), {a0:.2f}..{a1:.2f}x now)")
             else:
                 tracks[f"{layer}:{lv}"] = gen[f"{layer}:{lv}"]
                 levels[layer][lv] = "generated: " + arr.LEVEL_TEXT[layer][lv]
         rep.append(f"{layer}: " + (f"the file's part resembles level {own} and is that level" if own else
                                    "no part in the file: all levels generated"))
     if q["drums"]:
-        d2, k = match_loudness(q["drums"], gen["drums:2"], nbars * bar)
-        rep.append(f"drums: the file's drums scaled to the generated groove's loudness (velocity x {k:.2f})")
+        d2, k = match_loudness(q["drums"], gen["drums:2"], nbars * bar, 4 * bar)
+        rep.append(f"drums: the file's drums scaled to the generated groove's loudness, every 4 bars (velocity x "
+                   f"{k:.2f} on average)")
         beat_hits = [(s, e, p, v) for s, e, p, v in d2 if s % PPQ == 0 and p in (35, 36, 37, 38, 40, 42, 44, 46)]
         d1 = [(s, s + GRID, 36 if p in (35, 36) else 38 if p in (37, 38, 40) else 42, v) for s, e, p, v in beat_hits]
         d3 = list(d2)

@@ -4,7 +4,8 @@
  *
  * The mode screen comes after the splash at every power-on: the mascot (the splash's logo), LEARN and SYNTH, the
  * cursor on LEARN; SELECT moves it, PLAY or EDIT chooses. (fm1-base's power-on rescue, REC / OCT- + OCT+ held, runs
- * before the app: unaffected.) A mode stays until the FM-1 is switched off.
+ * before the app: unaffected.) M6: HOME held 2 s from any screen, or Settings > Switch mode, comes back here (the
+ * song stops, or the synth goes quiet and gives the song buffer back); the cursor then on the other mode.
  *
  * SYNTH: the keys play the synth (OCT- / OCT+ their octave). SELECT: the preset. K1 cutoff, K2 resonance, K3
  * attack, K4 release, ALGORITHM chorus, PRESET delay. ARP: the arpeggiator on / off; SEQ: its pattern (UP, DOWN,
@@ -61,6 +62,29 @@ static void mode_choose(uint32_t m)
     synth_load(0);
     ui.view = V_SYNTH;
     sy.shown = 0xFFFFFFFFu;
+}
+
+/* M6: back to the mode screen, from either mode */
+static void mode_leave(void)
+{
+    if (vsynth_active()) {
+        uint32_t t = plat_ms();
+        vsynth_stop();                   /* (the song buffer is free again once a render running now has ended: a
+                                          * block is 5.8 ms; a song opened next reads into it) */
+        while (plat_ms() - t < 20u)
+            ;
+        sy.mode_sel = 0;
+    } else {
+        lib_release();                   /* the song stops */
+        sy.mode_sel = 1;
+    }
+    synth_panic();
+    ui.keymode_until = 0;
+    ui.loop_step = 0;
+    player_stats.mode = 0;
+    player_stats.mode_switches++;
+    ui.view = V_MODE;
+    ui.redraw = 1;
 }
 
 static void mode_input(uint32_t keys, uint32_t btn, uint32_t down)
@@ -231,5 +255,5 @@ static void draw_synth(void)
     snum_cat(t, ui.oct);
     cv_text(6, 4, &FONT_XS, t, sy.arp ? C_AMB : C_GRAY);
     cv_blit(0, 186);
-    draw_legend(Y_LEGEND, "SELECT preset|ARP SEQ GLO arp");
+    draw_legend(Y_LEGEND, "SELECT preset|ARP SEQ GLO arp|HOME held mode");
 }

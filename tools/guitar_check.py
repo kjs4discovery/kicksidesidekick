@@ -4,6 +4,11 @@
 #   guitar_check.py              every shape's notes are its chord's (standard tuning), its lowest note the root or
 #                                the slash bass; and every chord of every song, in all 12 keys, finds a shape the way
 #                                ui.c guitar_find looks (open by pitch class, else a barre, else without the slash)
+#   guitar_check.py --uke        M6: the ukulele table (firmware/app/ukulele.h, G4 C4 E4 A4): every shape's notes are
+#                                its chord's, the root and the third (or the sus note) there, a seventh chord's
+#                                seventh there; every chord of every song (the private ones too, when here), in all
+#                                12 keys, finds a shape as ui.c uke_find does (open by pitch class, else the lowest
+#                                movable shape; a slash chord: its chord's shape)
 import re
 import sys
 from pathlib import Path
@@ -101,5 +106,88 @@ def main():
     return 1 if bad or none else 0
 
 
+UKE = (67, 60, 64, 69)                         # G4 C4 E4 A4 (re-entrant)
+NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+
+def uke_table():
+    src = (ROOT / "firmware/app/ukulele.h").read_text()
+    opens = re.findall(r'\{"([^"]+)", "([0-9]{4})", "([0-9]{4})"\}', src)
+    moves = re.findall(r'\{"([a-z0-9]*)", (\d+), "([0-9]{4})", "([0-9]{4})"\}', src)
+    return opens, [(q, int(r), f, g) for q, r, f, g in moves]
+
+
+def uke_shape_ok(name, frets, base=0):
+    c = parse_chord(name)
+    pcs = {(UKE[i] + base + int(f)) % 12 for i, f in enumerate(frets)}
+    want = {(c.root + i) % 12 for i in c.intervals}
+    need = {c.root % 12, (c.root + c.intervals[1]) % 12}          # the root and the third (or the sus note)
+    if len(c.intervals) > 3 and c.intervals[3] in (10, 11):        # a seventh chord: its seventh
+        need.add((c.root + c.intervals[3]) % 12)
+    return pcs <= want and need <= pcs, pcs - want, need - pcs
+
+
+def uke_find(sym, opens, moves):
+    c = parse_chord(sym)
+    if c is None:
+        return "nc"
+    q = re.match(r"^[A-G][#b]?(.*?)(?:/.*)?$", sym).group(1)
+    for name, f, g in opens:
+        e = parse_chord(name)
+        if e.root == c.root and re.match(r"^[A-G][#b]?(.*)$", name).group(1) == q:
+            return "open" if c.bass is None else "open, no slash"
+    best = None
+    for mq, r, f, g in moves:
+        if mq == q:
+            b = (c.root - r) % 12 or 12
+            best = b if best is None else min(best, b)
+    if best is not None:
+        return "movable" if c.bass is None else "movable, no slash"
+    return None
+
+
+def main_uke():
+    opens, moves = uke_table()
+    bad = 0
+    for name, frets, fing in opens:
+        ok, extra, missing = uke_shape_ok(name, frets)
+        if not ok or len(fing) != 4:
+            bad += 1
+            print(f"FAIL {name} {frets}: extra {extra}, missing {missing}")
+    for q, r, frets, fing in moves:
+        for b in range(1, 13):
+            ok, extra, missing = uke_shape_ok(NAMES[(r + b) % 12] + q, frets, b)
+            if not ok:
+                bad += 1
+                print(f"FAIL movable {q!r} from {NAMES[r]} at fret {b}: extra {extra}, missing {missing}")
+                break
+    print(f"ukulele: {len(opens)} open shapes, {len(moves)} movable shapes: "
+          f"{'all match their chords' if not bad else f'{bad} FAIL'}")
+    folders = [p for p in (ROOT / "songs").iterdir() if (p / "song.yaml").is_file()]
+    if (ROOT / "songs/private").is_dir():
+        folders += [p for p in (ROOT / "songs/private").iterdir() if (p / "song.yaml").is_file()]
+    syms = set()
+    for f in sorted(folders):
+        for ch in read_compiled(compile_folder(f)[0])["chords"]:
+            if ch["symbol"] != "N.C.":
+                syms.add(ch["symbol"])
+    total, kinds, none = 0, {}, set()
+    for sym in sorted(syms):
+        m = re.match(r"^([A-G][#b]?)(.*?)(?:/([A-G][#b]?))?$", sym)
+        c = parse_chord(sym)
+        for t in range(12):
+            s = NAMES[(c.root + t) % 12] + m.group(2) + ("/" + NAMES[(c.bass + t) % 12] if c.bass is not None else "")
+            k = uke_find(s, opens, moves)
+            total += 1
+            kinds[k] = kinds.get(k, 0) + 1
+            if k is None:
+                none.add(s)
+    print(f"the songs' {len(syms)} chords ({len(folders)} songs) in all 12 keys ({total}): " +
+          ", ".join(f"{k or 'NO SHAPE'} {n}" for k, n in sorted(kinds.items(), key=lambda x: -x[1])))
+    if none:
+        print("no shape: " + " ".join(sorted(none)))
+    return 1 if bad or none else 0
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_uke() if "--uke" in sys.argv else main())

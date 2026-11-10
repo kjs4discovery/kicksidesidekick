@@ -240,7 +240,7 @@ def test_junk_and_wipe(empty, rep):
     n = timed("m51-wipe-no", 30000, [], flash=str(w["flash"]), host=f"{SEND} wipe --emu-pipe")
     check("--yes" in n["out"] and area(n["flash"]) == area(w["flash"]), "`fm1song wipe` without --yes: nothing sent")
     songs = m5.FLASH["songs"]
-    nav = m5.press(4600, "GLO") + m5.press(4800, "GLO") + ["5000:e0:10", "5300:e1:1"]
+    nav = m5.press(4600, "GLO") + m5.press(4800, "GLO") + ["5000:e0:20", "5300:e1:1"]   # (M6: the last row, wherever it is)
     h = timed("m51-wipe-settings-short", 9000, nav + ["5800:PLAY", "6800:PLAY^"], flash=songs)
     check(area(h["flash"]) == area(songs) and h["stats"]["ui_view"] == V_WIPE,
           "Settings > Wipe song store: the question first; PLAY held 1 s: nothing wiped")
