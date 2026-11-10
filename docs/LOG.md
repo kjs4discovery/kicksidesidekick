@@ -218,3 +218,12 @@ Questions for the planning chat:
 - Erase/program timings are Puya P25Q-H typical (P25Q40H datasheet, P25Q80H distributor listing); a hardware
   measurement (fl_erase4k's took_us) would confirm them.
 Next: STOP for review; then the user runs the checklist.
+
+2026-11-09 23:35 — Step M5.1 install (the user's report) —
+Status: done
+Did: the user installed 0.5.4-m5p4 (FM-1_46000504) and ran docs/step-M5.1-install.md steps 1-5: all 14 songs
+sent and working. device.md "Currently installed" updated (it still said M1).
+Learned / measured: the user's report only; Claude Code ran no device command this session.
+Hardware touched: WRITE by the user (install, song sends), per the checklist.
+Questions for the planning chat: none
+Next: M6 Parts 1-4 (docs/plan-M6.md), the early install point after Part 2 skipped at the user's request.
