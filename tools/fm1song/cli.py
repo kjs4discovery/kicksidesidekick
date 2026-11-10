@@ -227,7 +227,13 @@ def cmd_send(args):
                 slug = read_compiled(blob)["slug"]
             except SongError:
                 slug = None              # (--no-validate: a damaged file is the FM-1's to refuse)
-        r = device.song_send(dev, blob, slug)
+        told = []
+
+        def busy(left, path=path, told=told):   # (M5.1: the FM-1 makes room first; once per song is enough)
+            if not told:
+                print(f"{path}: the FM-1 is making room (about {left} steps; its screen shows them) ...", file=args.out)
+                told.append(1)
+        r = device.song_send(dev, blob, slug, busy)
         ok = r["result"] == 0
         room = f"{r['free_blocks']} blocks free" if r.get("free_blocks") is not None else f"{r['free']} sectors free"
         print(f"{path}: {'stored' if ok else 'NOT stored: ' + device.explain(r)} "
@@ -275,6 +281,20 @@ def cmd_delete(args):
     return status
 
 
+def cmd_wipe(args):
+    """M5.1: WIPE SONG STORE from the laptop (writes: erases the FM-1's whole song area). Asks for --yes"""
+    if not args.yes:
+        print("fm1song wipe ERASES EVERY SONG on the FM-1 (its song area, 0x97000..0xDBFFF; settings and firmware "
+              "stay). Run it again with --yes to do it; send the songs again afterwards.", file=args.out)
+        return 2
+    device, dev = _device(args)
+    r = device.song_wipe(dev)
+    ok = r["result"] == 0
+    print(f"{'song store wiped' if ok else 'NOT wiped: ' + device.explain(r)} ({r['songs']} song(s) on the FM-1)",
+          file=args.out)
+    return 0 if ok else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="fm1song", description="FM-1 Accompaniment song compiler (fm1-song/1)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -319,7 +339,8 @@ def main(argv=None):
     p.set_defaults(fn=cmd_preview)
     for name, fn, what in (("list", cmd_list, "the songs on the FM-1"),
                            ("send", cmd_send, "store songs on the FM-1 (writes its song area)"),
-                           ("delete", cmd_delete, "remove songs from the FM-1 (writes its song area)")):
+                           ("delete", cmd_delete, "remove songs from the FM-1 (writes its song area)"),
+                           ("wipe", cmd_wipe, "erase every song on the FM-1 (writes its song area; asks for --yes)")):
         p = sub.add_parser(name, help=what)
         if name == "send":
             p.add_argument("songs", nargs="+", metavar="SONG_DIR|FILE.fm1s")
@@ -327,6 +348,8 @@ def main(argv=None):
                            help="send the files as they are, unchecked (only for testing the FM-1's own check)")
         elif name == "delete":
             p.add_argument("slugs", nargs="+", metavar="SLUG")
+        elif name == "wipe":
+            p.add_argument("--yes", action="store_true", help="really erase every song on the FM-1")
         p.add_argument("--port", metavar="NAME", help="the MIDI port to use (part of its name)")
         p.add_argument("--emu-pipe", action="store_true", help=argparse.SUPPRESS)   # fm1-live FM1_USB_HOST
         p.set_defaults(fn=fn)

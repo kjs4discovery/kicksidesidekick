@@ -18,7 +18,10 @@
  *   compacting (sectors erased, songs moved), cut at every operation: every song intact, the new one there or not;
  *   10. receiving: a refused file (store_abort) leaves nothing, a write outside the room is refused; 11. M4's
  *   records (FM1R, whole sectors) are read, deleted, and their room taken back
- *   and after every cut: a new add of the song works. Nothing is ever erased or written outside the area. */
+ *   and after every cut: a new add of the song works. Nothing is ever erased or written outside the area.
+ *   M5.1: 12. room made a step at a time (store_begin answers STORE_BUSY and writes nothing; each store_step is one
+ *   erase or one short song moved); 13. WIPE SONG STORE; and after every operation the table the store keeps up to
+ *   date (no rescans now) equals a full rescan of the flash. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +35,33 @@ static uint8_t *flash;
 static long ops, cut_at = -1;               /* the operation (counted from 1) that is cut; -1 none */
 static int dead;                            /* after a cut: no flash operation does anything */
 static int failures;
+static long yields, table_checks, table_wrong;
+
+void store_yield(void) { yields++; }
+
+/* M5.1: the table the store keeps up to date equals a fresh scan of the flash (which it then is) */
+static void table_check(void)
+{
+    static struct store_entry was[STORE_MAX_SONGS];
+    static char slugs[STORE_MAX_SONGS][24];
+    uint32_t n = store_count(), fb = store_free_blocks(), i, ok;
+    if (dead)
+        return;
+    for (i = 0; i < n; i++) {
+        was[i] = *store_get(i);
+        snprintf(slugs[i], sizeof slugs[i], "%s", was[i].slug);
+    }
+    store_scan();
+    ok = store_count() == n && store_free_blocks() == fb;
+    for (i = 0; ok && i < n; i++) {
+        const struct store_entry *e = store_get(i);
+        ok = e->off == was[i].off && e->len == was[i].len && e->seq == was[i].seq && e->blocks == was[i].blocks &&
+             !strcmp(e->slug, slugs[i]);
+    }
+    table_checks++;
+    if (!ok && table_wrong++ < 3)
+        printf("  the table differed from a rescan (check %ld)\n", table_checks);
+}
 
 const uint8_t *store_map(uint32_t off) { return off < FLASH_SIZE ? flash + off : 0; }
 
@@ -119,7 +149,12 @@ static int stored_as(const char *slug, const struct file *f)
     return 0;
 }
 
-static int add(const struct file *f) { return store_add(f->d, f->n, f->slug); }
+static int add(const struct file *f)
+{
+    int r = store_add(f->d, f->n, f->slug);
+    table_check();
+    return r;
+}
 
 static void wipe(void)
 {
@@ -139,12 +174,17 @@ static void cuts(const char *name, void (*setup)(void), int (*act)(void), int (*
     total = ops;
     for (n = 1; n <= total; n++) {
         memcpy(flash, before, FLASH_SIZE);
+        store_stop();                     /* (the flash changed behind the store's back: it starts again) */
+        store_abort();
+        store_scan();
         ops = 0;
         cut_at = n;
         dead = 0;
         act();
         power_on();
-        store_scan();                     /* the FM-1 starts again */
+        store_stop();                     /* the FM-1 starts again (its RAM: no room being made) */
+        store_abort();
+        store_scan();
         if (!ok()) {
             if (bad < 3)
                 printf("  cut at operation %ld of %ld: wrong outcome\n", n, total);
@@ -463,6 +503,71 @@ int main(int argc, char **argv)
               "its room is taken back when the area fills");
     }
 
+    /* 12 (M5.1): room made a step at a time, outside SEND */
+    {
+        uint32_t at, steps = 0, d = 0, t = 0;
+        long most = 0, o;
+        int busy;
+        setup_compact();
+        o = ops = 0;
+        r = store_begin(A10.n, A10.slug, &at);
+        check(r == STORE_BUSY && ops == 0 && store_busy(&d, &t) && t > 0,
+              "no room without compacting: store_begin answers BUSY at once and writes nothing");
+        while ((busy = store_step()) == STORE_BUSY) {
+            if (ops - o > most)
+                most = ops - o;
+            o = ops;
+            steps++;
+        }
+        if (ops - o > most)
+            most = ops - o;
+        table_check();
+        {
+            char t2[160];
+            snprintf(t2, sizeof t2, "the room made in %u steps (planned about %u), at most %ld flash operations a step "
+                     "(one erase, or one short song: its blocks' pages and two heads)", steps, t, most);
+            check(busy == STORE_OK && steps > 0 && most <= 2 * STORE_SECTOR_BLOCKS + 2, t2);
+        }
+        r = store_begin(A10.n, A10.slug, &at);
+        n = r == STORE_OK && store_write(0, A10.d, A10.n) == STORE_OK && store_commit() == STORE_OK;
+        table_check();
+        check(n && stored_as(A10.slug, &A10) == 1 && fills_intact(), "then the song is stored, every other one intact");
+        setup_compact();
+        r = store_begin(A10.n, A10.slug, &at);
+        store_step();
+        store_stop();
+        table_check();
+        check(r == STORE_BUSY && fills_intact() && !store_busy(0, 0) && add(&A10) == STORE_OK &&
+              stored_as(A10.slug, &A10) == 1, "making room stopped half way (a delete, a power cut): nothing lost, it "
+              "goes on next time");
+    }
+
+    /* 13 (M5.1): WIPE SONG STORE */
+    {
+        uint32_t sec;
+        int bad = 0, blank = 1;
+        setup_compact();
+        for (sec = 0; sec < STORE_SECTORS; sec++)
+            bad |= store_wipe_sector(sec) != STORE_OK;
+        for (k = STORE_LO; k < STORE_HI; k++)
+            blank &= flash[k] == 0xFFu;
+        check(!bad && blank && store_scan() == 0 && store_free_blocks() == STORE_BLOCKS && add(&A11) == STORE_OK,
+              "wipe: every sector of the area blank, no songs, and a song stores again");
+        memset(flash + STORE_LO, 0x5A, STORE_HI - STORE_LO);
+        ops = 0;
+        for (sec = 0; sec < STORE_SECTORS; sec++)
+            bad |= store_wipe_sector(sec) != STORE_OK;
+        check(!bad && ops == (long)STORE_SECTORS && store_scan() == 0 && flash[STORE_LO - 1u] == 0xFFu &&
+              flash[STORE_HI] == 0xFFu, "wipe over junk: 69 erases, nothing outside the area");
+        check(store_wipe_sector(STORE_SECTORS) == STORE_E_RANGE, "wipe: a sector past the area is refused");
+    }
+
+    {
+        char t[160];
+        snprintf(t, sizeof t, "the table kept up to date equals a full rescan, after each of %ld operations (and the "
+                 "store's longer loops yielded %ld times)", table_checks, yields);
+        check(!table_wrong && table_checks > 100, t);
+    }
     check(store_refused == 0, "never an erase or write outside 0x97000..0xDBFFF");
     printf("%s\n", failures ? "FAILURES" : "ALL PASS");
     free(flash);

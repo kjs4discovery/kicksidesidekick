@@ -286,6 +286,15 @@ pulls a sent file with the update's 512-byte read requests and answers 0x7F RESU
 blocks and "reads 2.0"; SEND may carry the song's slug (so its older copy can make way). `fm1song` sends only to a
 firmware whose identity starts `FM-1_46` (ours). A send or delete stops the song playing and returns to the list.
 
+M5.1 (the 2026-11-06 incident): no command runs long. A SEND that needs room only compacting gives is answered at
+once with result 10 **BUSY** (detail: about how many steps); the FM-1 then compacts from its main loop, a step at a
+time (one sector erased or one short song moved), "MAKING ROOM step n of about m" on its screen, and `fm1song` asks
+again every second until the send goes through (at most 10 minutes). The store keeps its table up to date after each
+change (no full rescan), the watchdog is fed in every longer loop, and every flash write's source is copied to RAM
+first (the flash driver switches the XIP window off while it writes: M5's delete wrote zeros from `.rodata` in the
+flash, which stalled the core until the watchdog reset it). 0x75 **WIPE** {"WIPE"} erases the whole song store
+(`fm1song wipe --yes`; on the FM-1: Settings > Wipe song store, or GLO + HOME held at power-on).
+
 Tested: `tools/store_test.sh` (store.c on a simulated NOR flash, a power cut at every erase / write of an add, a
 replace, a replace with no room for both copies, a delete, an add that compacts for a long and for a short song;
 songs sharing sectors; a refused file; M4's records) and `tools/m5_test.py` (the firmware in fm1-emu: sends over

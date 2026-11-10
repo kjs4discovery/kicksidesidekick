@@ -177,7 +177,7 @@ def prepare_flash():
     FLASH["songs_hint"] = d / "songs-hint.bin"     # (M5: the controls hint on, as the FM-1 comes)
     FLASH["songs"] = d / "songs-hint.bin"
     # M5: the controls hint off (settings: the last row) for every other test, so a song opens as before
-    h = run("hint-off", 7500, press(4600, "GLO") + press(4800, "GLO") + ["5000:e0:12"] + ["5600:e1:1"]
+    h = run("hint-off", 7500, press(4600, "GLO") + press(4800, "GLO") + ["5000:e0:9"] + ["5600:e1:1"]
             + press(6200, "GLO"))
     shutil.copy(h["flash"], d / "songs.bin")
     FLASH["songs"] = d / "songs.bin"

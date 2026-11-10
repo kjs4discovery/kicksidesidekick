@@ -18,6 +18,8 @@
 #include "guitar.h"
 
 static void ui_busy(const char *a, const char *b);
+static void text_cat(char *d, const char *s);
+static void num_cat(char *d, uint32_t v);
 #include "library.c"
 
 #define KEY_LOW 53                       /* key 0 is F3 (plat.h) */
@@ -58,7 +60,10 @@ static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 18
 #define BOX_H 44
 #define BOX_STEP 60
 
-enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH };   /* (M5: the mode screen, SYNTH) */
+enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH,   /* (M5: the mode screen, SYNTH) */
+       V_WIPE };                         /* M5.1: WIPE SONG STORE, asked first */
+#define WIPE_HOLD_MS 2000u               /* PLAY held this long on the WIPE screen: the songs are erased */
+static void wipe_open(int back);
 /* the play screen's views (EDIT); PV_CHORD: the part's main view (the chord, or your part's note or hit) */
 enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_ROLL, PV_NOTATION, PV_GRID, PV_DNOTE, PV_N };
 static const uint8_t VIEWS[SONG_LAYERS][8] = {   /* each part's views in EDIT's order (PV_N ends a list) */
@@ -85,6 +90,7 @@ static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "M
  * copies, the newer valid one wins; the stock firmware never uses these sectors) */
 #define SET_MAGIC 0x31534D46u            /* "FMS1" */
 enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_QUIET, S_LIGHTS, S_VIEWS, S_BASS_OCT, S_HINT,
+       S_WIPE,                           /* M5.1: a screen (WIPE SONG STORE), no value */
        S_N };
 struct settings {
     uint32_t magic, version;
@@ -99,15 +105,16 @@ struct settings {
 #define HINT_TIMES 10u                   /* the controls hint shows itself this many times, then stays off */
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
                                           "Note names (notation)", "Scrolling views show", "Quiet level",
-                                          "Key lights", "Views (hide some)", "Bass sound", "Controls hint"};
-static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2};   /* how many values each has (Views: a screen) */
+                                          "Key lights", "Views (hide some)", "Bass sound", "Controls hint",
+                                          "Wipe song store"};
+static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2, 1};   /* how many values each has (Views: a screen) */
 static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
                                             {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}, {"25 %", "50 %", ""},
                                             {"OFF", "ON", ""}, {">", "", ""}, {"REAL", "+1 OCTAVE", ""},
-                                            {"OFF", "ON", ""}};
+                                            {"OFF", "ON", ""}, {">", "", ""}};
 /* (M4: count-in volume MEDIUM, the user's note; the quiet level 50 %, "half volume") */
 /* (M5: the bass +1 octave on the small speaker; the controls hint on) */
-static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0, 1, 1};
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0};
 static const uint8_t QUIET_PCT[2] = {25, 50};   /* a layer set to QUIET (D027: M3's guide volume became this) */
 #define HOLD_MS 900u                     /* a layer button held this long: your part (D027); shorter: its volume */
 enum { VOL_FULL, VOL_QUIET, VOL_MUTED };
@@ -115,6 +122,9 @@ static const uint8_t COUNT_VOL[3] = {64, 96, 127};   /* the beep's channel volum
 
 static struct {
     int view, back;                      /* V_*; back: the view the help returns to */
+    int wipe_back;                       /* M5.1: the view WIPE returns to; */
+    uint32_t wipe_t0, wipe_done;         /* when PLAY went down on it (0: not held); 1 + the result once done */
+    uint32_t wipe_armed;                 /* PLAY seen up since it opened: only a new press counts */
     struct settings set;
     uint32_t set_row, set_dirty;
     uint32_t sel, top;                   /* the list's cursor and first row */
@@ -1196,6 +1206,38 @@ static void input(void)
         lights();
         return;
     }
+    if (ui.view == V_WIPE) {             /* M5.1: PLAY held 2 s wipes; HOME (or any other button) keeps the songs */
+        if (ui.wipe_done) {
+            if (down) {
+                ui.view = ui.wipe_back;
+                ui.redraw = 1;
+                lcd_fill(0, 0, 240, 240, C_BLACK);
+            }
+        } else if ((btn >> B_PLAY & 1u) && ui.wipe_armed) {
+            if (!ui.wipe_t0)
+                ui.wipe_t0 = now | 1u;
+            else if (now - ui.wipe_t0 >= WIPE_HOLD_MS) {
+                int r = lib_wipe();
+                ui.wipe_done = 1u + (uint32_t)(r == STORE_OK ? 0 : 1);
+                ui.wipe_t0 = 0;
+                ui.view = V_WIPE;          /* (lib_wipe's progress screen moved it) */
+                app_say(r == STORE_OK ? "SONG STORE WIPED" : "NOT WIPED", r == STORE_OK ? "no songs now" :
+                        store_error_name(r));
+                ui.redraw = 1;
+            }
+        } else {
+            ui.wipe_t0 = 0;
+            ui.wipe_armed |= !(btn >> B_PLAY & 1u);
+            if (down & ~(1u << B_PLAY)) {
+                ui.view = ui.wipe_back;
+                ui.redraw = 1;
+                lcd_fill(0, 0, 240, 240, C_BLACK);
+            }
+        }
+        ui.buttons = btn;
+        ui.keys = keys;
+        return;
+    }
     if (ui.view == V_SETTINGS) {         /* SELECT the row; ALGORITHM, PLAY or EDIT its value; GLO or HOME: back */
         int32_t d = plat_enc(EN_SELECT), v = plat_enc(EN_ALGO);
         if (d) {
@@ -1208,6 +1250,10 @@ static void input(void)
             ui.view = V_VIEWSET;
             ui.vs_row = 0;
             ui.redraw = 1;
+            v = 0;
+        }
+        if (v && ui.set_row == S_WIPE) {    /* M5.1: WIPE SONG STORE, asked first */
+            wipe_open(V_SETTINGS);
             v = 0;
         }
         if (v) {
@@ -1477,6 +1523,44 @@ static void draw_help(void)
 #define SET_ROW_H 22                     /* (8 rows above the legend) */
 
 /* the controls hint (M5): before a song's play screen, what a layer button does; up to HINT_TIMES times */
+/* M5.1: the WIPE SONG STORE screen (from the settings, or GLO + HOME held at power-on) */
+static void wipe_open(int back)
+{
+    ui.wipe_back = back;
+    ui.wipe_t0 = ui.wipe_done = ui.wipe_armed = 0;
+    ui.buttons = plat_buttons();         /* (the buttons held now, as GLO + HOME at power-on: not a press) */
+    ui.view = V_WIPE;
+    ui.redraw = 1;
+}
+
+static void draw_wipe(uint32_t now)
+{
+    char t[24] = "";
+    lcd_fill(0, 0, 240, 240, C_BLACK);
+    cv_begin(240, 150, C_BLACK);
+    frame_rect(8, 4, 224, 142, ui.wipe_done == 1u ? C_HI : C_AMB);
+    text_in(0, 240, 14, &FONT_B, ui.wipe_done == 1u ? "SONG STORE WIPED" : ui.wipe_done ? "NOT WIPED" :
+            "WIPE SONG STORE?", C_WHITE);
+    if (ui.wipe_done) {
+        text_in(0, 240, 46, &FONT_XS, ui.wipe_done == 1u ? "No songs on the FM-1 now." : "The flash refused an erase.",
+                C_GRAY);
+        text_in(0, 240, 66, &FONT_XS, "Send them again from the laptop:", C_GRAY);
+        text_in(0, 240, 86, &FONT_XS, "tools/fm1song.sh send songs/*/", C_HI);
+    } else {
+        text_in(0, 240, 46, &FONT_XS, "Every song on this FM-1 is erased.", C_GRAY);
+        text_in(0, 240, 64, &FONT_XS, "Settings and firmware stay.", C_GRAY);
+        text_in(0, 240, 82, &FONT_XS, "(the laptop can send them again)", C_GRAY);
+        if (ui.wipe_t0) {
+            num_cat(t, (WIPE_HOLD_MS - (now - ui.wipe_t0 > WIPE_HOLD_MS ? WIPE_HOLD_MS : now - ui.wipe_t0) + 999u)
+                    / 1000u);
+            text_cat(t, " s ...");
+        }
+        text_in(0, 240, 112, &FONT_B, ui.wipe_t0 ? t : "hold PLAY 2 s to wipe", ui.wipe_t0 ? C_AMB : C_HI);
+    }
+    cv_blit(0, 40);
+    draw_legend(Y_LEGEND, ui.wipe_done ? "any button|back" : "PLAY hold 2 s: wipe|HOME: keep the songs");
+}
+
 static void draw_hint(void)
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
@@ -3398,6 +3482,13 @@ void app_ui_init(void)
     ui.sh_list = 0xFFFFFFFFu;
     player_stats.key_note_last = 0xFFu;
     player_stats.ui_view = 16u;
+    /* M5.1: GLO + HOME held at power-on: WIPE SONG STORE, asked first (before anything reads the store; not a
+     * rescue combination: those are REC, and OCT- + OCT+, fm1-base's) */
+    if ((plat_buttons() & (1u << B_GLO | 1u << B_HOME)) == (1u << B_GLO | 1u << B_HOME)) {
+        ui.splash = 0;
+        player_stats.mode = 0;
+        wipe_open(V_MODE);
+    }
 }
 
 /* the start-up melody: each note on and off at its time (while the splash shows) */
@@ -3429,7 +3520,11 @@ void app_frame(void)
         ui.splash = 0;
         ui.redraw = 1;
     }
-    if (ui.lib_seen != lib_changes && ui.view != V_MODE && ui.view != V_SYNTH) {   /* songs sent or deleted: back to
+    if (lib_poll()) {                    /* M5.1: room being made (a step at a time; the screen shows it) */
+        ui.redraw = 1;
+        return;
+    }
+    if (ui.lib_seen != lib_changes && ui.view != V_MODE && ui.view != V_SYNTH && ui.view != V_WIPE) {   /* songs sent or deleted: back to
                                                                                   * the list, from the top */
         ui.lib_seen = lib_changes;
         ui.view = V_LIST;
@@ -3450,6 +3545,15 @@ void app_frame(void)
     if (ui.view == V_HINT) {
         if (ui.redraw)
             draw_hint();
+        ui.redraw = 0;
+        return;
+    }
+    if (ui.view == V_WIPE) {
+        uint32_t k = ui.wipe_t0 ? (now - ui.wipe_t0) / 1000u + 1u : 0;
+        if (ui.redraw || k != ui.sh_list) {
+            draw_wipe(now);
+            ui.sh_list = k;
+        }
         ui.redraw = 0;
         return;
     }

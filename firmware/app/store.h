@@ -46,6 +46,7 @@
 #define STORE_MAX_RECORDS STORE_BLOCKS     /* records (stale copies too): every one fits in the table */
 
 enum {
+    STORE_BUSY = 1,                       /* M5.1: room is being made (store_step): ask again when it is done */
     STORE_OK = 0,
     STORE_E_FULL = -1,                    /* no room, even after compacting and after the older copy of the song went */
     STORE_E_SIZE = -2,                    /* longer than STORE_FILE_MAX */
@@ -70,15 +71,23 @@ struct store_entry {
 const uint8_t *store_map(uint32_t off);                 /* read in place; 0: no flash */
 int store_erase(uint32_t off);                          /* one 4 KiB sector; 0 = done */
 int store_prog(uint32_t off, const void *src, uint32_t n);   /* src in RAM; bits only cleared; 0 = done */
+void store_yield(void);                                 /* M5.1: called in every longer loop (the device: the watchdog
+                                                         * fed); nothing in the store runs long without it */
 
 int store_scan(void);                     /* rebuild the table: the number of songs, < 0 = STORE_E_NO_FLASH */
+int store_open(void);                     /* M5.1: the same, but scanned only if not yet (every change keeps the table
+                                           * up to date: no rescans) */
 uint32_t store_count(void);
 const struct store_entry *store_get(uint32_t i);   /* 0 .. count-1, in flash order */
 const uint8_t *store_file(const struct store_entry *e);   /* the file, read in place */
 /* receiving: room for a file of len bytes (slug: its song, whose older copy may make way; "" none) -> STORE_OK and
  * *file the flash offset the file goes to; then store_write the whole file (off from 0), check it in place
  * (store_map(*file)), and store_commit, or store_abort if it is refused */
-int store_begin(uint32_t len, const char *slug, uint32_t *file);
+int store_begin(uint32_t len, const char *slug, uint32_t *file);   /* M5.1: or STORE_BUSY: room being made */
+int store_step(void);                     /* M5.1: one step of making room: STORE_BUSY (more to do), STORE_OK (done) */
+int store_busy(uint32_t *done, uint32_t *total);   /* M5.1: 1 while room is being made; its steps done / about all */
+void store_stop(void);                    /* M5.1: stop making room (what is done stays done; safe at any step) */
+int store_wipe_sector(uint32_t sec);      /* M5.1: song store sector sec (0..STORE_SECTORS-1) erased: WIPE SONG STORE */
 int store_write(uint32_t off, const void *src, uint32_t n);   /* src in RAM */
 int store_commit(void);
 void store_abort(void);

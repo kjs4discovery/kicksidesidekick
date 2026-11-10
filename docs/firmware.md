@@ -237,6 +237,7 @@ would need an emulated install).
 | **USB soft key** (`F0 22 24 35 7D F7`, e.g. `fm1_unbrick.py softkey`) | the ROM update mode, from the running app, safe mode or the loader |
 | **An update cut off** (power or cable lost) | the update loader runs again at the next power-on and the host resumes the install |
 | **OCT− and OCT+ held at power-on** | the panel set-up (key/knob calibration), not a rescue |
+| **GLO and HOME held at power-on** (ours, M5.1) | **WIPE SONG STORE?** before anything reads the song store: a new PLAY press held 2 s erases every song (settings and firmware stay); HOME or any other button keeps them (the mode screen). Also Settings > Wipe song store, and `tools/fm1song.sh wipe --yes` from the laptop |
 
 The counter of failed starts is cleared by the platform after 30 s of normal running; the app needs no code for it.
 Not yet tried on hardware; the emulator does not model the ROM update mode.

@@ -23,6 +23,10 @@ static uint8_t blk[STORE_BLOCKS] STORE_POOL;   /* B_* per block */
 static struct {
     uint32_t active, off, len, span;      /* the record being received (store_begin .. store_commit) */
 } pend;
+static struct {
+    uint32_t active, span, done, total;   /* M5.1: room being made (store_step), for a record of span blocks */
+} job;
+static int scanned;                       /* M5.1: the table is the flash's (kept up to date by every change) */
 static uint8_t bounce[STORE_BLOCK] __attribute__((aligned(4)));   /* a block in RAM: flash to flash goes through it */
 
 static uint32_t rd32(const uint8_t *p)
@@ -135,28 +139,54 @@ static int erased(uint32_t b)
     return p != 0;
 }
 
+/* the record whose head is at block b (len, span: head_at's) into e */
+static void entry_at(struct store_entry *e, uint32_t b, uint32_t len, uint32_t span)
+{
+    const uint8_t *h = store_map(off_of(b));
+    struct song s;
+    e->off = off_of(b);
+    e->len = len;
+    e->seq = rd32(h + 4);
+    e->crc = rd32(h + 12);
+    e->blocks = span;
+    e->sectors = (span + STORE_SECTOR_BLOCKS - 1u) / STORE_SECTOR_BLOCKS;
+    e->slug = "";
+    if (song_peek(&s, h + STORE_HEAD, len) == SONG_OK)
+        e->slug = s.slug;                 /* (in the file, in the flash: valid while the record is) */
+}
+
+/* the songs: per slug the record with the highest sequence number (an older copy is stale: a cut came between
+ * writing the new one and deleting it); a record whose file does not even peek is shown on its own (SONG ERROR) */
+static void make_shown(void)
+{
+    uint32_t i, k;
+    nshown = 0;
+    for (i = 0; i < nrec && nshown < STORE_MAX_SONGS; i++) {
+        int newest = 1;
+        if ((i & 31u) == 31u)
+            store_yield();
+        for (k = 0; k < nrec && rec[i].slug[0]; k++)
+            if (k != i && same(rec[k].slug, rec[i].slug) && (rec[k].seq > rec[i].seq ||
+                                                             (rec[k].seq == rec[i].seq && k > i)))
+                newest = 0;
+        if (newest)
+            shown[nshown++] = (uint16_t)i;
+    }
+}
+
 int store_scan(void)
 {
-    uint32_t b, k, i, len, span;
+    uint32_t b, k, len, span;
     nrec = nshown = 0;
+    scanned = 0;
     if (!store_map(STORE_LO))
         return STORE_E_NO_FLASH;
     for (b = 0; b < STORE_BLOCKS;) {
         int kind = head_at(b, &len, &span);
-        if (kind == B_LIVE && nrec < STORE_MAX_RECORDS) {
-            struct store_entry *e = &rec[nrec++];
-            const uint8_t *h = store_map(off_of(b));
-            struct song s;
-            e->off = off_of(b);
-            e->len = len;
-            e->seq = rd32(h + 4);
-            e->crc = rd32(h + 12);
-            e->blocks = span;
-            e->sectors = (span + STORE_SECTOR_BLOCKS - 1u) / STORE_SECTOR_BLOCKS;
-            e->slug = "";
-            if (song_peek(&s, h + STORE_HEAD, len) == SONG_OK)
-                e->slug = s.slug;         /* (in the file, in the flash: valid until the next change) */
-        }
+        if ((b & 63u) == 0)
+            store_yield();                /* (M5.1: the watchdog fed on the way; the whole scan is short anyway) */
+        if (kind == B_LIVE && nrec < STORE_MAX_RECORDS)
+            entry_at(&rec[nrec++], b, len, span);
         if (kind != B_FREE) {             /* (a record past the table's end: kept, never erased) */
             for (k = 0; k < span; k++)
                 blk[b + k] = (uint8_t)kind;
@@ -166,18 +196,49 @@ int store_scan(void)
         blk[b] = erased(b) ? B_FREE : B_DIRTY;
         b++;
     }
-    /* the songs: per slug the record with the highest sequence number (an older copy is stale: a cut came between
-     * writing the new one and deleting it); a record whose file does not even peek is shown on its own (SONG ERROR) */
-    for (i = 0; i < nrec && nshown < STORE_MAX_SONGS; i++) {
-        int newest = 1;
-        for (k = 0; k < nrec && rec[i].slug[0]; k++)
-            if (k != i && same(rec[k].slug, rec[i].slug) && (rec[k].seq > rec[i].seq ||
-                                                             (rec[k].seq == rec[i].seq && k > i)))
-                newest = 0;
-        if (newest)
-            shown[nshown++] = (uint16_t)i;
-    }
+    make_shown();
+    scanned = 1;
     return (int)nshown;
+}
+
+/* the table scanned, unless it already is the flash's */
+static int ready(void) { return scanned || store_scan() >= 0 ? STORE_OK : STORE_E_NO_FLASH; }
+int store_open(void) { return ready() == STORE_OK ? (int)nshown : STORE_E_NO_FLASH; }
+
+/* ------------------------------------------------- M5.1: the table kept up to date, without a rescan --- */
+/* record i gone (its magic zeroed): its blocks to be erased */
+static void tbl_drop(uint32_t i)
+{
+    uint32_t b = (rec[i].off - STORE_LO) / STORE_BLOCK, k;
+    for (k = 0; k < rec[i].blocks; k++)
+        blk[b + k] = B_DIRTY;
+    for (k = i; k + 1u < nrec; k++)
+        rec[k] = rec[k + 1u];
+    nrec--;
+}
+
+/* a head written at block b: its record into the table (in flash order); 0 if it does not read back as one */
+static int tbl_add(uint32_t b)
+{
+    uint32_t len, span, i, k;
+    if (head_at(b, &len, &span) != B_LIVE || nrec >= STORE_MAX_RECORDS)
+        return 0;
+    for (i = 0; i < nrec && rec[i].off < off_of(b); i++)
+        ;
+    for (k = nrec; k > i; k--)
+        rec[k] = rec[k - 1u];
+    nrec++;
+    entry_at(&rec[i], b, len, span);
+    for (k = 0; k < span; k++)
+        blk[b + k] = B_LIVE;
+    return 1;
+}
+
+static void tbl_erased(uint32_t sec)
+{
+    uint32_t k;
+    for (k = 0; k < STORE_SECTOR_BLOCKS; k++)
+        blk[sec * STORE_SECTOR_BLOCKS + k] = B_FREE;
 }
 
 uint32_t store_count(void) { return nshown; }
@@ -253,10 +314,20 @@ static uint32_t find(const uint8_t *map, uint32_t span, uint32_t xlo, uint32_t x
 #define NOSEC STORE_SECTORS
 
 /* a record deleted: its magic written to zero (the rest of its head stays readable, so the scan steps over it) */
-static int kill(const struct store_entry *e)
+/* record i deleted, and out of the table (the shown list: make_shown after). M5.1: the zeros from RAM. The flash
+ * driver switches the XIP window off while it writes (felucca-bsp fl_prog_ram), so its source must never be in the
+ * flash: M5's `static const` zeros were (.rodata, kill.zero at 0x02033cb8), the core stalled reading them and the
+ * watchdog reset the FM-1 (the 2026-11-06 incident; fm1-emu-flash-timing.patch reproduces it). library.c's store_prog
+ * copies every source to RAM as well */
+static int kill(uint32_t i)
 {
-    static const uint8_t zero[4] = {0, 0, 0, 0};
-    return prog(e->off, zero, 4);
+    uint8_t zero[4] = {0, 0, 0, 0};       /* (on the stack: RAM) */
+    int r = prog(rec[i].off, zero, 4);
+    if (r == STORE_OK)
+        tbl_drop(i);
+    else
+        scanned = 0;                      /* (whatever it left: read again) */
+    return r;
 }
 
 /* every record of slug, except the one at keep (0: none) */
@@ -264,33 +335,40 @@ static int kill_slug(const char *slug, uint32_t keep)
 {
     uint32_t i;
     int r, found = 0;
-    for (i = 0; i < nrec; i++)
+    for (i = 0; i < nrec;)
         if (rec[i].slug[0] && same(rec[i].slug, slug) && rec[i].off != keep) {
-            if ((r = kill(&rec[i])) != STORE_OK)
+            if ((r = kill(i)) != STORE_OK)
                 return r;
             found = 1;
+        } else {
+            i++;
         }
+    make_shown();
     return found ? STORE_OK : STORE_E_NOT_FOUND;
 }
-
-static int rescan(void) { return store_scan() < 0 ? STORE_E_NO_FLASH : STORE_OK; }
 
 /* stale copies (a cut came after a newer copy was written, before they were deleted) deleted: they only take room */
 static int tidy(void)
 {
-    uint32_t i, k;
+    uint32_t i = 0, k, n = nrec;
     int r, any = 0;
-    for (i = 0; i < nrec; i++) {
-        int live = 0;
-        for (k = 0; k < nshown; k++)
-            live |= shown[k] == i;
-        if (!live && rec[i].slug[0]) {
-            if ((r = kill(&rec[i])) != STORE_OK)
-                return r;
-            any = 1;
+    static uint8_t keep[STORE_MAX_RECORDS] STORE_POOL;
+    for (k = 0; k < nrec; k++)
+        keep[k] = !rec[k].slug[0];
+    for (k = 0; k < nshown; k++)
+        keep[shown[k]] = 1;
+    for (k = 0; k < n; k++) {             /* (i: the record's index now, as earlier ones go) */
+        if (keep[k]) {
+            i++;
+            continue;
         }
+        if ((r = kill(i)) != STORE_OK)
+            return r;
+        any = 1;
     }
-    return any ? rescan() : STORE_OK;
+    if (any)
+        make_shown();
+    return STORE_OK;
 }
 
 static uint32_t next_seq(void)
@@ -478,8 +556,10 @@ static int dry_run(struct model *m, uint32_t span)
     uint32_t i;
     for (i = 0; i < MAX_STEPS; i++) {
         struct action a = next_step(m, span);
+        if ((i & 7u) == 7u)
+            store_yield();
         if (a.what == A_DONE)
-            return 1;
+            return (int)i + 1;            /* (M5.1: the steps it takes, + 1) */
         if (a.what == A_STUCK)
             return 0;
         model_apply(m, &a);
@@ -512,73 +592,123 @@ static int move(uint32_t from_off, uint32_t to)
     head(bounce, seq, len, crc);
     if ((r = prog(off_of(to), bounce, STORE_HEAD)) != STORE_OK)
         return r;
+    if (!tbl_add(to)) {
+        scanned = 0;
+        return STORE_E_WRITE;
+    }
     for (i = 0; i < nrec; i++)
-        if (rec[i].off == from_off && (r = kill(&rec[i])) != STORE_OK)
-            return r;
+        if (rec[i].off == from_off) {
+            if ((r = kill(i)) != STORE_OK)
+                return r;
+            break;
+        }
+    make_shown();
     store_moves++;
     return STORE_OK;
 }
 
-/* the compaction done on the flash -> STORE_OK and *at the room's first block, or STORE_E_FULL */
-static int compact(uint32_t span, uint32_t *at)
+/* M5.1: one step of making room (store_step): STORE_BUSY, STORE_OK (done) or an error */
+int store_step(void)
 {
-    uint32_t i;
+    struct action a;
     int r;
-    for (i = 0; i < MAX_STEPS; i++) {
-        struct action a;
-        model_of_flash(&model_now);
-        a = next_step(&model_now, span);
-        if (a.what == A_DONE) {
-            *at = a.a;
-            return STORE_OK;
-        }
-        if (a.what == A_STUCK)
-            return STORE_E_FULL;
-        if (a.what == A_ERASE) {
-            r = erase(STORE_LO + a.a * STORE_SECTOR);
-            store_compactions++;
-        } else {
-            r = move(off_of(a.a), a.b);
-        }
-        if (r != STORE_OK || (r = rescan()) != STORE_OK)
-            return r;
+    if (!job.active)
+        return STORE_OK;
+    if ((r = ready()) != STORE_OK) {
+        job.active = 0;
+        return r;
     }
-    return STORE_E_FULL;
+    model_of_flash(&model_now);
+    a = next_step(&model_now, job.span);
+    if (a.what == A_DONE || a.what == A_STUCK || job.done >= MAX_STEPS) {
+        job.active = 0;
+        return a.what == A_DONE ? STORE_OK : STORE_E_FULL;
+    }
+    if (a.what == A_ERASE) {
+        r = erase(STORE_LO + a.a * STORE_SECTOR);
+        if (r == STORE_OK)
+            tbl_erased(a.a);
+        else
+            scanned = 0;
+        store_compactions++;
+    } else {
+        r = move(off_of(a.a), a.b);
+    }
+    job.done++;
+    if (job.total < job.done + 1u)
+        job.total = job.done + 1u;
+    if (r != STORE_OK) {
+        job.active = 0;
+        return r;
+    }
+    return STORE_BUSY;
 }
 
+int store_busy(uint32_t *done, uint32_t *total)
+{
+    if (done)
+        *done = job.done;
+    if (total)
+        *total = job.total;
+    return (int)job.active;
+}
+
+void store_stop(void) { job.active = 0; }
+
 /* ----------------------------------------------------------------- adding, deleting --- */
+/* M5.1: room now -> STORE_OK; room only by compacting -> STORE_BUSY: the compaction is started (store_step does it,
+ * a step at a time, from the main loop) and the caller asks again once it is done; no room even so -> STORE_E_FULL.
+ * Nothing here takes long: no compaction step, no rescan (the table is kept up to date) */
 int store_begin(uint32_t len, const char *slug, uint32_t *file)
 {
     uint32_t span, b = 0, i, k;
-    int r, old = 0;
+    int r, old = 0, steps;
+    struct action a;
     pend.active = 0;
     if (len < 32u || len > STORE_FILE_MAX)
         return STORE_E_SIZE;
-    if (store_scan() < 0)
+    if (ready() != STORE_OK)
         return STORE_E_NO_FLASH;
     if ((r = tidy()) != STORE_OK)
         return r;
     span = span_of(len);
-    model_of_flash(&model_try);
-    if (!dry_run(&model_try, span)) {     /* no room even by compacting: the older copy goes first, but only if that
-                                           * makes room (the only case a cut can lose the song) */
+    if (job.active && job.span != span)
+        job.active = 0;                   /* (a different song now: planned again below) */
+    model_of_flash(&model_now);
+    a = next_step(&model_now, span);
+    if (a.what != A_DONE && !job.active) {
         model_of_flash(&model_try);
-        for (i = 0; slug && slug[0] && i < nrec; i++)
-            if (rec[i].slug[0] && same(rec[i].slug, slug)) {
-                b = (rec[i].off - STORE_LO) / STORE_BLOCK;
-                for (k = 0; k < rec[i].blocks; k++) {
-                    model_try.map[b + k] = B_DIRTY;
-                    model_try.start[b + k] = NONE;
+        steps = dry_run(&model_try, span);
+        if (!steps) {                     /* no room even by compacting: the older copy goes first, but only if that
+                                           * makes room (the only case a cut can lose the song) */
+            model_of_flash(&model_try);
+            for (i = 0; slug && slug[0] && i < nrec; i++)
+                if (rec[i].slug[0] && same(rec[i].slug, slug)) {
+                    b = (rec[i].off - STORE_LO) / STORE_BLOCK;
+                    for (k = 0; k < rec[i].blocks; k++) {
+                        model_try.map[b + k] = B_DIRTY;
+                        model_try.start[b + k] = NONE;
+                    }
+                    old = 1;
                 }
-                old = 1;
-            }
-        if (!old || !dry_run(&model_try, span))
-            return STORE_E_FULL;          /* nothing written */
-        if ((r = kill_slug(slug, 0)) != STORE_OK || (r = rescan()) != STORE_OK)
-            return r;
+            if (!old || !(steps = dry_run(&model_try, span)))
+                return STORE_E_FULL;      /* nothing written */
+            if ((r = kill_slug(slug, 0)) != STORE_OK)
+                return r;
+            model_of_flash(&model_now);
+            a = next_step(&model_now, span);
+        }
+        if (a.what != A_DONE) {
+            job.active = 1;
+            job.span = span;
+            job.done = 0;
+            job.total = (uint32_t)steps - 1u;
+        }
     }
-    if ((r = compact(span, &b)) != STORE_OK)
-        return r;
+    if (a.what != A_DONE)
+        return job.active ? STORE_BUSY : STORE_E_FULL;
+    job.active = 0;
+    b = a.a;
     pend.active = 1;
     pend.off = off_of(b);
     pend.len = len;
@@ -598,7 +728,17 @@ int store_write(uint32_t off, const void *src, uint32_t n)
     return prog(pend.off + STORE_HEAD + off, src, n);
 }
 
-void store_abort(void) { pend.active = 0; }   /* (its blocks: taken back by the next compacting) */
+void store_abort(void)                    /* (its blocks: taken back by the next compacting) */
+{
+    uint32_t b, k;
+    if (!pend.active)
+        return;
+    pend.active = 0;
+    b = (pend.off - STORE_LO) / STORE_BLOCK;
+    for (k = 0; k < pend.span; k++)
+        if (!erased(b + k))
+            blk[b + k] = B_DIRTY;
+}
 
 int store_commit(void)
 {
@@ -621,21 +761,32 @@ int store_commit(void)
         keep[k] = slug[k];
     keep[k] = 0;
     head(h, next_seq(), pend.len, song_crc32(f, pend.len, 0));
-    if ((r = prog(pend.off, h, STORE_HEAD)) != STORE_OK)   /* the head last: from here on the record counts */
+    if ((r = prog(pend.off, h, STORE_HEAD)) != STORE_OK) {   /* the head last: from here on the record counts */
+        scanned = 0;
         return r;
-    if ((r = rescan()) != STORE_OK)
-        return r;
+    }
+    if (!tbl_add((pend.off - STORE_LO) / STORE_BLOCK)) {
+        scanned = 0;
+        return STORE_E_WRITE;
+    }
+    make_shown();
     r = keep[0] ? kill_slug(keep, pend.off) : STORE_E_NOT_FOUND;   /* the older copy, now that the new one is whole */
     if (r != STORE_OK && r != STORE_E_NOT_FOUND)
         return r;
-    return rescan();
+    return STORE_OK;
 }
 
 int store_add(const uint8_t *file, uint32_t len, const char *slug)
 {
     uint32_t at, done, k;
     int r;
-    if ((r = store_begin(len, slug, &at)) != STORE_OK)
+    while ((r = store_begin(len, slug, &at)) == STORE_BUSY) {   /* (room being made: all of it now, then again) */
+        while ((r = store_step()) == STORE_BUSY)
+            ;
+        if (r != STORE_OK)
+            return r;
+    }
+    if (r != STORE_OK)
         return r;
     for (done = 0; done < len; done += k) {   /* the file, a block's worth at a time */
         k = len - done < STORE_BLOCK ? len - done : STORE_BLOCK;
@@ -649,11 +800,26 @@ int store_add(const uint8_t *file, uint32_t len, const char *slug)
 
 int store_delete(const char *slug)
 {
-    int r;
-    if (store_scan() < 0)
+    if (ready() != STORE_OK)
         return STORE_E_NO_FLASH;
-    r = kill_slug(slug, 0);
-    store_scan();
+    job.active = 0;
+    return kill_slug(slug, 0);
+}
+
+/* M5.1: the whole song store erased, sector by sector (sec 0 .. STORE_SECTORS-1; one already blank is skipped) */
+int store_wipe_sector(uint32_t sec)
+{
+    uint32_t b;
+    int r = STORE_OK;
+    if (sec >= STORE_SECTORS)
+        return STORE_E_RANGE;
+    job.active = pend.active = 0;
+    scanned = 0;
+    for (b = sec * STORE_SECTOR_BLOCKS; b < (sec + 1u) * STORE_SECTOR_BLOCKS; b++)
+        if (!erased(b)) {
+            r = erase(STORE_LO + sec * STORE_SECTOR);
+            break;
+        }
     return r;
 }
 
@@ -661,5 +827,7 @@ const char *store_error_name(int err)
 {
     static const char *const N[] = {"OK", "FULL", "TOO BIG", "ERASE", "WRITE", "NOT FOUND", "RANGE", "NO FLASH",
                                     "STATE"};
+    if (err == STORE_BUSY)
+        return "MAKING ROOM";
     return err <= 0 && err >= STORE_E_STATE ? N[-err] : "?";
 }

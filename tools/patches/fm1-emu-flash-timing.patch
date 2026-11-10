@@ -1,0 +1,404 @@
+diff --git a/crates/fm1-live/src/main.rs b/crates/fm1-live/src/main.rs
+index f60bef7..2df8178 100644
+--- a/crates/fm1-live/src/main.rs
++++ b/crates/fm1-live/src/main.rs
+@@ -210,6 +210,12 @@ impl Machine {
+             soc.loop_skip.enabled = false;
+             soc.xip_cache = Some(fm1_soc::XipCache::default());
+         }
++        // fm1-accompaniment patch (fm1-emu-flash-timing): FM1_FLASH_TIMED: the data area's XIP
++        // reads cost their cache misses (FM1_STRICT's cache costs them already)
++        if soc.flash.timing.is_some() && !strict {
++            soc.data_cache = Some(fm1_soc::XipCache::default());
++        }
++        soc.xip_off_hang = soc.flash.timing.is_some() && std::env::var("FM1_XIP_OFF").map_or(true, |v| v != "warn");
+         soc.periph.skip_idle = true;
+         soc.flaky_core1 = o.flaky_core1.map(|rate| fm1_soc::flaky::FlakyCore1::new(rate, o.seed.unwrap_or(1)));
+         soc.cpu1_survives = o.cpu1_survives;
+@@ -572,6 +578,21 @@ fn save_flash(m: &Machine, path: Option<&String>) {
+         let cut = if f.cut() { format!(", power cut at op {}", f.cut_at.unwrap_or(0)) } else { String::new() };
+         println!("flash: {} erases / programs{cut}", f.ops);
+     }
++    // fm1-accompaniment patch (fm1-emu-flash-timing): the watchdog's longest stretch unfed
++    let ms = |t: u64| t * 1000 / m.soc.periph.hz.max(1);
++    if m.soc.xip_off_reads > 0 {
++        println!("xip off: {} reads of the XIP window while the SFC was off (first {:#010x})", m.soc.xip_off_reads, m.soc.xip_off_first.unwrap_or(0));
++    }
++    let (g, at) = m.soc.wdt_gap;
++    if g > 0 || m.soc.wdt_resets > 0 {
++        let timed = match f.timing { Some((e, p)) => format!(", flash timed {e}/{p} us, busy {} ms", ms(f.busy_ticks)), None => String::new() };
++        println!("watchdog: longest gap {} ms from {} ms, {} watchdog resets{timed}", ms(g), ms(at), m.soc.wdt_resets);
++        let (g2, at2) = m.soc.wdt_gap_late;
++        println!("watchdog: longest gap after the first second {} ms from {} ms", ms(g2), ms(at2));
++        for &(a, b) in &m.soc.wdt_long {
++            println!("watchdog gap {} ms: {}..{} ms", ms(b - a), ms(a), ms(b));
++        }
++    }
+     if let Some(path) = path {
+         // (a new file renamed over the old: a run killed mid-save leaves the last save whole)
+         let tmp = format!("{path}.tmp");
+diff --git a/crates/fm1-soc/src/lib.rs b/crates/fm1-soc/src/lib.rs
+index 9c4cc00..81bd38b 100644
+--- a/crates/fm1-soc/src/lib.rs
++++ b/crates/fm1-soc/src/lib.rs
+@@ -56,6 +56,9 @@ pub const SRAM2_BASE: u32 = 0x01f0_0000;
+ pub const BT_WINDOW_BASE: u32 = 0x01c0_9e7c;
+ /// The flash offset behind XIP 0x02000000 (the stock layout: the app area starts at 0x4000).
+ pub const XIP_FLASH_OFFSET: usize = 0x4000;
++/// (fm1-accompaniment patch) the data area's start in the XIP window: flash 0x93000 (fm1-base's
++/// plain window), as an offset from XIP_BASE
++pub const DATA_XIP: usize = 0x93000 - XIP_FLASH_OFFSET;
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub struct UnknownAccess {
+@@ -365,6 +368,29 @@ pub struct Soc {
+     /// (`RST_SRC`'s bit), which `machine::run_blocks` carries out.
+     pub resets: u32,
+     reset_req: Option<u8>,
++    /// fm1-accompaniment patch (fm1-emu-flash-timing): reads of the flash's data area through
++    /// XIP (flash 0x93000 up, `DATA_XIP`) cost a cache miss each new 64-byte line (FM1_FLASH_TIMED,
++    /// outside FM1_STRICT whose `xip_cache` already costs them); the JIT then leaves them to the
++    /// slow path
++    pub data_cache: Option<XipCache>,
++    /// the watchdog: the cycle of its last feed (or start) while it runs, the longest stretch
++    /// between feeds (ticks, and where it began), the stretches over 500 ms, the watchdog's resets
++    pub wdt_last: Option<u64>,
++    pub wdt_gap: (u64, u64),
++    /// the same, for stretches that begin after the first second (fm1-base's boot has its own)
++    pub wdt_gap_late: (u64, u64),
++    pub wdt_long: Vec<(u64, u64)>,
++    pub wdt_resets: u32,
++    /// XIP off: from a write of 0 to SFC_CON (0x40200) followed by IOMAP_CON0 (0x5101C) bit 5
++    /// cleared (felucca-bsp's fl_enter: the flash pins go to SPI0 for a direct command) until
++    /// IOMAP_CON0 bit 5 is set again (fl_exit). A data read of the XIP window meanwhile cannot be served on an FM-1 (unless its
++    /// line happens to be cached): counted, and with FM1_FLASH_TIMED the core stalls there, as
++    /// on the chip, until the watchdog resets it (FM1_XIP_OFF=warn: only counted)
++    pub xip_off: bool,
++    sfc_zeroed: bool,
++    pub xip_off_reads: u32,
++    pub xip_off_hang: bool,
++    pub xip_off_first: Option<u32>,
+     /// How the loader left the chip, taken as cpu0 starts: what a reset goes back to.
+     boot: Option<Box<Boot>>,
+ }
+@@ -492,6 +518,17 @@ impl Soc {
+             sram2: Ram::new(256 * 1024),
+             lcd: Lcd::new(),
+             flash: SpiFlash::new(),
++            data_cache: None,
++            wdt_last: None,
++            wdt_gap: (0, 0),
++            wdt_gap_late: (0, 0),
++            wdt_long: Vec::new(),
++            wdt_resets: 0,
++            xip_off: false,
++            sfc_zeroed: false,
++            xip_off_reads: 0,
++            xip_off_hang: false,
++            xip_off_first: None,
+             console: Vec::new(),
+             dbg_cause: 0,
+             pc_guard_dirty: false,
+@@ -577,6 +614,12 @@ impl Soc {
+             eprintln!("chip reset at {} ms ({})", self.periph.ms(), if cause == p33::P33::RST_WDT { "watchdog" } else { "PR_PWR" });
+         }
+         self.resets += 1;
++        if cause == p33::P33::RST_WDT {
++            self.wdt_resets += 1;
++            self.wdt_note();
++        }
++        self.wdt_last = None;
++        (self.xip_off, self.sfc_zeroed) = (false, false);
+         self.periph.chip_reset();
+         self.p33.chip_reset(cause);
+         let mut old = std::mem::take(&mut self.usb);
+@@ -608,6 +651,38 @@ impl Soc {
+         self.boot = Some(boot);
+     }
+ 
++    /// (patch) a stretch between watchdog feeds ends now
++    fn wdt_note(&mut self) {
++        let now = self.periph.cycles;
++        if let Some(t) = self.wdt_last {
++            let g = now.saturating_sub(t);
++            if g > self.wdt_gap.0 {
++                self.wdt_gap = (g, t);
++            }
++            if g > self.wdt_gap_late.0 && t >= self.periph.cycle_of_ms(1000) {
++                self.wdt_gap_late = (g, t);
++            }
++            if g > self.periph.cycle_of_ms(500) && self.wdt_long.len() < 1000 {
++                self.wdt_long.push((t, now));
++            }
++        }
++    }
++
++    /// (patch) the flash chip told the time before a command byte or chip select; after it, a
++    /// busy chip's end is an event (no loop skip jumps over it)
++    #[inline]
++    fn flash_clock(&mut self) {
++        self.flash.now = self.periph.cycles;
++        self.flash.hz = self.periph.hz;
++    }
++    #[inline]
++    fn flash_after(&mut self) {
++        if self.flash.busy_until > self.periph.cycles && self.flash.busy_until != self.periph.flash_due {
++            self.periph.flash_due = self.flash.busy_until;
++            self.periph.next_due = self.periph.next_due.min(self.flash.busy_until);
++        }
++    }
++
+     /// A P33 access done: what it asks of the chip (p33.rs). The watchdog starts its count
+     /// when it is switched on or fed, and stops when it is switched off.
+     fn p33_event(&mut self) {
+@@ -616,6 +691,14 @@ impl Soc {
+                 let con = self.p33.reg(p33::P33::WDT_CON, false);
+                 let pd = &mut self.periph;
+                 let before = pd.wdt_at;
++                let now = pd.cycles;
++                if con & 0x10 == 0 {
++                    self.wdt_last = None;
++                } else if fed || self.wdt_last.is_none() {
++                    if fed { self.wdt_note(); }
++                    self.wdt_last = Some(now);
++                }
++                let pd = &mut self.periph;
+                 if con & 0x10 == 0 {
+                     pd.wdt_at = u64::MAX;
+                 } else if fed || pd.wdt_at == u64::MAX {
+@@ -832,6 +915,39 @@ impl Soc {
+         }
+     }
+ 
++    /// (patch) the XIP window read while the SFC is off (`xip_off`)
++    #[inline(never)]
++    fn xip_off_read(&mut self, addr: u32) {
++        self.xip_off_reads += 1;
++        if self.xip_off_first.is_none() {
++            self.xip_off_first = Some(addr);
++            eprintln!("xip off: a read of {addr:#010x} at {} ms while the SFC is off (flash command in progress){}",
++                      self.periph.ms(), if self.xip_off_hang { ": the core stalls" } else { "" });
++        }
++        if self.xip_off_hang && self.reset_req.is_none() {
++            // the core waits for the SFC that is off, interrupts off: the watchdog runs out
++            if self.periph.wdt_at != u64::MAX {
++                self.periph.cycles = self.periph.cycles.max(self.periph.wdt_at);
++                self.reset_req = Some(p33::P33::RST_WDT);
++            } else {
++                eprintln!("xip off: the watchdog is not running: the core would stall for good; reset here");
++                self.reset_req = Some(p33::P33::RST_SOFT);
++            }
++            self.periph.next_due = 0;
++        }
++    }
++
++    /// (patch) a data-area read through XIP, FM1_FLASH_TIMED without FM1_STRICT: a miss ~300 cycles
++    #[inline(never)]
++    fn data_charge(&mut self, addr: u32) {
++        let t = self.periph.cycle_ticks.max(1) * (XipCache::MISS_TICKS / 8);
++        if let Some(c) = self.data_cache.as_mut() {
++            if c.access(addr) {
++                self.xip_charge(t);
++            }
++        }
++    }
++
+     /// A flash cache miss's ticks: core 1's own time while it runs, else the clock's
+     #[inline(always)]
+     fn xip_charge(&mut self, t: u64) {
+@@ -1086,7 +1202,10 @@ impl Bus for Soc {
+             ram_code: self.ram.code_ptr(),
+             xip: self.xip.as_ptr(),
+             xip_base: XIP_BASE,
+-            xip_len: self.xip.len() as u32,
++            // (patch: a costed data area is read through the slow path)
++            // (patch: timed, every XIP data load goes through the bus: costed, and checked
++            // against `xip_off`)
++            xip_len: if self.flash.timing.is_some() { 0 } else { self.xip.len() as u32 },
+         })
+     }
+     fn code_writes(&self) -> Option<u64> {
+@@ -1147,6 +1266,11 @@ impl Bus for Soc {
+                     self.xip_charge(XipCache::MISS_TICKS);
+                     self.miss_note(addr);
+                 }
++            } else if x >= DATA_XIP {
++                self.data_charge(addr);
++            }
++            if self.xip_off {
++                self.xip_off_read(addr);
+             }
+             return u32::from_le_bytes([self.xip[x], self.xip[x + 1], self.xip[x + 2], self.xip[x + 3]]);
+         }
+@@ -1223,6 +1347,12 @@ impl Soc {
+             Region::Ram => self.ram.read32(addr - RAM_BASE),
+             Region::Sfcenc => self.sfr_get(addr),
+             Region::XipFlash => {
++                if self.xip_cache.is_none() {
++                    self.data_charge(addr);
++                }
++                if self.xip_off {
++                    self.xip_off_read(addr);
++                }
+                 let o = (addr - XIP_BASE) as usize + XIP_FLASH_OFFSET;
+                 let g = |i: usize| self.flash.mem.get(i).copied().unwrap_or(0xff);
+                 u32::from_le_bytes([g(o), g(o + 1), g(o + 2), g(o + 3)])
+@@ -1345,6 +1475,13 @@ impl Soc {
+ 
+     #[inline(never)]
+     fn write32_slow(&mut self, addr: u32, value: u32) {
++        if addr == 0x40200 {
++            self.sfc_zeroed = value == 0;
++        } else if addr == 0x5101c {
++            // (fl_enter: SFC_CON = 0, then the pins to SPI0; fl_exit: the pins back, then SFC_CON)
++            self.xip_off = value & 0x20 == 0 && self.sfc_zeroed;
++            self.sfc_zeroed = false;
++        }
+         match self.region(addr) {
+             Region::Xip | Region::XipFlash => self.log_unknown(addr, 4, true, value), // flash writes go via the ROM
+             Region::Ram => self.ram.write32(addr - RAM_BASE, value),
+@@ -1380,7 +1517,9 @@ impl Soc {
+                 // PD0 drives the flash chip select; PA1/PA3/PA4 clock the
+                 // key-matrix shift registers
+                 if addr == 0x500c0 {
++                    self.flash_clock();
+                     self.flash.set_cs(value & 1 == 0);
++                    self.flash_after();
+                     self.sync_xip();
+                 }
+                 self.periph.write(addr, value);
+@@ -1399,7 +1538,9 @@ impl Soc {
+                 }
+             }
+             Region::Spi0 => {
++                self.flash_clock();
+                 self.flash.write(addr, value);
++                self.flash_after();
+                 self.sync_xip();
+             }
+             Region::Iomap => self.sfr_set(addr, value),
+diff --git a/crates/fm1-soc/src/periph.rs b/crates/fm1-soc/src/periph.rs
+index 8bf67b1..7482a05 100644
+--- a/crates/fm1-soc/src/periph.rs
++++ b/crates/fm1-soc/src/periph.rs
+@@ -176,6 +176,8 @@ pub struct Periph {
+     pub room_cap: u64,
+     /// Cycles jumped over by `skip_idle`.
+     pub skipped: u64,
++    /// (fm1-accompaniment patch) a busy flash chip's end (`Soc::flash_after`), an event
++    pub flash_due: u64,
+     // TIMER4
+     t4_con: u32,
+     t4_base: u64,
+@@ -349,6 +351,7 @@ impl Default for Periph {
+             cnt_streak: 0,
+             next_due: 0,
+             skipped: 0,
++            flash_due: u64::MAX,
+             room_cap: u64::MAX,
+             t4_con: 0,
+             t4_base: 0,
+@@ -484,6 +487,9 @@ impl Periph {
+     fn next_event(&self) -> u64 {
+         let mut n = self.t5_next.min(self.alnk_next).min(self.tick_next).min(self.spi2_next).min(self.adc_next).min(self.spi1_irq_at);
+         n = n.min(self.uart.next).min(self.uart.ot_next).min(self.usb_next).min(self.wdt_at);
++        if self.flash_due > self.cycles {
++            n = n.min(self.flash_due);
++        }
+         for t in &self.tmr {
+             n = n.min(t.next);
+         }
+diff --git a/crates/fm1-soc/src/spiflash.rs b/crates/fm1-soc/src/spiflash.rs
+index b5fe491..cc43b28 100644
+--- a/crates/fm1-soc/src/spiflash.rs
++++ b/crates/fm1-soc/src/spiflash.rs
+@@ -12,7 +12,7 @@
+ //! units). Commands modelled: 9F (JEDEC id), 4B (unique id), 05/35 (status
+ //! 1/2), 06/04 (WREN/WRDI), 03/0B (read / fast read), 20 (4 KiB erase),
+ //! D8 (64 KiB erase), 02 (page program). Erase/program are instantaneous;
+-//! status never reports busy.
++//! status never reports busy (fm1-accompaniment patch: unless FM1_FLASH_TIMED, see `timing`).
+ //!
+ //! Power cuts (FM1_FLASH_CUT=N): the Nth erase or page program is cut half way (the first
+ //! half of its bytes changed, the rest as before), and nothing after it reaches the chip, as if
+@@ -45,6 +45,27 @@ pub struct SpiFlash {
+     pub ops: u32,
+     /// FM1_FLASH_CUT: the op that is cut half way; none reach the chip after it
+     pub cut_at: Option<u32>,
++    /// fm1-accompaniment patch (fm1-emu-flash-timing): FM1_FLASH_TIMED=1 (or "ERASE_US,PROG_US"):
++    /// a 4 KiB erase and a page program keep status bit 0 (WIP) set this long, in microseconds
++    /// (default 8000 / 2000: Puya P25Q-H series typical tSE / tPP); 64 KiB erase 8x tSE
++    pub timing: Option<(u64, u64)>,
++    /// the clock as the SoC last told it (`Soc::flash_clock`), its ticks a second
++    pub now: u64,
++    pub hz: u64,
++    /// WIP is set until this tick
++    pub busy_until: u64,
++    /// total ticks spent busy (erases, programs)
++    pub busy_ticks: u64,
++}
++
++/// FM1_FLASH_TIMED: "1" (or anything not two numbers): the defaults; "E,P": erase / program us
++pub fn flash_timing_from_env() -> Option<(u64, u64)> {
++    let v = std::env::var("FM1_FLASH_TIMED").ok()?;
++    let mut it = v.split(',').map(|x| x.trim().parse::<u64>());
++    match (it.next(), it.next()) {
++        (Some(Ok(e)), Some(Ok(p))) => Some((e, p)),
++        _ => Some((8000, 2000)),
++    }
+ }
+ 
+ impl SpiFlash {
+@@ -71,6 +92,11 @@ impl SpiFlash {
+             revision: 0,
+             ops: 0,
+             cut_at: std::env::var("FM1_FLASH_CUT").ok().and_then(|v| v.parse().ok()),
++            timing: flash_timing_from_env(),
++            now: 0,
++            hz: 240_000_000,
++            busy_until: 0,
++            busy_ticks: 0,
+         }
+     }
+ 
+@@ -82,6 +108,15 @@ impl SpiFlash {
+ 
+     pub fn busy(&self) -> bool { self.cs_low }
+ 
++    /// (timed) the chip is busy for `us` from now
++    fn start_busy(&mut self, us: u64) {
++        let t = us * self.hz / 1_000_000;
++        self.busy_until = self.now + t;
++        self.busy_ticks += t;
++    }
++
++    fn wip(&self) -> bool { self.timing.is_some() && self.now < self.busy_until }
++
+     pub fn set_cs(&mut self, low: bool) {
+         if !low && self.cs_low && self.trace && self.nbytes > 0 {
+             eprintln!("flash cmd {:02x} addr {:06x} bytes {}", self.cmd, self.addr, self.nbytes);
+@@ -102,6 +137,7 @@ impl SpiFlash {
+             if n > 0 {
+                 self.changed = Some((a, (a + n).min(FLASH_SIZE)));
+                 self.revision = self.revision.wrapping_add(1);
++                if let Some((_, p)) = self.timing { self.start_busy(p); }
+             }
+             self.pending_prog.clear();
+             self.wel = false;
+@@ -133,7 +169,7 @@ impl SpiFlash {
+                 // 4 dummy bytes then a 16-byte unique id
+                 if k < 4 { 0xff } else { [0x46, 0x4d, 0x31, 0x2d][(k - 4) & 3] }
+             }
+-            0x05 => if self.wel { 0x02 } else { 0x00 },
++            0x05 => (if self.wel { 0x02 } else { 0x00 }) | self.wip() as u8,
+             0x35 => 0x00,
+             0x03 | 0x0b | 0x20 | 0xd8 | 0x02 => {
+                 if k < 3 {
+@@ -198,6 +234,7 @@ impl SpiFlash {
+         }
+         self.changed = Some((base, (base + n).min(FLASH_SIZE)));
+         self.revision = self.revision.wrapping_add(1);
++        if let Some((e, _)) = self.timing { self.start_busy(if size > 0x1000 { 8 * e } else { e }); }
+     }
+ 
+     pub fn read(&mut self, addr: u32) -> u32 {

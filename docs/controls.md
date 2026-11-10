@@ -472,3 +472,16 @@ Built: ![harmony notation L1](step-M4/m4p3-harm-notation1.png) ![L2](step-M4/m4p
 
 ![the mode screen](step-M5/m5p3-mode.png) ![SYNTH](step-M5/m5p3-synth.png)
 ![arpeggiator on](step-M5/m5p3-arp-seq.png) ![knobs turned](step-M5/m5p3-knobs.png)
+
+### M5.1: WIPE SONG STORE (a recovery action)
+
+- **Settings > Wipe song store** (the last row, 11 rows now), or **GLO + HOME held at power-on** (before anything
+  reads the song store; REC and OCT− + OCT+ stay fm1-base's): the question "WIPE SONG STORE?". A new PLAY press
+  held 2 s erases every song on the FM-1 (a countdown shows); HOME, or any other button, keeps them. Settings and the
+  firmware stay. Then "SONG STORE WIPED" and how to send the songs again; any button goes back.
+- From the laptop: `tools/fm1song.sh wipe --yes` (the user runs it: it erases the song area).
+- While a song is sent, the FM-1 may show **MAKING ROOM step n of about m** for a few seconds: it compacts its store
+  between sends (no buttons meanwhile); the laptop waits and sends again by itself.
+
+![the question](step-M5.1/m51-wipe-ask.png) ![wiped](step-M5.1/m51-wipe-done.png)
+

@@ -15,6 +15,7 @@
  *                                   at most), checks its CRC and the whole song (song_open) in place, then commits it
  *                                   (store_commit). The slug (M5) lets the song's older copy make way if it must
  *   0x74 DELETE {slug}
+ *   0x75 WIPE {"WIPE"}           (M5.1) every song erased: the whole song store, sector by sector
  * and gets 0x7F RESULT {cmd, result (SR_*), detail (a SONG_E_* or STORE_E_* number), songs, free sectors, free blocks
  * u16 (M5)}.
  *
@@ -22,7 +23,13 @@
  * region of its own sized for its largest level (song_layer need); lib_level builds another level into it, with the
  * player holding that layer meanwhile (player_hold). 1.x songs decode into dec as before, every level at once.
  *
- * A send or delete stops the song playing and goes back to the list (the file being played may be rewritten). */
+ * A send or delete stops the song playing and goes back to the list (the file being played may be rewritten).
+ *
+ * M5.1 (the 2026-11-06 incident: a watchdog reset inside SEND): nothing in a command runs long. When a song needs room
+ * that only compacting gives, SEND answers SR_BUSY ("making room", detail: the steps, about) at once; the main loop
+ * then compacts a step at a time (lib_poll, progress on the screen, the watchdog fed every round) and the laptop
+ * sends again. Every flash write's source is copied to RAM first (store_prog): the flash driver switches the XIP
+ * window off while it writes. */
 #include "store.h"
 #include "vsynth.h"
 
@@ -32,8 +39,10 @@
 #define SC_SEND 0x73u
 #define SC_DELETE 0x74u
 #define SC_RESULT 0x7Fu
+#define SC_WIPE 0x75u
 enum { SR_OK, SR_NO_FLASH, SR_SIZE, SR_TRANSFER, SR_CRC, SR_INVALID, SR_STORE, SR_NOT_FOUND, SR_BAD,
-       SR_SYNTH };                       /* M5: in SYNTH mode (the song buffer is the synth's): restart in LEARN */
+       SR_SYNTH,                         /* M5: in SYNTH mode (the song buffer is the synth's): restart in LEARN */
+       SR_BUSY };                        /* M5.1: making room (compacting from the main loop): send again soon */
 
 #define LIB_DEC_BYTES (SONG_BUILD_BYTES > SONG_DECODE_BYTES ? SONG_BUILD_BYTES : SONG_DECODE_BYTES)
 static uint8_t piece[512] __attribute__((aligned(4)));                          /* a song being received: a piece */
@@ -57,7 +66,29 @@ static uint32_t lib_changes;             /* counts sends and deletes: the UI goe
 /* the store's flash: fm1-base's data area (store.c checks the song area's bounds before each erase and write) */
 const uint8_t *store_map(uint32_t off) { return plat_data(off); }
 int store_erase(uint32_t off) { return plat_data_erase(off); }
-int store_prog(uint32_t off, const void *src, uint32_t n) { return plat_data_write(off, src, n); }
+/* M5.1: the source copied to RAM first, whatever it is (the flash driver turns the XIP window off while it writes:
+ * a source in the flash, as M5's kill() zeros in .rodata were, stalls the core until the watchdog resets it) */
+static uint8_t prog_ram[256] __attribute__((aligned(4)));
+int store_prog(uint32_t off, const void *src, uint32_t n)
+{
+    const uint8_t *p = src;
+    uint32_t k, i;
+    int r;
+    for (; n; n -= k, off += k, p += k) {
+        k = n < sizeof prog_ram ? n : sizeof prog_ram;
+        for (i = 0; i < k; i++)
+            prog_ram[i] = p[i];
+        if ((r = plat_data_write(off, prog_ram, k)) != 0)
+            return r;
+    }
+    return 0;
+}
+/* the store's longer loops (a scan, planning a compaction): the watchdog fed */
+#ifdef PLAT_HOST
+void store_yield(void) {}
+#else
+void store_yield(void) { fm1_wdt_feed(); }
+#endif
 
 static int lower(int c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
 
@@ -72,7 +103,7 @@ static int title_before(const struct lib_item *a, const struct lib_item *b)
 static void lib_scan(void)
 {
     uint32_t i, k;
-    int r = store_scan();
+    int r = store_open();                /* (M5.1: the store's table is kept up to date: scanned once) */
     current_i = -1;
     nsongs = 0;
     if (r < 0) {
@@ -84,6 +115,8 @@ static void lib_scan(void)
     for (i = 0; i < nsongs; i++) {
         const struct store_entry *e = store_get(i);
         struct song s;
+        if ((i & 15u) == 15u)
+            store_yield();
         peek_err[i] = (int8_t)song_peek(&s, store_file(e), e->len);
         peeked[i].title = peek_err[i] ? "" : s.title;
         peeked[i].key = peek_err[i] ? "" : s.key;
@@ -186,6 +219,67 @@ static void lib_level(uint32_t l, uint32_t v)
     player_variant(l, v);
 }
 
+/* M5.1: room being made (a SEND answered SR_BUSY): a few steps each round of the main loop, about 40 ms of them, the
+ * progress on the screen -> 1 while busy (the UI does nothing else meanwhile), 0 */
+static uint32_t lib_poll_ms;
+static int lib_poll(void)
+{
+    uint32_t t = plat_ms(), done, total;
+    int r = STORE_BUSY;
+    char b[24];
+    if (!store_busy(0, 0))
+        return 0;
+    while (r == STORE_BUSY && plat_ms() - t < 40u)
+        r = store_step();
+    lib_state = 0;
+    if (r != STORE_BUSY) {
+        lib_changes++;
+        if (r == STORE_OK)
+            app_say("ROOM MADE", "the laptop sends again");
+        else
+            app_say("NO ROOM", store_error_name(r));
+        return 0;
+    }
+    if (t - lib_poll_ms >= 250u) {
+        store_busy(&done, &total);
+        b[0] = 0;
+        text_cat(b, "step ");
+        num_cat(b, done);
+        text_cat(b, " of about ");
+        num_cat(b, total);
+        ui_busy("MAKING ROOM", b);
+        lib_poll_ms = t;
+    }
+    return 1;
+}
+
+/* M5.1: WIPE SONG STORE (the settings, a power-on combination, fm1song wipe): every sector of the song store erased,
+ * the progress on the screen; the watchdog is fed by every erase -> STORE_OK or the first error */
+static int lib_wipe(void)
+{
+    uint32_t s;
+    int r = STORE_OK, e;
+    char b[24];
+    lib_release();
+    store_stop();
+    for (s = 0; s < STORE_SECTORS; s++) {
+        if (s % 8u == 0) {
+            b[0] = 0;
+            num_cat(b, s * 100u / STORE_SECTORS);
+            text_cat(b, " %");
+            ui_busy("WIPING SONG STORE", b);
+        }
+        e = store_wipe_sector(s);
+        if (e != STORE_OK && r == STORE_OK)
+            r = e;
+        store_yield();
+    }
+    store_scan();
+    lib_state = 0;
+    lib_changes++;
+    return r;
+}
+
 /* ------------------------------------------------------------------- USB commands --- */
 #ifndef PLAT_HOST
 #define APP_HAS_USB_CMD 1
@@ -274,9 +368,15 @@ static void sc_send(const uint8_t *body, uint32_t n)
     }
     lib_release();                       /* the song playing stops: the flash is about to change */
     lib_changes++;
-    ui_busy("MAKING ROOM", "");
-    r = store_begin(len, slug, &at);     /* (may compact: songs moved, sectors erased) */
+    r = store_begin(len, slug, &at);     /* (M5.1: never compacts here: STORE_BUSY, and lib_poll makes the room) */
     lib_state = 0;
+    if (r == STORE_BUSY) {
+        uint32_t done, total;
+        store_busy(&done, &total);
+        sc_result(SC_SEND, SR_BUSY, (int)(total - done > 127u ? 127u : total - done));
+        ui_busy("MAKING ROOM", "");
+        return;
+    }
     if (r) {
         sc_result(SC_SEND, SR_STORE, r);
         app_say("SONG NOT STORED", store_error_name(r));
@@ -286,6 +386,7 @@ static void sc_send(const uint8_t *body, uint32_t n)
     plat_host_patience(2000u, 120000u);
     for (off = 0; off < len; off += k) {  /* straight into the flash; it counts only once checked and committed */
         k = len - off < sizeof piece ? len - off : sizeof piece;
+        store_yield();
         if (plat_host_read(off, piece, k)) {
             store_abort();
             sc_result(SC_SEND, SR_TRANSFER, 0);
@@ -356,6 +457,22 @@ static void sc_delete(const uint8_t *body, uint32_t n)
     app_say(r == STORE_OK ? "SONG DELETED" : "NOT DELETED", r == STORE_OK ? slug : store_error_name(r));
 }
 
+static void sc_wipe(const uint8_t *body, uint32_t n)
+{
+    int r;
+    if (n != 4u || body[0] != 'W' || body[1] != 'I' || body[2] != 'P' || body[3] != 'E') {
+        sc_result(SC_WIPE, SR_BAD, 0);
+        return;
+    }
+    if (lib_state < 0 || (!lib_state && store_open() < 0)) {
+        sc_result(SC_WIPE, SR_NO_FLASH, STORE_E_NO_FLASH);
+        return;
+    }
+    r = lib_wipe();
+    sc_result(SC_WIPE, r == STORE_OK ? SR_OK : SR_STORE, r);
+    app_say(r == STORE_OK ? "SONG STORE WIPED" : "NOT WIPED", r == STORE_OK ? "no songs now" : store_error_name(r));
+}
+
 void app_usb_cmd(const uint8_t *d, uint32_t n)
 {
     uint32_t len = (uint32_t)d[3] | (uint32_t)d[4] << 8 | (uint32_t)d[5] << 16;
@@ -370,6 +487,9 @@ void app_usb_cmd(const uint8_t *d, uint32_t n)
         break;
     case SC_DELETE:
         sc_delete(d + 6, len);
+        break;
+    case SC_WIPE:
+        sc_wipe(d + 6, len);
         break;
     default:
         break;

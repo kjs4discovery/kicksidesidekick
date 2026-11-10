@@ -21,18 +21,21 @@ import fm1_install as I  # noqa: E402
 
 OURS = "FM-1_46"                       # our firmware's identity prefix (firmware/app/fm1.toml id_prefix)
 SC_LIST, SC_ENTRY, SC_END, SC_SEND, SC_DELETE, SC_RESULT = 0x70, 0x71, 0x72, 0x73, 0x74, 0x7F
+SC_WIPE = 0x75                         # M5.1: every song erased (the whole song store)
+BUSY = 10                              # M5.1: "making room": the FM-1 compacts from its main loop; send again
 RESULTS = {0: "ok", 1: "the FM-1's flash is not usable (RAM ONLY): it cannot keep songs",
            2: "the file is too big for the FM-1 (M5: 256 KiB at most; M4: 64 KiB)", 3: "the transfer stopped (USB)",
            4: "the file arrived damaged (CRC)", 5: "the FM-1 refused the song", 6: "the FM-1 could not store it",
            7: "no such song on the FM-1", 8: "the FM-1 did not understand the request (an older firmware?)",
-           9: "the FM-1 is in SYNTH mode: switch it off and on, choose LEARN, then send"}
+           9: "the FM-1 is in SYNTH mode: switch it off and on, choose LEARN, then send",
+           10: "the FM-1 is still making room (try again in a minute)"}
 SONG_ERRORS = {-1: "SHORT", -2: "MAGIC", -3: "VERSION", -4: "SIZE", -5: "CRC", -6: "HEADER", -7: "DIRECTORY",
                -8: "MISSING", -9: "META", -10: "SECTIONS", -11: "CHORDS", -12: "CHANGES", -13: "BARS", -14: "LAYERS",
                -15: "EVENTS", -16: "TOO BIG"}
 STORE_ERRORS = {-1: "the song area is full (delete a song first)", -2: "too big", -3: "a flash erase failed",
                 -4: "a flash write failed", -5: "not found", -6: "outside the song area (refused)",
                 -7: "no flash", -8: "a send out of order (try again)"}
-WAIT = {"first": 5.0, "idle": 10.0}
+WAIT = {"first": 5.0, "idle": 10.0, "room": 600.0, "again": 1.0}   # (M5.1: making room: at most 10 min, asked each 1 s)
 
 
 class DeviceError(Exception):
@@ -198,15 +201,31 @@ def explain(r):
     return text
 
 
-def song_send(dev, blob, slug=None):
+def song_send(dev, blob, slug=None, busy=None):
     """one compiled song into the FM-1's store -> its result dict (result 0: stored). slug: an M5 FM-1 (it reads 2.0)
-    is told the song's slug, so the song's older copy can make way if the store has no room for both"""
-    dev.link.drain()
+    is told the song's slug, so the song's older copy can make way if the store has no room for both. M5.1: an FM-1
+    that must compact first answers BUSY at once and makes the room from its main loop (the screen shows it); the
+    send is then asked again each second until it goes through (busy(steps_left): told each time)"""
     body = struct.pack("<II", len(blob), zlib.crc32(blob))
     if slug is not None:
         body += slug.encode("ascii")[:23].ljust(24, b"\0")
-    dev.link.send(I.frame(SC_SEND, body))
-    return _wait(dev.link, _result(SC_SEND), serve=blob, first=60.0)   # (M5: it may compact the store first)
+    t0 = time.monotonic()
+    while True:
+        dev.link.drain()
+        dev.link.send(I.frame(SC_SEND, body))
+        r = _wait(dev.link, _result(SC_SEND), serve=blob, first=60.0)   # (M5: it may compact the store first)
+        if r["result"] != BUSY or time.monotonic() - t0 > WAIT["room"]:
+            return r
+        if busy:
+            busy(r["detail"])
+        time.sleep(WAIT["again"])
+
+
+def song_wipe(dev):
+    """M5.1: every song on the FM-1 erased (its whole song store, 0x97000..0xDBFFF) -> the result dict"""
+    dev.link.drain()
+    dev.link.send(I.frame(SC_WIPE, b"WIPE"))
+    return _wait(dev.link, _result(SC_WIPE), first=60.0)
 
 
 def song_delete(dev, slug):
