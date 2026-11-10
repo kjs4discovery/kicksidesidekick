@@ -282,3 +282,22 @@ Decisions: SHIFT on EDIT; jam on PLAY / FX / SCL; reverb and crush defaults per 
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 4 (tests, budget, install checklist), then STOP.
+
+2026-11-10 — Step M6 Part 4 (final package, full suite, install checklist) —
+Status: done (prepared; not installed)
+Did:
+- The full suite (test-runner subagent) on 0.6.0-m6 from 6f8ffe0 (sha256 6451c638…): store, pytest (93), vsynth, guitar/ukulele, fuzz (210,000 files), m51 all PASS; m5 FAIL (part3 "HOME while setting", m5p1 hint 11 openings), m6 FAIL (m6p1 loudness over all songs incl. private).
+- The m5 failures were a real bug (mine, M6 part 1): the HOME hold's start `now | 1u` can be 1 ms ahead of now, and a second input() pass in that ms read now - t as ~4e9 ms, so a HOME tap opened the mode screen. Fixed with held_ms() (negative = 0); commit 920fa67. Added an m6p1 check (24 quick HOME/PLAY taps: never the mode screen).
+- The same pattern was in M5.1's WIPE question (`wipe_t0 = now | 1u`): fixed in the same commit.
+- Decided (user away): didn't re-run the whole 4 h suite for a two-line fix; re-ran the groups the fix touches on the final package: m5 part3,m5p1,boot; m6 --quick; m51 wipe: ALL PASS.
+- docs/step-M6-install.md written (Known section, P4/P5, budget).
+Learned / measured:
+- Package build/step-M6/fm1acc-0.6.0-m6.fwsc, FM-1_46000600, sha256 8944fb02a725978306754601e053e7c1f8b96f0280e13deed23201335888abec, from 920fa67, reproducible (two builds).
+- App 460,496 B; RAM .data+.bss 78,888; pool 289,864. SYNTH worst (8 voices SYNC SCREAM, chorus+delay+reverb 127, jam L3) 34 % of a block. Longest no-watchdog stretch while sending (timed emu) 67 ms.
+- Open: the generated levels of private songs: rockin drums L1 2.15x quieter than L2/L3, harmony L1 (held block chords, distortion gtr) 2.06x louder than L3–L5; zombie drums 1.68x. Public songs, Let It Be and True Colors within 1.6x. M6 didn't change gen.c; M5 never measured private songs. The m6p1 check is left failing on purpose (not relaxed).
+Hardware touched: none
+Questions for the planning chat:
+- M5.1 (on the unit now) has the WIPE-question timer bug: a PLAY tap there could wipe the song store without the 2 s hold. Until 0.6.0-m6 is installed the user shouldn't open Settings > Wipe song store or GLO+HOME at power-on. Please confirm the install soon.
+- Loudness of generated L1 for sustaining/sparse cases (rockin harmony/drums): fix in gen.c's level matching (M7?), or accept?
+- Please review docs/step-M6-install.md.
+Next: the user runs docs/step-M6-install.md steps 1–6; Claude Code runs only --info / fm1song list and records.
