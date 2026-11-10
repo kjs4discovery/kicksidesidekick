@@ -261,3 +261,24 @@ Questions for the planning chat:
 - Ask the user whether Harmony L3 is still louder with the songs sent at M5.1 (Let It Be measured equal); resending the
   5 private songs after M6 gives the 4-bar matching.
 Next: Part 3 (synth round 2).
+
+2026-11-10 — Step M6 Part 3 (SYNTH round 2) —
+Status: done (emulator); committed 667c4f7
+Did:
+- Reverb (ours: 4 damped combs + 2x2 all-passes, ~1.5 s, lines after the delay's in the song buffer) and bit-crush
+  (16..7 bits, 1..8 samples held); nothing from Felucca's GPL files, not EAS's reverb.
+- Arp: rates 1/4 1/8 1/8T 1/16 (step timing in 1/256 control ticks: triplets keep time), RANDOM pattern.
+- SHIFT = EDIT held: K1 reverb, K2 bit-crush, K3 arp rate (a step per 2 clicks), K4 detune; the screen shows that set.
+- Drum jam: PLAY on/off, FX style (WALTZ BALLAD SHUFFLE MARCH POP TRAIN), SCL level 1-3, the tempo shared with the
+  arp (ARP held + SELECT). tools/jam_songs.py compiles a tiny 2.0 song per style (364 B each, drums only, 8 bars +
+  closing bar) into firmware/app/jam_songs.h; the song player loops bars 1-8; EAS renders under the synth only while
+  it plays (synth_mix_eas).
+Learned / measured:
+- vsynth_test ALL PASS (21 presets; rates 8/16/24/32 steps in 4 s at 120 BPM; reverb tail silent after 8.5 s; crush).
+- m6p3 12 PASS; m5p3 10 PASS on the same build. CPU: 8 voices SYNC SCREAM + chorus + delay + reverb 127 + jam L3:
+  synth render + EAS render 34 % of a block (emulated). Image 460,480 B.
+- First reverb version had a rounding limit cycle (>> on negatives: the tail never reached silence); now / (toward 0).
+Decisions: SHIFT on EDIT; jam on PLAY / FX / SCL; reverb and crush defaults per preset (PRESET_REV, PRESET_CRUSH).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 4 (tests, budget, install checklist), then STOP.
