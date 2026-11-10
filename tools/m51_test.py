@@ -188,9 +188,8 @@ def test_sends(empty, rep):
 
 def test_cuts(empty, rep):
     lines, st, check = checker("M5.1: power cuts while sending (making room included), a boot after each")
-    frag = m5.OUT / "flash" / "frag.bin"
-    if not frag.exists():
-        make_frag(empty, frag)
+    frag = make_frag(empty, m5.OUT / "flash" / "frag-cuts.bin")   # (its own copy: the sends test writes frag.bin
+                                                                    # at the same time)
     whole = timed("m51-cut-none", 300000, [], flash=str(frag), host=send(ALL))
     total = whole["ops"]
     rnd = random.Random(51)

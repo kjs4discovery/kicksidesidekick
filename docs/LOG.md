@@ -190,3 +190,31 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: M5.1.2 fixes (RAM sources, compaction out of SEND, incremental table, yields, wipe).
+
+2026-11-09 — Step M5.1.2–4 (fixes, tests, release 0.5.4-m5p4, install checklist) —
+Status: done; STOPPED for review (nothing installed, nothing sent; the FM-1 was not touched)
+Did:
+- store.c / library.c: every flash write's source copied to RAM (store_prog; kill's zeros on the stack); compaction out
+  of SEND (store_begin -> STORE_BUSY, SEND answers result 10, lib_poll does store_step ~40 ms a main-loop round with
+  "MAKING ROOM step n of about m"; fm1song resends each 1 s, up to 10 min); the store's table kept up to date (no
+  552-block rescans); store_yield (watchdog feed) in scan / planning / receive loops; WIPE SONG STORE: Settings last
+  row, GLO+HOME at power-on (a fresh PLAY press held 2 s; held keys never count), USB 0x75 + `fm1song wipe --yes`.
+- tools/m51_test.py (`make m51-test`), store_test.c (BUSY/steps, wipe, table == rescan after 254 ops).
+- Archived HANDOFF notes and LOG entries before M5 to docs/archive/ (verbatim), as the 2026-11-09 note asked;
+  committed .claude/agents/test-runner.md.
+- Release build/step-M5.1/fm1acc-0.5.4-m5p4.fwsc, FM-1_46000504, sha256 197b84a5...0a187d, from 902eaa7.
+- docs/step-M5.1-install.md: over 0.5.3-m5p3 or M4; ONE song first, then ours, then the private ones; fallback M4.
+Learned / measured (release package):
+- m5_test 286 PASS ALL PASS; m51_test (timed) 17 PASS ALL PASS over 116 runs: longest watchdog gap after boot 71 ms
+  (limit 8000), 0 resets, 0 XIP-off reads; store_test 35 ALL PASS; pytest 93; vsynth ALL PASS; fuzz 10 min 1,118,000
+  files clean. Image 451,744 B, .data+.bss 76,344, pool 289,864.
+- Decisions taken while the user was away: wipe combo GLO+HOME (REC, OCT-+OCT+ are fm1-base's); wipe as the last
+  settings row (m5_test's hint-off row moved to e0:9); BUSY + resend chosen over keep-alives. At the user's request
+  the extra timed re-run of the M5 suite was dropped. A first m51 run on the release aborted on a test-fixture race
+  (two parts writing frag.bin at once); fixed, rerun clean.
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M5.1-install.md.
+- Erase/program timings are Puya P25Q-H typical (P25Q40H datasheet, P25Q80H distributor listing); a hardware
+  measurement (fl_erase4k's took_us) would confirm them.
+Next: STOP for review; then the user runs the checklist.
