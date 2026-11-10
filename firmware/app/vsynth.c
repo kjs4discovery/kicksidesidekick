@@ -31,7 +31,7 @@ struct preset {
     uint8_t dec, sus;
     int8_t fenv;
     uint8_t lfo_rate, lfo_pwm;
-    uint8_t knob[VS_NKNOB];               /* CUT RES ATK REL CHORUS DELAY */
+    uint8_t knob[6];                      /* CUT RES ATK REL CHORUS DELAY (M6: reverb, crush, detune: their defaults) */
     uint8_t arp, rate;                    /* ARP_*, RATE_* (0 0: none) */
 };
 static const struct preset PRESETS[] = {
@@ -60,6 +60,11 @@ static const struct preset PRESETS[] = {
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
+/* M6: each preset's reverb and bit-crush at start (the detune: its own det) */
+static const uint8_t PRESET_REV[] = {50, 44, 10, 30, 20, 26, 40, 46, 60, 0, 6, 64, 30, 70, 6, 50, 34, 64, 24, 4, 20};
+static const uint8_t PRESET_CRUSH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 70, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 30};
+typedef char preset_fx_rows[(sizeof PRESET_REV == NPRESETS && sizeof PRESET_CRUSH == NPRESETS) ? 1 : -1];
+
 uint32_t vsynth_presets(void) { return NPRESETS; }
 const char *vsynth_preset_name(uint32_t i) { return i < NPRESETS ? PRESETS[i].name : ""; }
 
@@ -74,6 +79,7 @@ static volatile uint32_t q_head, q_tail, off_req;
 static struct vs_stats st;
 
 static int16_t *dl_l, *dl_r, *ch_buf;    /* the delay's lines, the chorus's (in the caller's memory) */
+static int16_t *rv_buf;                  /* M6: the reverb's (after them) */
 #define DMAX 32768u
 #define CMAX 2048u
 
@@ -85,7 +91,8 @@ void vsynth_start(void *mem, uint32_t bytes)
     dl_l = (int16_t *)mem;
     dl_r = dl_l + DMAX;
     ch_buf = dl_r + DMAX;
-    for (i = 0; i < 2u * DMAX + CMAX; i++)
+    rv_buf = ch_buf + CMAX;
+    for (i = 0; i < 2u * DMAX + CMAX + VS_REVERB_LEN; i++)
         dl_l[i] = 0;
     vsynth_preset(0);
     __asm__ volatile("" ::: "memory");
@@ -107,8 +114,11 @@ void vsynth_preset(uint32_t i)
     if (i >= NPRESETS)
         return;
     want_preset = i;
-    for (k = 0; k < VS_NKNOB; k++)
+    for (k = 0; k < 6u; k++)
         want_knob[k] = PRESETS[i].knob[k];
+    want_knob[VS_REVERB] = PRESET_REV[i];
+    want_knob[VS_CRUSH] = PRESET_CRUSH[i];
+    want_knob[VS_DETUNE] = PRESETS[i].det;
     want_arp = PRESETS[i].arp;
     want_rate = PRESETS[i].arp ? PRESETS[i].rate : want_rate;
     __asm__ volatile("" ::: "memory");
@@ -190,7 +200,7 @@ static void sound_update(void)
     seen_seq = s;
     trk[0].p[P_FTYPE] = 0;
     trk[0].p[P_E0] = cur.wave;
-    trk[0].p[P_E1] = cur.det;
+    trk[0].p[P_E1] = (int16_t)knob[VS_DETUNE];   /* (M6: the SHIFT layer's knob; the preset's det at start) */
     trk[0].p[P_E2] = cur.mix;
     trk[0].p[P_E3] = cur.noise;
     trk[0].p[P_E4] = (int16_t)knob[VS_CUT];
@@ -284,6 +294,7 @@ static uint8_t held[16], nheld;           /* keys held, in the order pressed */
 static uint32_t arp_left, arp_gate_left, arp_i;
 static int32_t arp_dir = 1;
 static int32_t arp_note = -1;
+static uint32_t arp_rng = 0x1234567u;
 
 static void held_add(uint32_t n)
 {
@@ -319,7 +330,14 @@ static int32_t arp_next(void)
             s[k] = s[k - 1u];
             s[k - 1u] = t;
         }
-    if (arp_mode == ARP_UP) {
+    if (arp_mode == ARP_RANDOM) {         /* M6: any held note but the one just played */
+        uint32_t r;
+        arp_rng = arp_rng * 1664525u + 1013904223u;
+        r = (arp_rng >> 16) % n;
+        if (n > 1u && r == arp_i)
+            r = (r + 1u + (arp_rng >> 8) % (n - 1u)) % n;
+        arp_i = r;
+    } else if (arp_mode == ARP_UP) {
         arp_i = arp_i + 1u >= n ? 0 : arp_i + 1u;
     } else if (arp_mode == ARP_DOWN) {
         arp_i = arp_i == 0 || arp_i >= n ? n - 1u : arp_i - 1u;
@@ -338,11 +356,14 @@ static int32_t arp_next(void)
     return s[arp_i < n ? arp_i : 0];
 }
 
-/* one control tick of the arpeggiator: a step every 1/4, 1/8 or 1/16 at arp_bpm, the note held half of it */
+/* one control tick of the arpeggiator: a step every 1/4, 1/8, 1/8 triplet or 1/16 at arp_bpm, the note held half of
+ * it. M6: the steps counted in 1/256 control ticks, so the triplets keep time */
+static uint32_t arp_frac;
 static void arp_tick(void)
 {
-    static const uint32_t PER_BEAT[RATES] = {1, 2, 4};
-    uint32_t step = 44100u * 60u / (arp_bpm * PER_BEAT[arp_rate < RATES ? arp_rate : 1u]) / CTL;
+    static const uint32_t PER_BEAT[RATES] = {1, 2, 3, 4};
+    uint32_t step256 = 44100u * 60u * 8u / (arp_bpm * PER_BEAT[arp_rate < RATES ? arp_rate : 1u]) * 32u / CTL;
+    uint32_t step = step256 >> 8;
     if (arp_gate_left && --arp_gate_left == 0 && arp_note >= 0) {
         voice_stop((uint32_t)arp_note);
         arp_note = -1;
@@ -362,7 +383,9 @@ static void arp_tick(void)
         voice_start((uint32_t)arp_note);
         st.arp_steps++;
     }
-    arp_left = step ? step - 1u : 0;
+    arp_frac += step256 & 255u;          /* (the fraction carried: whole ticks on average) */
+    arp_left = (step ? step - 1u : 0) + (arp_frac >> 8);
+    arp_frac &= 255u;
     arp_gate_left = step / 2u ? step / 2u : 1u;
 }
 
@@ -412,12 +435,58 @@ static int32_t chorus_tap(int32_t tri, uint32_t w)
     return a + (((b - a) * (int32_t)f) >> 8);
 }
 
+/* M6: the reverb (ours, a Schroeder-Moorer kind): four damped feedback combs in parallel on the mono sum, then two
+ * all-passes each for left and right (different lengths: the width). Lines in the caller's memory (rv_buf) */
+static const uint16_t REV_COMB[4] = {1116, 1188, 1277, 1356};
+static const uint16_t REV_AP[4] = {556, 441, 579, 464};   /* left two, right two */
+static uint16_t rv_ci[4], rv_ai[4];
+static int32_t rv_filt[4];
+
+static int32_t rv_allpass(uint32_t k, int16_t *b, int32_t x)
+{
+    int32_t y = b[rv_ai[k]], out = y - x;
+    b[rv_ai[k]] = (int16_t)clamp(x + y / 2, -32767, 32767);   /* (/ rounds toward 0: the tail reaches silence) */
+    if (++rv_ai[k] >= REV_AP[k])
+        rv_ai[k] = 0;
+    return out;
+}
+
+static void reverb(int32_t in, int32_t *ol, int32_t *or_)
+{
+    int16_t *b = rv_buf;
+    int32_t sum = 0, l, r;
+    uint32_t k;
+    for (k = 0; k < 4u; k++) {           /* feedback 0.87 (about 1.5 s to -60 dB), damping 0.25 */
+        int32_t y = b[rv_ci[k]];
+        rv_filt[k] = y - (y - rv_filt[k]) / 4;
+        b[rv_ci[k]] = (int16_t)clamp(in + rv_filt[k] * 28508 / 32768, -32767, 32767);
+        if (++rv_ci[k] >= REV_COMB[k])
+            rv_ci[k] = 0;
+        sum += y;
+        b += REV_COMB[k];
+    }
+    sum >>= 2;
+    l = rv_allpass(0, b, sum);
+    b += REV_AP[0];
+    l = rv_allpass(1, b, l);
+    b += REV_AP[1];
+    r = rv_allpass(2, b, sum);
+    b += REV_AP[2];
+    r = rv_allpass(3, b, r);
+    *ol = l;
+    *or_ = r;
+}
+typedef char rev_fits[(1116 + 1188 + 1277 + 1356 + 556 + 441 + 579 + 464 <= VS_REVERB_LEN) ? 1 : -1];
+
+/* M6: the bit-crush: fewer bits (16 down to 7) and a held sample (1 to 8 samples) as the knob goes up */
+static int32_t cr_hold, cr_n;
+
 /* ------------------------------------------------------------------- the render --- */
 void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     static int32_t mix[CTL];
     uint32_t b, i, k, voices = 0;
-    int32_t chorus = 0, send = 0, dlen;
+    int32_t chorus = 0, send = 0, dlen, rev, crush, cr_bits, cr_every;
     if (!active || !dl_l) {
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
@@ -427,6 +496,11 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     keys_in();
     chorus = knob[VS_CHORUS];
     send = knob[VS_DELAY];
+    rev = knob[VS_REVERB];
+    crush = knob[VS_CRUSH];
+    cr_bits = 16 - crush * 9 / 127;                          /* 16 .. 7 bits (the voices sit well below full scale:
+                                                              * fewer would leave a quiet sound nothing) */
+    cr_every = 1 + crush / 18;                               /* 1 .. 8 samples held */
     dlen = (int32_t)(44100u * 60u * 3u / (arp_bpm * 4u));   /* a dotted eighth at the tempo */
     if (dlen > (int32_t)DMAX - 1)
         dlen = (int32_t)DMAX - 1;
@@ -462,8 +536,16 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             ENG_ANALOG.render(&trk[0], v, mix, CTL, &m);
         }
         for (i = 0; i < CTL; i++) {
-            int32_t x = mix[i] >> 3, wl, wr, l, r, tri, dl, dr;
+            int32_t x = mix[i] >> 3, wl, wr, l, r, tri, dl, dr, vl, vr;
             uint32_t rd;
+            if (crush) {                                     /* M6: the bit-crush, before the effects */
+                if (++cr_n >= cr_every) {
+                    int32_t q = 1 << (16 - cr_bits);
+                    cr_n = 0;
+                    cr_hold = clamp(x, -32767, 32767) / q * q;
+                }
+                x = cr_hold;
+            }
             /* chorus */
             ch_buf[cw & (CMAX - 1u)] = (int16_t)clamp(x, -32767, 32767);
             cl_ph += 0x0000C2EBu;                            /* 0.5 Hz at 44.1 kHz (2^32 / 88200) */
@@ -485,6 +567,11 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             dw++;
             l += dl * 3 >> 2;
             r += dr * 3 >> 2;
+            if (rev) {                                       /* M6: the reverb, last */
+                reverb((l + r) / 8 * rev / 128, &vl, &vr);   /* (/: no -1 floor feeding it) */
+                l += vl * 4;
+                r += vr * 4;
+            }
             /* to 24 bits at MASTER (as synth.c: 16-bit x master / 16), a soft limit, then the clamp */
             l = clamp(l, -98304, 98304) * (int32_t)master_q12 / 16;
             r = clamp(r, -98304, 98304) * (int32_t)master_q12 / 16;

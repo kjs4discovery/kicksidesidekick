@@ -10,6 +10,7 @@
 
 int synth_init(void);                     /* at boot, before audio runs: 0 = ready */
 int synth_ready(void);
+void synth_mix_eas(int on);               /* M6: SYNTH mode: EAS and the song player (the drum jam) under the synth */
 void synth_midi(uint8_t status, uint8_t d1, uint8_t d2);   /* main loop: queue a channel message */
 void synth_send_now(uint8_t status, uint8_t d1, uint8_t d2);   /* audio interrupt only: to EAS, now */
 void synth_panic(void);                   /* any context: all notes off, now */

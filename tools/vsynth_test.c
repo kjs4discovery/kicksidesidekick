@@ -77,6 +77,74 @@ int main(void)
         if (wav)
             fclose(wav);
     }
+    {                                     /* M6: the arp's rates (1/8 triplets keep time), RANDOM, reverb, crush */
+        static const uint32_t RATE_STEPS[RATES] = {8, 16, 24, 32};   /* in 4 s at 120 BPM */
+        double r, rd, rr, rc;
+        uint32_t pk, st0, rt, notes[128] = {0}, distinct = 0;
+        vsynth_preset(9);                 /* CHIP BLIP: short */
+        for (rt = 0; rt < RATES; rt++) {
+            vsynth_key(60, 1);
+            vsynth_key(64, 1);
+            vsynth_arp(ARP_UP, rt, 120);
+            st0 = vsynth_stats()->arp_steps;
+            run(4.0, &r, &pk, 0);
+            printf("arp rate %u at 120 BPM: %u steps in 4 s (want %u)\n", rt, vsynth_stats()->arp_steps - st0,
+                   RATE_STEPS[rt]);
+            if (vsynth_stats()->arp_steps - st0 + 1u < RATE_STEPS[rt] || vsynth_stats()->arp_steps - st0 > RATE_STEPS[rt] + 1u)
+                fails++, printf("   ^ FAIL\n");
+            vsynth_arp(ARP_OFF, RATE_8, 120);
+            vsynth_key(60, 0);
+            vsynth_key(64, 0);
+            run(1.0, &r, &pk, 0);
+        }
+        (void)notes;
+        for (rt = 0; rt < 5; rt++)
+            vsynth_key(60 + 2 * rt, 1);
+        vsynth_arp(ARP_RANDOM, RATE_16, 120);
+        st0 = vsynth_stats()->arp_steps;
+        run(4.0, &r, &pk, 0);
+        distinct = vsynth_stats()->arp_steps - st0;
+        printf("arp RANDOM over 5 keys: %u steps in 4 s\n", distinct);
+        if (distinct < 30)
+            fails++, printf("   ^ FAIL\n");
+        vsynth_arp(ARP_OFF, RATE_8, 120);
+        for (rt = 0; rt < 5; rt++)
+            vsynth_key(60 + 2 * rt, 0);
+        run(8.0, &r, &pk, 0);
+        vsynth_preset(19);                /* DEEP SUB: dry, no delay */
+        vsynth_set_knob(VS_REVERB, 0);
+        vsynth_set_knob(VS_DELAY, 0);
+        vsynth_key(60, 1);
+        run(0.5, &r, &pk, 0);
+        vsynth_key(60, 0);
+        run(0.4, &r, &pk, 0);
+        run(0.5, &rd, &pk, 0);            /* the dry tail, 0.4..0.9 s after */
+        run(6.0, &r, &pk, 0);
+        vsynth_set_knob(VS_REVERB, 127);
+        vsynth_key(60, 1);
+        run(0.5, &r, &pk, 0);
+        vsynth_key(60, 0);
+        run(0.4, &r, &pk, 0);
+        run(0.5, &rr, &pk, 0);
+        run(7.5, &r, &pk, 0);
+        run(0.5, &r, &pk, 0);             /* 8.5..9 s after: silent */
+        printf("reverb: the tail 0.4..0.9 s after release, rms %.0f dry, %.0f at 127; silent 8 s later (peak %u)\n",
+               rd, rr, pk);
+        if (rr < 4 * rd + 1000 || pk > 2000)
+            fails++, printf("   ^ FAIL\n");
+        vsynth_set_knob(VS_REVERB, 0);
+        vsynth_key(60, 1);
+        run(0.5, &r, &pk, 0);
+        vsynth_set_knob(VS_CRUSH, 127);
+        run(0.5, &rc, &pk, 0);
+        vsynth_key(60, 0);
+        vsynth_set_knob(VS_CRUSH, 0);
+        run(3.0, &rd, &pk, 0);
+        run(0.5, &rd, &pk, 0);
+        printf("bit-crush 127: rms %.0f (clean %.0f), silent after (peak %u)\n", rc, r, pk);
+        if (rc < r / 4 || pk > 2000)
+            fails++, printf("   ^ FAIL\n");
+    }
     printf("voices at most %u, notes %u: %s\n", vsynth_stats()->voices_max, vsynth_stats()->notes,
            fails ? "FAILURES" : "ALL PASS");
     return fails != 0;

@@ -496,3 +496,67 @@ void app_usb_cmd(const uint8_t *d, uint32_t n)
     }
 }
 #endif
+
+/* ------------------------------------------------------------- M6: SYNTH's drum jam --- */
+/* A style's drum pattern (tools/jam_songs.py: a tiny 2.0 song per style, drums only) played by the song player
+ * under the synth: its bars 1-8 looped at the synth's tempo, at a level 1-3 generated on the FM-1 as for any song.
+ * Its memory: the song buffer after the synth's delay and reverb lines (vsynth.h VS_MEM_BYTES). */
+#include "jam_songs.h"
+#define JAM_AT ((VS_MEM_BYTES + 63u) & ~63u)
+static struct song jam;
+static uint32_t jam_style = 0xFFu, jam_level;
+
+static uint32_t lib_jam_styles(void) { return sizeof JAM_SONGS / sizeof JAM_SONGS[0]; }
+static const char *lib_jam_name(uint32_t i) { return i < lib_jam_styles() ? JAM_SONGS[i].name : ""; }
+
+/* start (or switch to) style s at level lv, tempo bpm; the same style: the level changes on the beat it is at.
+ * -> SONG_OK or SONG_E_* */
+static int lib_jam(uint32_t s, uint32_t lv, uint32_t bpm)
+{
+    int r;
+    uint32_t t;
+    if (s >= lib_jam_styles() || lv < 1u || lv > 3u)
+        return SONG_E_LAYR;
+    if (s == jam_style && player_song() == &jam) {
+        if (lv != jam_level) {           /* (as lib_level: the drums held while rebuilt) */
+            player_hold(1u);
+            t = plat_ms();
+            while (!(player_held() & 1u) && plat_ms() - t < 200u)
+                ;
+            r = song_build(&jam, 0, lv, dec + JAM_AT, sizeof dec - JAM_AT);
+            player_variant(0, lv);
+            player_hold(0);
+            jam_level = lv;
+            return r;
+        }
+        player_tempo(bpm);
+        return SONG_OK;
+    }
+    lib_release();
+    jam_style = 0xFFu;
+    r = song_open(&jam, JAM_SONGS[s].data, JAM_SONGS[s].size, dec + JAM_AT, sizeof dec - JAM_AT);
+    if (r == SONG_OK && jam.layer[0].need * 8u > sizeof dec - JAM_AT)
+        r = SONG_E_ROOM;
+    if (r == SONG_OK)
+        r = song_build(&jam, 0, lv, dec + JAM_AT, sizeof dec - JAM_AT);
+    if (r != SONG_OK)
+        return r;
+    jam_style = s;
+    jam_level = lv;
+    player_load(&jam);
+    player_mute(0);
+    player_variant(0, lv);
+    player_tempo(bpm);
+    player_loop(LOOP_BARS, 0, JAM_BARS * jam.bar_ticks);
+    player_start(0, 0);
+    return SONG_OK;
+}
+
+static void lib_jam_stop(void)
+{
+    if (player_song() == &jam)
+        lib_release();
+    jam_style = 0xFFu;
+}
+
+static int lib_jam_playing(void) { return player_song() == &jam && player_state() == PL_PLAYING; }

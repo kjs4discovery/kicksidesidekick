@@ -25,7 +25,7 @@ import m5_test as m5                     # noqa: E402
 
 V_LIST, V_PLAY, V_SETTINGS, V_MODE, V_SYNTH, V_WIPE = 0, 1, 3, 6, 7, 8
 M6_FIELDS = ("mode_switches zoom uke roll_keys jam jam_notes shift fx_reverb fx_crush arp_pattern "
-             "arp_rate").split()
+             "arp_rate jam_style jam_level").split()
 PRIV = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
     if (ROOT / "songs/private").is_dir() else []
 O = m5.OPEN_MS
@@ -268,7 +268,98 @@ def test_m6p2(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m6p1": test_m6p1, "m6p2": test_m6p2}
+# --------------------------------------------------------------------------------------------- part 3
+def seg(r, a, b):
+    return r["left"][int(a * m5.RATE):int(b * m5.RATE)]
+
+
+def test_m6p3(all_songs, rep):
+    lines, st, check = m5.checker("M6 part 3: SYNTH, round 2")
+    S = SYNTH
+    run = lambda name, ms, sc: m5.run(name, ms, S + sc, mode=None)
+    preset = lambda i: [f"4600:e0:{i}"] if i else []
+    shift = lambda t, enc, n: [f"{t}:EDIT", f"{t + 100}:{enc}:{n}", f"{t + 1200}:EDIT^"]   # (the turn takes a while)
+    # the reverb (SHIFT + K1): CHROME BRASS with its delay off (PRESET), one note, its tail
+    note = ["4700:e6:-64", "5200:C4", "5600:C4^"]
+    note = ["4600:e6:-64", "6200:C4", "6600:C4^"]
+    dry = run("m6p3-reverb-dry", 7400, preset(5) + shift(4700, "e2", -64) + note)
+    wet = run("m6p3-reverb-wet", 7400, preset(5) + shift(4700, "e2", 64) + note)
+    td, tw = m5.rms(seg(dry, 6.8, 7.3)), m5.rms(seg(wet, 6.8, 7.3))
+    check(dry["stats"]["fx_reverb"] == 0 and wet["stats"]["fx_reverb"] == 127 and tw > 4 * td + 50,
+          f"the reverb (SHIFT + K1, 0..127; {dry['stats']['fx_reverb']}, {wet['stats']['fx_reverb']}): the tail 0.2..0.7 s "
+          f"after the note, rms {td:.0f} dry, {tw:.0f} at 127")
+    # the bit-crush (SHIFT + K2)
+    c0 = run("m6p3-crush-0", 7400, preset(19) + ["6200:C4", "7300:C4^"])
+    c1 = run("m6p3-crush-127", 7400, preset(19) + shift(4700, "e3", 64) + ["6200:C4", "7300:C4^"])
+    a, b = seg(c0, 6.5, 7.2), seg(c1, 6.5, 7.2)
+    diff = m5.rms([x - y for x, y in zip(a, b)])
+    check(c1["stats"]["fx_crush"] == 127 and diff > 0.2 * m5.rms(a) and c1["stats"]["synth_peak"] < 8388607,
+          f"the bit-crush (SHIFT + K2, {c1['stats']['fx_crush']}): the sound changed (difference rms {diff:.0f} of "
+          f"{m5.rms(a):.0f}), no clipping (peak {c1['stats']['synth_peak']})")
+    cb = run("m6p3-chip-blip", 5200, preset(9))
+    check(cb["stats"]["fx_crush"] == 70, f"CHIP BLIP comes with its bit-crush ({cb['stats']['fx_crush']})")
+    # SHIFT on the screen while held
+    sh = run("m6p3-shift", 5200, ["4800:EDIT"])
+    check(sh["stats"]["shift"] == 1, "EDIT held: SHIFT, K1-K4's second set on the screen (m6p3-shift.png)")
+    # the arp: rates (GLO, or SHIFT + K3), 1/8T, RANDOM (SEQ x3 from UP)
+    keys2 = ["5000:C4", "5000:G4", "7000:C4^", "7000:G4^"]
+    on = ["4600:ARP", "4700:ARP^"]
+    r8t = run("m6p3-arp-8t", 7200, on + ["4800:GLO", "4900:GLO^"] + keys2)   # 1/8 -> 1/8T
+    rsh = run("m6p3-arp-shift-rate", 7200, on + shift(4750, "e4", 2) + keys2)   # SHIFT + K3: 1/8 -> 1/8T
+    rr = run("m6p3-arp-random", 7200, on + [x for k in range(3) for x in (f"{4750 + 120 * k}:SEQ", f"{4800 + 120 * k}:SEQ^")]
+             + ["5000:C4", "5000:E4", "5000:G4", "5000:B4", "7000:C4^", "7000:E4^", "7000:G4^", "7000:B4^"])
+    s8, ss, sr = r8t["stats"], rsh["stats"], rr["stats"]
+    check(s8["arp_rate"] == 2 and 11 <= s8["arp_steps"] <= 13 and ss["arp_rate"] == 2 and
+          sr["arp_pattern"] == 4 and sr["arp_steps"] >= 7,
+          f"the arpeggiator: 1/8T by GLO ({s8['arp_steps']} steps in 2 s at 120 BPM, 12 wanted) or by SHIFT + K3; "
+          f"RANDOM by SEQ ({sr['arp_steps']} steps)")
+    # the drum jam: PLAY on, the style (FX), its level (SCL), the tempo (ARP held + SELECT), looped, under the synth
+    jam = run("m6p3-jam", 9000, ["4600:PLAY", "4700:PLAY^", "6000:C4", "6000:E4", "6000:G4", "8800:C4^", "8800:E4^",
+                                 "8800:G4^"])
+    js = jam["stats"]
+    drums = m5.rms(seg(jam, 4.9, 5.9))
+    both = m5.rms(seg(jam, 6.2, 8.7))
+    check(js["jam"] == 1 and js["jam_notes"] > 8 and drums > 100 and both > drums and js["mode"] == 2,
+          f"PLAY: the drum jam (POP L2 at 120 BPM), {js['jam_notes']} drum notes in 4.4 s (rms {drums:.0f}), the synth "
+          f"over it (rms {both:.0f}; m6p3-jam.png)")
+    fast = run("m6p3-jam-loop", 17000, ["4500:ARP", "4600:e0:80", "6000:ARP^", "6100:PLAY", "6200:PLAY^"])
+    fs = fast["stats"]
+    check(fs["bpm"] == 200 and fs["loops"] >= 1 and fs["jam"] == 1,
+          f"ARP held + SELECT: the jam's tempo too ({fs['bpm']} BPM); bars 1-8 looped ({fs['loops']} loop jumps in "
+          f"10 s)")
+    sty = run("m6p3-jam-style", 8000, ["4600:FX!", "4700:FX^!", "4800:SCL!", "4900:SCL^!", "5000:PLAY", "5100:PLAY^"])
+    s1 = sty["stats"]
+    check(s1["jam"] == 1 and s1["jam_notes"] > 8 and s1["jam_style"] == 5 and s1["jam_level"] == 3 and
+          m5.rms(seg(sty, 6, 8)) > 100,
+          "FX: the next style (TRAIN), SCL: the next level (L3); PLAY: it plays (m6p3-jam-style.png)")
+    lv = run("m6p3-jam-level", 9000, ["4600:PLAY", "4700:PLAY^", "6500:SCL!", "6600:SCL^!"])
+    check(lv["stats"]["jam"] == 1 and lv["stats"]["jam_level"] == 3 and not lv["halt"] and m5.rms(seg(lv, 7.5, 9)) > 100,
+          "SCL while it plays: L3 from the next beat, the drums go on")
+    off = run("m6p3-jam-off", 7600, ["4600:PLAY", "4700:PLAY^", "6000:PLAY", "6100:PLAY^"])
+    check(off["stats"]["jam"] == 0 and m5.rms(seg(off, 7.0, 7.6)) < 30, "PLAY again: the drums stop")
+    # CPU: 8 voices of SYNC SCREAM, chorus, delay, reverb, and the jam at L3
+    keys8 = ("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
+    cp = run("m6p3-cpu", 9000, preset(4) + shift(4700, "e2", 64) + ["5000:SCL!", "5100:SCL^!", "5200:PLAY", "5300:PLAY^"]
+             + [f"6000:{k}" for k in keys8] + [f"8800:{k}^" for k in keys8])
+    c = cp["stats"]
+    load = (c["synth_render_max"] + c["render_max"]) / c["budget"] if c["budget"] else 9
+    check(c["synth_voices_max"] == 8 and c["jam"] == 1 and load < 0.8 and not cp["halt"],
+          f"8 voices of SYNC SCREAM with chorus, delay, reverb at 127 and the drum jam at L3: the longest synth render "
+          f"plus the longest EAS render {load * 100:.0f} % of a block (emulated CPU)")
+    # leaving SYNTH with the jam on: silence, then a song plays in LEARN
+    g = [c["slug"] for c in all_songs].index("amazing-grace")
+    lj = run("m6p3-jam-leave", 14000, ["4600:PLAY", "4700:PLAY^"] + hold_home(5200) + [
+        "7800:e0:-1", "8000:PLAY!", "8060:PLAY^!"] + ([f"8300:e0:{g}"] if g else []) +
+        ["8600:PLAY!", "8660:PLAY^!", "9100:PLAY!", "9160:PLAY^!"])
+    q = m5.rms(seg(lj, 7.5, 7.9))
+    snd = m5.rms(seg(lj, 12.0, 14.0))
+    check(q < 30 and lj["stats"]["mode"] == 1 and lj["stats"]["ui_view"] == V_PLAY and snd > 50 and not lj["halt"],
+          f"the jam on, HOME held: silence on the mode screen (rms {q:.0f}); LEARN, a song: it plays (rms {snd:.0f})")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m6p1": test_m6p1, "m6p2": test_m6p2, "m6p3": test_m6p3}
 
 
 def main():

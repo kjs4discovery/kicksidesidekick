@@ -8,10 +8,14 @@
 #include <stdint.h>
 
 #define VS_VOICES 8u
-#define VS_MEM_BYTES (2u * 32768u * 2u + 2048u * 2u)   /* the delay's two lines and the chorus's (int16) */
-enum { VS_CUT, VS_RES, VS_ATK, VS_REL, VS_CHORUS, VS_DELAY, VS_NKNOB };   /* the knobs, 0..127 */
-enum { ARP_OFF, ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_MODES };
-enum { RATE_4, RATE_8, RATE_16, RATES };
+#define VS_REVERB_LEN 7040u           /* M6: the reverb's lines (int16): 4 combs, 2 x 2 all-passes (vsynth.c REV_*) */
+#define VS_MEM_BYTES (2u * 32768u * 2u + 2048u * 2u + VS_REVERB_LEN * 2u)   /* the delay's two lines, the chorus's,
+                                                                           * the reverb's (int16) */
+enum { VS_CUT, VS_RES, VS_ATK, VS_REL, VS_CHORUS, VS_DELAY,   /* the knobs, 0..127 */
+       VS_REVERB, VS_CRUSH, VS_DETUNE,   /* M6: the SHIFT layer's (with the arp rate) */
+       VS_NKNOB };
+enum { ARP_OFF, ARP_UP, ARP_DOWN, ARP_UPDOWN, ARP_RANDOM, ARP_MODES };   /* (M6: + RANDOM) */
+enum { RATE_4, RATE_8, RATE_8T, RATE_16, RATES };                        /* (M6: + 1/8 triplets) */
 
 struct vs_stats {
     uint32_t notes;                       /* voices started */

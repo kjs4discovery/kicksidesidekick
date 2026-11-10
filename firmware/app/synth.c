@@ -22,6 +22,7 @@ static EAS_DATA_HANDLE eas;
 static EAS_HANDLE stream;
 static volatile uint8_t ready;
 static volatile uint8_t panic_req;
+static volatile uint8_t mix_eas;          /* M6: SYNTH mode with the drum jam: EAS (the song player) under the synth */
 
 static volatile uint32_t q[QLEN];
 static volatile uint32_t q_head, q_tail;  /* head: written by the main loop; tail: by the interrupt */
@@ -54,6 +55,7 @@ int synth_init(void)
 }
 
 int synth_ready(void) { return ready; }
+void synth_mix_eas(int on) { mix_eas = (uint8_t)(on != 0); }
 uint32_t synth_pool_used(void) { return fw_eas_pool_used(); }
 uint32_t synth_pool_size(void) { return fw_eas_pool_size(); }
 
@@ -74,24 +76,11 @@ void synth_panic(void)
     player_panic();
 }
 
-void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
+/* EAS and the song player: one block into lr */
+static void eas_block(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
-    uint32_t i, t;
+    uint32_t i, t, t0;
     EAS_I32 got = 0;
-    uint32_t t0;
-    if (!ready || n != SYNTH_BLOCK) {
-        for (i = 0; i < 2u * n; i++)
-            lr[i] = 0;
-        return;
-    }
-    if (vsynth_active()) {                /* M5: SYNTH mode: our synth instead of EAS and the song player */
-        t0 = plat_ticks24();
-        vsynth_render(lr, n, master_q12);
-        t = plat_ticks24() - t0;
-        if (t > player_stats.synth_render_max)
-            player_stats.synth_render_max = t;
-        return;
-    }
     if (panic_req) {
         panic_req = 0;
         q_tail = q_head;                  /* forget what is queued */
@@ -121,4 +110,33 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         prev_r = r;
     }
     player_after(plat_ticks24() - t0, eas->pVoiceMgr ? (uint32_t)eas->pVoiceMgr->activeVoices : 0u);
+}
+
+void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
+{
+    uint32_t i, t;
+    uint32_t t0;
+    if (!ready || n != SYNTH_BLOCK) {
+        for (i = 0; i < 2u * n; i++)
+            lr[i] = 0;
+        return;
+    }
+    if (vsynth_active()) {                /* M5: SYNTH mode: our synth instead of EAS and the song player; M6: with
+                                           * the drum jam, EAS under it */
+        static int32_t vs[2u * SYNTH_BLOCK];
+        if (mix_eas)
+            eas_block(lr, n, master_q12);
+        t0 = plat_ticks24();
+        vsynth_render(mix_eas ? vs : lr, n, master_q12);
+        t = plat_ticks24() - t0;
+        if (t > player_stats.synth_render_max)
+            player_stats.synth_render_max = t;
+        if (mix_eas)
+            for (i = 0; i < 2u * n; i++) {
+                int32_t v = lr[i] + vs[i];
+                lr[i] = v > 8388607 ? 8388607 : v < -8388607 ? -8388607 : v;
+            }
+        return;
+    }
+    eas_block(lr, n, master_q12);
 }

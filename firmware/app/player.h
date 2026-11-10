@@ -120,7 +120,8 @@ struct player_stats {
     uint32_t shift;                       /* SYNTH: the SHIFT layer held (the K1-K4 second set) */
     uint32_t fx_reverb, fx_crush;         /* SYNTH: the reverb and bit-crush amounts (0..127) */
     uint32_t arp_pattern, arp_rate;       /* SYNTH: ARP_*, RATE_* now */
-    uint32_t m6_pad[5];
+    uint32_t jam_style, jam_level;        /* SYNTH: the drum jam's style (tools/jam_songs.py order), level */
+    uint32_t m6_pad[3];
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

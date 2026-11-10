@@ -9,9 +9,13 @@
  *
  * SYNTH: the keys play the synth (OCT- / OCT+ their octave). SELECT: the preset. K1 cutoff, K2 resonance, K3
  * attack, K4 release, ALGORITHM chorus, PRESET delay. ARP: the arpeggiator on / off; SEQ: its pattern (UP, DOWN,
- * UP-DOWN); GLO: its rate (1/4, 1/8, 1/16); ARP held + SELECT: the tempo (60..200 BPM, the delay follows it).
- * Learning mode and SYNTH never run at once: the synth's delay lines take library.c's song buffer (dec), and a
- * song sent over USB in SYNTH mode is refused (library.c). */
+ * UP-DOWN, M6: RANDOM); GLO: its rate (1/4, 1/8, M6: 1/8T, 1/16); ARP held + SELECT: the tempo (60..200 BPM, the
+ * delay and the drum jam follow it).
+ * M6: EDIT held is SHIFT: K1-K4 then set reverb, bit-crush, the arp rate and detune (the screen shows that set while
+ * it is held). The drum jam: PLAY starts / stops a drum pattern from the learning engine's styles (FX: the next
+ * style, SCL: its level 1-3), looped at the tempo, under the synth (library.c lib_jam).
+ * Learning mode and SYNTH never run at once: the synth's delay lines take library.c's song buffer (dec; the jam the
+ * rest of it), and a song sent over USB in SYNTH mode is refused (library.c). */
 #include "vsynth.h"
 
 static struct {
@@ -21,10 +25,13 @@ static struct {
     uint8_t key_note[NKEYS];
     uint32_t shown;                      /* what the screen shows (a hash): redrawn when it changes */
     uint32_t say_until;
-} sy = {.arp_last = ARP_UP, .rate = RATE_8, .bpm = 120};
+    uint32_t shift;                      /* M6: EDIT held */
+    uint32_t jam, jam_style, jam_level;  /* M6: the drum jam on; its style (JAM_SONGS), level 1-3 */
+    int32_t rate_acc;                    /* M6: SHIFT + K3 turns, toward the next rate */
+} sy = {.arp_last = ARP_UP, .rate = RATE_8, .bpm = 120, .jam_style = 4, .jam_level = 2};
 
-static const char *const ARP_NAME[ARP_MODES] = {"OFF", "UP", "DOWN", "UP-DOWN"};
-static const char *const RATE_NAME[RATES] = {"1/4", "1/8", "1/16"};
+static const char *const ARP_NAME[ARP_MODES] = {"OFF", "UP", "DOWN", "UP-DOWN", "RANDOM"};
+static const char *const RATE_NAME[RATES] = {"1/4", "1/8", "1/8T", "1/16"};
 
 static void synth_load(uint32_t i);
 static void draw_legend(int32_t y, const char *t);   /* (ui.c, below) */
@@ -69,6 +76,9 @@ static void mode_leave(void)
 {
     if (vsynth_active()) {
         uint32_t t = plat_ms();
+        lib_jam_stop();                  /* M6: the drum jam stops first (it reads the song buffer too) */
+        synth_mix_eas(0);
+        sy.jam = 0;
         vsynth_stop();                   /* (the song buffer is free again once a render running now has ended: a
                                           * block is 5.8 ms; a song opened next reads into it) */
         while (plat_ms() - t < 20u)
@@ -118,9 +128,28 @@ static void synth_say(const char *a, const char *b)
     sy.say_until = plat_ms() + 1200u;
 }
 
+static void synth_jam(int on)            /* M6: the drum jam on (again: the style or level now) or off */
+{
+    int r;
+    if (!on) {
+        lib_jam_stop();
+        synth_mix_eas(0);
+        sy.jam = 0;
+        return;
+    }
+    synth_mix_eas(1);
+    r = lib_jam(sy.jam_style, sy.jam_level, sy.bpm);
+    sy.jam = r == SONG_OK;
+    if (!sy.jam) {
+        synth_mix_eas(0);
+        synth_say("DRUMS", song_error_name(r));
+    }
+}
+
 static void synth_input(uint32_t keys, uint32_t btn, uint32_t down)
 {
-    static const uint8_t KNOB_ENC[VS_NKNOB] = {EN_K1, EN_K2, EN_K3, EN_K4, EN_ALGO, EN_PRESET};
+    static const uint8_t KNOB_ENC[6] = {EN_K1, EN_K2, EN_K3, EN_K4, EN_ALGO, EN_PRESET};
+    static const uint8_t SHIFT_KNOB[4] = {VS_REVERB, VS_CRUSH, 0xFF, VS_DETUNE};   /* (K3: the arp rate) */
     uint32_t k, lit = 0;
     int32_t d;
     for (k = 0; k < NKEYS; k++) {
@@ -141,19 +170,35 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down)
         synth_say("KEYS", ui.oct ? t : "OCTAVE 0");
     }
     d = plat_enc(EN_SELECT);
-    if (d && (btn >> B_ARP & 1u)) {      /* ARP held: the tempo */
+    if (d && (btn >> B_ARP & 1u)) {      /* ARP held: the tempo (the arp, the delay, the drum jam) */
         sy.bpm = (uint32_t)clamp((int32_t)sy.bpm + d, 60, 200);
         sy.arp_turned = 1;
         vsynth_arp(sy.arp, sy.rate, sy.bpm);
+        if (sy.jam)
+            player_tempo(sy.bpm);
         sy.say_until = 0;
     } else if (d) {
         int32_t n = (int32_t)vsynth_presets();
         synth_load((uint32_t)((((int32_t)sy.preset + d) % n + n) % n));
     }
-    for (k = 0; k < VS_NKNOB; k++) {
+    sy.shift = btn >> B_EDIT & 1u;       /* M6: SHIFT: K1-K4's second set */
+    for (k = 0; k < 6u; k++) {
         d = plat_enc(KNOB_ENC[k]);
-        if (d)
+        if (!d)
+            continue;
+        if (sy.shift && k < 4u && SHIFT_KNOB[k] == 0xFF) {   /* the arp rate, a step every 2 clicks */
+            sy.rate_acc += d;
+            if (sy.rate_acc >= 2 || sy.rate_acc <= -2) {
+                sy.rate = (uint32_t)clamp((int32_t)sy.rate + (sy.rate_acc > 0 ? 1 : -1), 0, (int32_t)RATES - 1);
+                sy.rate_acc = 0;
+                vsynth_arp(sy.arp, sy.rate, sy.bpm);
+                synth_say("ARP RATE", RATE_NAME[sy.rate]);
+            }
+        } else if (sy.shift && k < 4u) {
+            vsynth_set_knob(SHIFT_KNOB[k], vsynth_knob(SHIFT_KNOB[k]) + 2 * d);
+        } else {
             vsynth_set_knob(k, vsynth_knob(k) + 2 * d);
+        }
     }
     if (ui.buttons >> B_ARP & 1u && !(btn >> B_ARP & 1u)) {   /* ARP released: on / off (the last pattern), unless
                                                                * the tempo was turned while it was held */
@@ -164,8 +209,8 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down)
         }
         sy.arp_turned = 0;
     }
-    if (down & (1u << B_SEQ)) {          /* the pattern */
-        sy.arp_last = sy.arp_last % 3u + 1u;
+    if (down & (1u << B_SEQ)) {          /* the pattern (M6: + RANDOM) */
+        sy.arp_last = sy.arp_last % (ARP_MODES - 1u) + 1u;
         sy.arp = sy.arp_last;
         vsynth_arp(sy.arp, sy.rate, sy.bpm);
         synth_say("ARPEGGIATOR", ARP_NAME[sy.arp]);
@@ -175,16 +220,53 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down)
         vsynth_arp(sy.arp, sy.rate, sy.bpm);
         synth_say("ARP RATE", RATE_NAME[sy.rate]);
     }
+    if (down & (1u << B_PLAY)) {         /* M6: the drum jam on / off */
+        synth_jam(!sy.jam);
+        if (sy.jam) {
+            char t[16] = "";
+            text_cat(t, lib_jam_name(sy.jam_style));
+            text_cat(t, " L");
+            num_cat(t, sy.jam_level);
+            synth_say("DRUMS", t);
+        }
+    }
+    if (down & (1u << B_FX | 1u << B_SEL)) {   /* M6: the jam's style (FX), its level (SCL); playing: at once */
+        char t[16] = "";
+        if (down & 1u << B_FX)
+            sy.jam_style = (sy.jam_style + 1u) % lib_jam_styles();
+        if (down & 1u << B_SEL)
+            sy.jam_level = sy.jam_level % 3u + 1u;
+        if (sy.jam)
+            synth_jam(1);
+        text_cat(t, lib_jam_name(sy.jam_style));
+        text_cat(t, " L");
+        num_cat(t, sy.jam_level);
+        synth_say(sy.jam ? "DRUMS" : "DRUMS (PLAY)", t);
+    }
     {
         const struct vs_stats *s = vsynth_stats();
         player_stats.synth_notes = s->notes;
         player_stats.synth_voices_max = s->voices_max;
         player_stats.arp_steps = s->arp_steps;
         player_stats.synth_peak = s->peak;
+        player_stats.shift = sy.shift;
+        player_stats.fx_reverb = (uint32_t)vsynth_knob(VS_REVERB);
+        player_stats.fx_crush = (uint32_t)vsynth_knob(VS_CRUSH);
+        player_stats.arp_pattern = sy.arp;
+        player_stats.arp_rate = sy.rate;
+        player_stats.jam = sy.jam;
+        player_stats.jam_notes = player_stats.notes_on[0];
+        player_stats.jam_style = sy.jam_style;
+        player_stats.jam_level = sy.jam_level;
     }
     if (sy.arp)
         lit |= 1u << B_ARP;
-    plat_lights(lit, keys, 1u << B_ARP | 1u << B_SEQ | 1u << B_GLO | 1u << B_OCTDN | 1u << B_OCTUP, 0, 1);
+    if (sy.jam)
+        lit |= 1u << B_PLAY;
+    if (sy.shift)
+        lit |= 1u << B_EDIT;
+    plat_lights(lit, keys, 1u << B_ARP | 1u << B_SEQ | 1u << B_GLO | 1u << B_OCTDN | 1u << B_OCTUP | 1u << B_PLAY |
+                           1u << B_EDIT | 1u << B_FX | 1u << B_SEL, 0, 1);
 }
 
 static uint32_t synth_hash(uint32_t now)
@@ -193,6 +275,9 @@ static uint32_t synth_hash(uint32_t now)
     for (k = 0; k < VS_NKNOB; k++)
         h = h * 31u + (uint32_t)vsynth_knob(k);
     h = h * 31u + sy.arp * 7u + sy.rate * 131u + sy.bpm * 1031u + (uint32_t)(ui.oct + 8) * 65537u;
+    h = h * 31u + sy.shift * 3u + sy.jam * 5u + sy.jam_style * 17u + sy.jam_level * 257u + (now / 3000u & 1u) * 9u;
+    if (sy.jam)                          /* the jam's beat light on the screen */
+        h = h * 31u + (uint32_t)(player_tick(0) / (int32_t)(jam.ppq ? jam.ppq : 480u));
     return h ^ (now < sy.say_until ? 0x5A5A5A5Au : 0);
 }
 
@@ -207,41 +292,53 @@ static int synth_dirty(uint32_t now)
 
 static void draw_synth(void)
 {
-    static const char *const KN[VS_NKNOB] = {"CUTOFF", "RESO", "ATTACK", "RELEASE", "CHORUS", "DELAY"};
-    static const char *const KC[VS_NKNOB] = {"K1", "K2", "K3", "K4", "ALGO", "PRESET"};
-    uint32_t k, now = plat_ms();
-    char t[40] = "";
+    static const char *const KN[2][6] = {{"CUTOFF", "RESO", "ATTACK", "RELEASE", "CHORUS", "DELAY"},
+                                         {"REVERB", "CRUSH", "ARP RATE", "DETUNE", "CHORUS", "DELAY"}};
+    static const uint8_t KI[2][6] = {{VS_CUT, VS_RES, VS_ATK, VS_REL, VS_CHORUS, VS_DELAY},
+                                     {VS_REVERB, VS_CRUSH, 0xFF, VS_DETUNE, VS_CHORUS, VS_DELAY}};
+    static const char *const KC[6] = {"K1", "K2", "K3", "K4", "ALGO", "PRESET"};
+    uint32_t k, now = plat_ms(), sh = sy.shift ? 1u : 0u;
+    char t[48] = "";
     if (ui.redraw)
         lcd_fill(0, 0, 240, 240, C_BLACK);
     cv_begin(240, 32, C_BLACK);
     cv_text(6, 4, &FONT_B, "SYNTH", C_HI);
+    if (sh) {
+        cv_rect(66, 4, 40, 16, C_HI);
+        cv_text(70, 6, &FONT_XS, "SHIFT", C_BLACK);
+    }
     num_cat(t, sy.preset + 1u);
     text_cat(t, " / ");
     num_cat(t, vsynth_presets());
     cv_text(234 - text_w(&FONT_XS, t), 6, &FONT_XS, t, C_DIM);
     cv_rect(0, 31, 240, 1, C_LINE);
     cv_blit(0, 0);
-    cv_begin(240, 44, C_BLACK);          /* the preset, or a message for a moment */
+    cv_begin(240, 40, C_BLACK);          /* the preset, or a message for a moment */
     if (now < sy.say_until) {
-        text_in(0, 240, 2, &FONT_XS, ui.msg[0], C_GRAY);
-        text_in(0, 240, 18, &FONT_B, ui.msg[1], C_WHITE);
+        text_in(0, 240, 0, &FONT_XS, ui.msg[0], C_GRAY);
+        text_in(0, 240, 16, &FONT_B, ui.msg[1], C_WHITE);
     } else {
-        text_in(0, 240, 8, &FONT_M, vsynth_preset_name(sy.preset), C_WHITE);
+        text_in(0, 240, 6, &FONT_M, vsynth_preset_name(sy.preset), C_WHITE);
     }
-    cv_blit(0, 38);
-    for (k = 0; k < VS_NKNOB; k++) {     /* the knobs: two rows of three, each with a bar */
-        int32_t v = vsynth_knob(k), x = (int32_t)(k % 3u) * 80;
+    cv_blit(0, 36);
+    for (k = 0; k < 6u; k++) {           /* the knobs: two rows of three, each with a bar (SHIFT: K1-K4's second set) */
+        int32_t v, x = (int32_t)(k % 3u) * 80;
+        int arp_rate = KI[sh][k] == 0xFF;
+        v = arp_rate ? (int32_t)(sy.rate * 127u / (RATES - 1u)) : vsynth_knob(KI[sh][k]);
         t[0] = 0;
-        num_cat(t, (uint32_t)v);
-        cv_begin(78, 46, C_BLACK);
-        cv_text(4, 0, &FONT_XS, KN[k], C_GRAY);
+        if (arp_rate)
+            text_cat(t, RATE_NAME[sy.rate]);
+        else
+            num_cat(t, (uint32_t)v);
+        cv_begin(78, 44, C_BLACK);
+        cv_text(4, 0, &FONT_XS, KN[sh][k], sh && k < 4u ? C_HI : C_GRAY);
         cv_text(74 - text_w(&FONT_XS, t), 0, &FONT_XS, t, C_WHITE);
         cv_rect(4, 18, 70, 6, C_LINE);
-        cv_rect(4, 18, 70 * v / 127, 6, C_HI);
+        cv_rect(4, 18, 70 * v / 127, 6, sh && k < 4u ? C_WHITE : C_HI);
         cv_text(4, 28, &FONT_T, KC[k], C_DIM);
-        cv_blit((uint32_t)x + 1u, 88u + (k / 3u) * 48u);
+        cv_blit((uint32_t)x + 1u, 78u + (k / 3u) * 46u);
     }
-    cv_begin(240, 26, C_BLACK);
+    cv_begin(240, 20, C_BLACK);
     t[0] = 0;
     text_cat(t, "ARP ");
     text_cat(t, ARP_NAME[sy.arp]);
@@ -253,7 +350,25 @@ static void draw_synth(void)
     num_cat(t, sy.bpm);
     text_cat(t, " BPM   OCT ");
     snum_cat(t, ui.oct);
-    cv_text(6, 4, &FONT_XS, t, sy.arp ? C_AMB : C_GRAY);
-    cv_blit(0, 186);
-    draw_legend(Y_LEGEND, "SELECT preset|ARP SEQ GLO arp|HOME held mode");
+    cv_text(6, 2, &FONT_XS, t, sy.arp ? C_AMB : C_GRAY);
+    cv_blit(0, 171);
+    cv_begin(240, 22, C_BLACK);          /* M6: the drum jam: style, level, the beats */
+    t[0] = 0;
+    text_cat(t, "DRUMS ");
+    text_cat(t, lib_jam_name(sy.jam_style));
+    text_cat(t, " L");
+    num_cat(t, sy.jam_level);
+    cv_text(6, 3, &FONT_XS, t, sy.jam ? C_AMB : C_GRAY);
+    if (sy.jam) {
+        uint32_t ppq = jam.ppq ? jam.ppq : 480u, bpb = jam.beats_per_bar ? jam.beats_per_bar : 4u, b;
+        int32_t tk = player_tick(0);
+        uint32_t beat = tk > 0 ? (uint32_t)tk / ppq % bpb : 0;
+        for (b = 0; b < bpb; b++)
+            cv_rect(150 + (int32_t)b * 20, 5, 14, 10, b == beat ? (b ? C_HI : C_WHITE) : C_LINE);
+    } else {
+        cv_text(150, 3, &FONT_XS, "PLAY: on", C_DIM);
+    }
+    cv_blit(0, 192);
+    draw_legend(Y_LEGEND, (now / 3000u) & 1u ? "ARP SEQ GLO arp|FX SCL drums|HOME held mode" :
+                          "SELECT preset|EDIT held shift|PLAY drums");
 }
