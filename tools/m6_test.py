@@ -103,6 +103,12 @@ def test_m6p1(all_songs, rep):
     s = m5.run("m6p1-home-short", 5600, m5.press_raw(4600, "HOME"))
     check(s["stats"]["ui_view"] == V_LIST and s["stats"]["mode_switches"] == 0,
           "HOME pressed briefly: the list's folders as before, not the mode screen")
+    # (the 0.6.0-m6 suite's find: a hold's start, now | 1, could be 1 ms ahead of now, and the next pass in that ms
+    # read it as held 49 days: a HOME tap went to the mode screen) 24 taps at every ms parity, open/closing a song
+    taps = [x for k in range(24) for x in m5.press_raw(4600 + 251 * k + k % 3, "PLAY" if k % 2 else "HOME")]
+    tp = m5.run("m6p1-home-taps", 4600 + 251 * 24 + 400, taps)
+    check(tp["stats"]["ui_view"] != V_MODE and tp["stats"]["mode_switches"] == 0,
+          "24 quick HOME / PLAY taps (song opened and closed 12 times): never the mode screen")
     p = m5.run("m6p1-home-play", m5.PLAY_MS + 5200, m5.open_song(g) + m5.press_raw(m5.PLAY_MS, "PLAY")
                + hold_home(m5.PLAY_MS + 2000))
     tail = m5.rms(p["left"][int((m5.PLAY_MS + 4800) / 1000 * m5.RATE):])

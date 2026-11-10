@@ -1187,6 +1187,12 @@ static void input_play(uint32_t down, uint32_t now)
 
 #include "synthui.c"
 
+/* how long since a hold began at t (t = now | 1u, so 0 means "not held"; t can be 1 ms ahead of now: 0, not a wrap) */
+static uint32_t held_ms(uint32_t t, uint32_t now)
+{
+    return (int32_t)(now - t) > 0 ? now - t : 0u;
+}
+
 static void input(void)
 {
     uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k, now = plat_ms();
@@ -1197,7 +1203,7 @@ static void input(void)
     } else if (!ui.home_t) {
         ui.home_t = now | 1u;
     } else if (ui.home_armed && !ui.splash && ui.view != V_MODE && ui.view != V_WIPE &&
-               now - ui.home_t >= HOME_HOLD_MS) {
+               held_ms(ui.home_t, now) >= HOME_HOLD_MS) {
         ui.home_armed = 0;               /* (once a hold) */
         if (ui.view == V_SETTINGS || ui.view == V_VIEWSET)
             settings_save();
@@ -1300,7 +1306,7 @@ static void input(void)
         } else if ((btn >> B_PLAY & 1u) && ui.wipe_armed) {
             if (!ui.wipe_t0)
                 ui.wipe_t0 = now | 1u;
-            else if (now - ui.wipe_t0 >= WIPE_HOLD_MS) {
+            else if (held_ms(ui.wipe_t0, now) >= WIPE_HOLD_MS) {
                 int r = lib_wipe();
                 ui.wipe_done = 1u + (uint32_t)(r == STORE_OK ? 0 : 1);
                 ui.wipe_t0 = 0;
@@ -1642,8 +1648,8 @@ static void draw_wipe(uint32_t now)
         text_in(0, 240, 64, &FONT_XS, "Settings and firmware stay.", C_GRAY);
         text_in(0, 240, 82, &FONT_XS, "(the laptop can send them again)", C_GRAY);
         if (ui.wipe_t0) {
-            num_cat(t, (WIPE_HOLD_MS - (now - ui.wipe_t0 > WIPE_HOLD_MS ? WIPE_HOLD_MS : now - ui.wipe_t0) + 999u)
-                    / 1000u);
+            uint32_t h = held_ms(ui.wipe_t0, now);
+            num_cat(t, (WIPE_HOLD_MS - (h > WIPE_HOLD_MS ? WIPE_HOLD_MS : h) + 999u) / 1000u);
             text_cat(t, " s ...");
         }
         text_in(0, 240, 112, &FONT_B, ui.wipe_t0 ? t : "hold PLAY 2 s to wipe", ui.wipe_t0 ? C_AMB : C_HI);
