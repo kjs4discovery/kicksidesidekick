@@ -485,3 +485,58 @@ Built: ![harmony notation L1](step-M4/m4p3-harm-notation1.png) ![L2](step-M4/m4p
 
 ![the question](step-M5.1/m51-wipe-ask.png) ![wiped](step-M5.1/m51-wipe-done.png)
 
+
+## M6 (docs/plan-M6.md), part by part
+
+### Part 1: learning-mode fixes
+
+- **Back to the mode screen:** hold **HOME 2 s** on any screen (learning or SYNTH), or **Settings > Switch mode**.
+  A song playing stops; SYNTH goes quiet. The cursor then waits on the other mode. Not on the WIPE question, and a
+  HOME held since power-on (GLO + HOME) never counts. The power-on rescues are unchanged.
+- **QUIET** is readable: a dark amber box with light amber text (every box state's text at least 4.5:1).
+- **Melody roll:** a vertical piano keyboard on the left, one key per pitch row; the notes sounding light their
+  keys, each C is named.
+- **Imported parts' loudness:** matched to the generated level every 4 bars (was once for the whole song). Resend the
+  private songs to get it.
+
+![HOME held: the mode screen](step-M6/m6p1-home-list.png) ![QUIET](step-M6/m6p1-quiet.png)
+![melody roll with keys](step-M6/m6p1-roll.png)
+
+### Part 2: views
+
+| Control / setting | Does |
+|---|---|
+| Settings > **Chord boxes, tab**: GUITAR / UKULELE | the harmony's chord boxes and the melody's tab for that instrument (default GUITAR) |
+| EDIT (harmony) | ... CHORD, KEYBOARD, CHART, GUITAR (or UKULELE), NOTATION, **BAR VIEW** |
+| EDIT (melody) | ... CHORD, KEYBOARD, CHART, MELODY ROLL, NOTATION, **GUITAR TAB** (or **UKULELE TAB**) |
+| SELECT, in the scrolling and staff views (tabs, rolls, bar view, drum grid, notations) | **zoom**: about 0.8 to 6 bars on the screen (the notations up to twice their span) |
+| **REC** | the TEMPO mode for 4 s: SELECT sets the tempo there (in the other views SELECT is the tempo, as before) |
+| Settings > **Zoom at start** (was "Scrolling views show") | the zoom a song opens with: 1.5 or 3 bars |
+
+- Ukulele: G C E A (the G string the high one), our own shapes, an open shape when there is one, else a movable one
+  (the box shows its fret). A slash chord shows its chord's shape ("without /B").
+- The chord boxes (guitar or ukulele) show the **rhythm icon** under the x / o lines, bright at each attack.
+- The melody tab: playable positions as the bass tab (a hand over 4 frets, open strings when they fit).
+- The bar view: the harmony's notes as bars sliding to the line, the piano keys on the left.
+
+![guitar](step-M6/m6p2-guitar.png) ![ukulele](step-M6/m6p2-ukulele.png) ![rhythm icon](step-M6/m6p2-cue-3.png)
+![melody guitar tab](step-M6/m6p2-melody-guitar-tab.png) ![melody ukulele tab](step-M6/m6p2-melody-ukulele-tab.png)
+![bar view](step-M6/m6p2-bar-view.png) ![zoomed in](step-M6/m6p2-zoom-in.png) ![zoomed out](step-M6/m6p2-zoom-out.png)
+
+### Part 3: SYNTH, round 2
+
+| Control | Does |
+|---|---|
+| **EDIT held (SHIFT)** + K1 / K2 / K3 / K4 | reverb / bit-crush / arp rate / detune (the screen shows this set while EDIT is held) |
+| SEQ | the arp pattern: UP, DOWN, UP-DOWN, **RANDOM** |
+| GLO | the arp rate: 1/4, 1/8, **1/8T**, 1/16 |
+| **PLAY** | the drum jam on / off |
+| **FX** | the jam's style: WALTZ, BALLAD, SHUFFLE, MARCH, POP, TRAIN (the learning engine's) |
+| **SCL** | the jam's level: L1 pulse, L2 groove, L3 with fills (changes on the next beat while it plays) |
+| ARP held + SELECT | the tempo, 60–200 BPM: the arpeggio, the delay and the drum jam follow it |
+| HOME held 2 s | back to the mode screen |
+
+  The drum jam loops 8 bars of the style's drums, generated on the FM-1 as for any song, under the synth. The
+  reverb is ours (about 1.5 s); each preset brings its own reverb and crush amounts (CHIP BLIP crushed).
+
+![SHIFT held](step-M6/m6p3-shift.png) ![the drum jam](step-M6/m6p3-jam.png) ![another style](step-M6/m6p3-jam-style.png)

@@ -1830,7 +1830,7 @@ def test_m5p3(all_songs, rep):
     check(a1["stats"]["arp_steps"] >= 12 and a2["stats"]["arp_steps"] >= 3 and   # (1/16 at 120 BPM: 8 a second)
           a3["stats"]["arp_steps"] > a2["stats"]["arp_steps"],
           f"the arpeggiator: OCTAVE BOUNCE's own up-down 1/16 ({a1['stats']['arp_steps']} steps in 1.8 s); ARP on "
-          f"preset 1, up 1/8 at 120 BPM ({a2['stats']['arp_steps']} in 2.2 s); SEQ, GLO: down 1/16 "
+          f"preset 1, up 1/8 at 120 BPM ({a2['stats']['arp_steps']} in 2.2 s); SEQ, GLO: down 1/8T (M6; M5: 1/16) "
           f"({a3['stats']['arp_steps']} in 2 s; m5p3-arp-seq.png)")
     # the knobs and the octave (the screen: m5p3-knobs.png)
     run("m5p3-knobs", 6000, pick + ["4600:e2:-10", "4700:e3:10", "4800:e4:5", "4900:e5:-5", "5000:e1:4", "5100:OCTUP",
