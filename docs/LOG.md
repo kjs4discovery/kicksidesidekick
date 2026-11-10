@@ -227,3 +227,37 @@ Learned / measured: the user's report only; Claude Code ran no device command th
 Hardware touched: WRITE by the user (install, song sends), per the checklist.
 Questions for the planning chat: none
 Next: M6 Parts 1-4 (docs/plan-M6.md), the early install point after Part 2 skipped at the user's request.
+
+2026-11-10 — Step M6 Parts 1-2 (learning-mode fixes, views) —
+Status: done (emulator); committed 71e608a (one commit: the two parts' ui.c changes interleave); no install point
+(skipped at the user's request)
+Did:
+- HOME held 2 s from any screen (not the WIPE question; a HOME held since power-on never counts) and Settings > Switch
+  mode: the mode screen; leaving SYNTH stops the synth and gives the song buffer back; leaving LEARN stops the song.
+- QUIET box: dark amber box, light amber text (was grey on brown, 1.5:1); every layer-box text >= 4.5:1 (checked).
+- Melody roll: a vertical piano keyboard on the left, a key per pitch row, sounding keys lit, each C named.
+- Harmony L3 loudness: imported parts were NOT skipping M5's normalisation (x0.45 Let It Be, x0.47 True Colors), but it
+  was one factor for the whole song. The importer now matches every 4 bars (tools/fm1song/importer.py; private songs
+  re-imported, the report gives each part's 4-bar spread before/after).
+- Ukulele: setting "Chord boxes, tab" GUITAR / UKULELE (default GUITAR); firmware/app/ukulele.h (own table, 43 open +
+  19 movable shapes); tools/guitar_check.py --uke. Melody tab view (guitar or ukulele, by the setting); harmony BAR
+  VIEW (the roll); SELECT zooms the scrolling and staff views (0.8..6 bars; notation up to 2x); the chord boxes'
+  rhythm icon under the x/o lines.
+Learned / measured:
+- Loudness, emulator, 25 s from bar 1, harmony alone L1..L5: Let It Be 737 735 710 725 714 (A-weighted 558 558 569 557
+  550): equal. True Colors 628 688 358 630 624: its L3 is quieter in the intro. Model per 4 bars, M5 -> now: True
+  Colors 0.37..1.43x -> 0.98..1.02x, Creep 0.68..1.42 -> 0.99..1.01, Zombie 0.36..1.51 -> 0.99..1.01, Rockin
+  0.45..1.26 -> 0.98..1.02, Let It Be 0.96..1.04 -> 0.99..1.01.
+- Most likely cause of the user's note: it came from the 0.5.3 trial, when the unit still held M4's imports (before
+  M5's normalisation, up to 5x louder). Since M5.1 the songs on the unit are the normalised ones.
+Decisions (the user away):
+- SELECT is the tempo in the views that do not zoom; in the scrolling and staff views it zooms, and REC turns on a
+  TEMPO mode (4 s, like SAVE's KEY mode). REC is free at run time (fm1-base uses it only at power-on).
+- One melody tab view whose instrument follows the ukulele setting (not two views). "Zoom at start" (was "Scrolling
+  views show") keeps 1.5 / 3 bars as the starting zoom; zoom is fresh per song, not saved.
+- Settings rows: Switch mode (10), Chord boxes, tab (11), Wipe song store last (12).
+Hardware touched: none
+Questions for the planning chat:
+- Ask the user whether Harmony L3 is still louder with the songs sent at M5.1 (Let It Be measured equal); resending the
+  5 private songs after M6 gives the 4-bar matching.
+Next: Part 3 (synth round 2).
