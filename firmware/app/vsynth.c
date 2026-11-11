@@ -643,6 +643,21 @@ typedef char rev_fits[(1116 + 1188 + 1277 + 1356 + 556 + 441 + 579 + 464 <= VS_R
 /* the bit-crush: fewer bits (16 down to 7) and a held sample (1 to 8 samples) as CRUSH goes up */
 static int32_t cr_hold, cr_n;
 
+/* M7 (D039), ours. The fuzz: the sound driven 2x .. 64x into a tanh curve (dsp.c softclip), then a one-pole tone
+ * filter (~3 kHz, darker as FUZZ rises); its level follows the dry sound's (the two envelopes' ratio, a control tick
+ * late), so turning FUZZ up changes the colour, not the loudness */
+static int32_t fz_lp, fz_ein, fz_eout, fz_norm = 4096;
+
+/* the tremolo: the level dips by up to DEPTH at RATE (0.1 .. 12 Hz, a sine), ramped across each control block */
+static uint32_t tr_ph;
+static int32_t tr_g = 32768;
+
+/* the phaser: six first-order all-passes (no buffer) swept together by a 0.05 .. 5 Hz triangle between ~300 Hz and
+ * ~300 Hz + DEPTH x 2.5 kHz, mixed with the dry sound (MIX 127: half and half, the deepest notches) */
+#define PH_STAGES 6u
+static int32_t ph_s[PH_STAGES], ph_a = -15000;
+static uint32_t ph_ph;
+
 /* the delay's length: the note value at the tempo, halved until it fits the line */
 static int32_t delay_len(void)
 {
@@ -659,6 +674,7 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     static int32_t mix[CTL];
     uint32_t b, i, k, voices = 0, fx = 0;
     int32_t cho_mix, cho_depth, send, dfb, dlen, rev, crush, cr_bits, cr_every, level, dpk = 0, rpk = 0;
+    int32_t fuzz, fz_gain, fz_tone, tdepth, pmix, tr_g0;
     if (!active || !dl_l) {
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
@@ -669,7 +685,8 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     cho_mix = cv[VP_CHO_MIX];
     cho_depth = cv[VP_CHO_DEPTH];
     send = cv[VP_DLY_MIX];
-    dfb = cv[VP_DLY_FB];
+    dfb = 20 + cv[VP_DLY_FB] * 84 / 127;                    /* the loop's gain each way, Q7: 64 -> 62 (a round trip
+                                                              * of 0.23, M6's 0.25), 127 -> 104 (0.66) */
     rev = cv[VP_REV_MIX];
     crush = cv[VP_CRUSH];
     level = cv[VP_LEVEL];
@@ -682,6 +699,17 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                                                               * fewer would leave a quiet sound nothing) */
     cr_every = 1 + crush / 18;                               /* 1 .. 8 samples held */
     dlen = delay_len();
+    fuzz = cv[VP_FUZZ];
+    fz_gain = 2 + fuzz * fuzz * 62 / 16129;                 /* 2 .. 64 */
+    fz_tone = 14000 - fuzz * 50;                             /* the tone filter's coefficient, Q15 */
+    tdepth = cv[VP_TREM_DEPTH];
+    pmix = cv[VP_PHA_MIX];
+    if (fuzz)
+        fx |= 1u << FXB_FUZZ;
+    if (tdepth)
+        fx |= 1u << FXB_TREM;
+    if (pmix)
+        fx |= 1u << FXB_PHASER;
     if (crush)
         fx |= 1u << FXB_CRUSH;
     if (cho_mix)
@@ -721,8 +749,40 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             m.fine = 0;
             eng->render(&trk[0], v, mix, CTL, &m);
         }
+        tr_g0 = tr_g;
+        {   /* the tremolo's gain at the end of this block (from tr_g0 at its start), the phaser's coefficient */
+            if (tdepth) {
+                int32_t rt = cv[VP_TREM_RATE];
+                tr_ph += (uint32_t)(100 + rt * rt * 11900 / 16129) * 3117u;   /* 0.1 .. 12 Hz a control tick */
+                tr_g = 32768 - tdepth * ((32768 + sine_i(tr_ph)) >> 1) / 127;
+            } else {
+                tr_g = 32768;
+            }
+            if (pmix) {
+                int32_t pr = cv[VP_PHA_RATE], tri, w;
+                ph_ph += (uint32_t)(50 + pr * pr * 4950 / 16129) * 3117u;    /* 0.05 .. 5 Hz */
+                tri = (int32_t)(ph_ph >> 16) - 32768;
+                tri = tri < 0 ? -tri : tri;                                  /* 0..32768 */
+                w = 1400 + (tri >> 3) * cv[VP_PHA_DEPTH] / 127 * 11700 / 4096;   /* 2 pi f / FS, Q15 */
+                ph_a = -(16384 - (w >> 1));                                  /* Q14 */
+            }
+            for (i = 0; i < CTL; i++) {
+                int32_t x = mix[i] >> 3;
+                if (fuzz) {                                  /* M7: the fuzz, first */
+                    int32_t y = softclip(clamp(x, -30000, 30000) * fz_gain), ay, ax = x < 0 ? -x : x;
+                    fz_lp += (y - fz_lp) * fz_tone / 32768;  /* (|y - lp| < 65536, tone < 14001: no overflow) */
+                    ay = fz_lp < 0 ? -fz_lp : fz_lp;
+                    fz_ein += (ax - fz_ein) / 512;           /* (~12 ms) */
+                    fz_eout += (ay - fz_eout) / 512;
+                    x = fz_lp * fz_norm / 4096;
+                }
+                mix[i] = x;
+            }
+            if (fuzz)                                        /* the level: dry's x 1.2 (it sounds denser) */
+                fz_norm = fz_eout > 64 ? clamp(fz_ein * 4915 / fz_eout, 0, 4 * 4096) : fz_norm;
+        }
         for (i = 0; i < CTL; i++) {
-            int32_t x = mix[i] >> 3, l, r;
+            int32_t x = mix[i], l, r;
             if (crush) {                                     /* the bit-crush */
                 if (++cr_n >= cr_every) {
                     int32_t qq = 1 << (16 - cr_bits);
@@ -730,6 +790,20 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                     cr_hold = clamp(x, -32767, 32767) / qq * qq;
                 }
                 x = cr_hold;
+            }
+            if (tdepth)                                      /* M7: the tremolo (ramped across the block) */
+                x = clamp(x, -100000, 100000) * ((tr_g0 + (tr_g - tr_g0) * (int32_t)i / (int32_t)CTL) >> 3) >> 12;
+            if (pmix) {                                      /* M7: the phaser (Q14 coefficient, lines within +-1e5:
+                                                              * no product past 2^31) */
+                int32_t y = clamp(x, -100000, 100000);
+                uint32_t j;
+                x = y;
+                for (j = 0; j < PH_STAGES; j++) {
+                    int32_t o = clamp((ph_a * y >> 14) + ph_s[j], -100000, 100000);
+                    ph_s[j] = clamp(y - (ph_a * o >> 14), -100000, 100000);
+                    y = o;
+                }
+                x = x + ((y - x) * pmix >> 8);
             }
             /* chorus (its line is written always: no stale sound when it comes on) */
             ch_buf[cw & (CMAX - 1u)] = (int16_t)clamp(x, -32767, 32767);
@@ -750,11 +824,12 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                                            * the loop; FEEDBACK 64: a round trip of 1/4 (M6's) */
                 uint32_t rd = (dw - (uint32_t)dlen) & (DMAX - 1u);
                 int32_t dl = dl_l[rd], dr = dl_r[rd];
-                fb_lp_l += (dr - fb_lp_l) >> 2;
-                fb_lp_r += (dl - fb_lp_r) >> 2;
-                dl_l[dw & (DMAX - 1u)] = (int16_t)clamp((((l + r) >> 1) * send >> 7) + (fb_lp_l * dfb >> 7),
-                                                       -32767, 32767);
-                dl_r[dw & (DMAX - 1u)] = (int16_t)clamp(fb_lp_r * dfb >> 7, -32767, 32767);
+                fb_lp_l += (dr - fb_lp_l) / 4;   /* (/ rounds toward 0: the loop reaches silence, M7) */
+                fb_lp_r += (dl - fb_lp_r) / 4;
+                dl_l[dw & (DMAX - 1u)] = (int16_t)clamp((l + r) / 2 * send / 128 + fb_lp_l * dfb / 128, -32767, 32767);
+                dl_r[dw & (DMAX - 1u)] = (int16_t)(fb_lp_r * dfb / 128);   /* (|lp| <= 32767, dfb <= 104: within
+                                                              * 26,622, no clamp; a clamp here compiles to a constant
+                                                              * the build's ROM check refuses) */
                 dw++;
                 l += dl * 3 >> 2;
                 r += dr * 3 >> 2;

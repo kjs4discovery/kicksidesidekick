@@ -1,8 +1,10 @@
 /* Licence: TBD (see D017) */
-/* vsynth_test: SYNTH mode's sound (firmware/app/vsynth.c) on the laptop under ASan/UBSan (tools/vsynth_test.sh):
- * every preset plays a chord (C E G B, 1.5 s held, 1.5 s released), then the arpeggiator runs over it (each mode,
- * each rate); prints per preset the peak and RMS (24-bit), the voices at most; fails on silence, clipping, a
- * voice that never ends, or an arpeggio with no steps. Optional: WAV=dir writes each preset's render. */
+/* vsynth_test: SYNTH mode's sound (firmware/app/vsynth.c) on the laptop under ASan/UBSan (tools/vsynth_test.sh).
+ * Every preset plays a chord (C E G B, 1.5 s held, then released until silent), then its arpeggio over it; prints per
+ * preset the peak and RMS (24-bit), the voices at most; fails on silence, clipping, a voice that never ends, or an
+ * arpeggio with no steps. Then (M6) the arp's rates and RANDOM, and (M7) each effect alone and all together: the sound
+ * changes, the effect's work is skipped at 0, and it is silent after the release. Optional: WAV=dir writes the
+ * presets' renders. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,18 +13,27 @@
 
 #define N 256
 static int32_t buf[2 * N];
+static uint32_t fx_seen;                  /* the FXB_* bits seen during a run */
+#define CAP 44032u
+static int32_t cap[CAP], dry_cap[CAP];    /* a run's left channel (the effects: compared with the dry sound's) */
+static uint32_t ncap;
 
-static double run(double secs, double *rms_out, uint32_t *peak_out, FILE *wav)
+static void run(double secs, double *rms_out, uint32_t *peak_out, FILE *wav)
 {
     uint32_t blocks = (uint32_t)(secs * 44100 / N), b, i, peak = 0;
     double sum = 0;
+    fx_seen = 0;
+    ncap = 0;
     for (b = 0; b < blocks; b++) {
         vsynth_render(buf, N, 4096);
+        fx_seen |= vsynth_stats()->fx;
         for (i = 0; i < 2 * N; i++) {
             uint32_t a = (uint32_t)(buf[i] < 0 ? -buf[i] : buf[i]);
             if (a > peak)
                 peak = a;
             sum += (double)buf[i] * buf[i];
+            if (!(i & 1u) && ncap < CAP)
+                cap[ncap++] = buf[i];
             if (wav) {
                 int16_t s = (int16_t)(buf[i] >> 8);
                 fwrite(&s, 2, 1, wav);
@@ -31,119 +42,190 @@ static double run(double secs, double *rms_out, uint32_t *peak_out, FILE *wav)
     }
     *rms_out = sqrt(sum / (blocks * 2.0 * N));
     *peak_out = peak;
-    return 0;
+}
+
+static const uint8_t CH[4] = {60, 64, 67, 71};
+static void chord(int on)
+{
+    uint32_t k;
+    for (k = 0; k < 4; k++)
+        vsynth_key(CH[k], on);
+}
+
+static uint32_t fails;
+static void check(int ok, const char *what)
+{
+    if (!ok) {
+        fails++;
+        printf("   ^ FAIL: %s\n", what);
+    }
+}
+
+/* the effect test's dry sound: preset 0 with every effect at 0 */
+static void dry(void)
+{
+    static const uint8_t FX0[] = {VP_CHO_MIX, VP_TREM_DEPTH, VP_PHA_MIX, VP_CRUSH, VP_DLY_MIX, VP_FUZZ, VP_REV_MIX};
+    uint32_t k;
+    vsynth_load(vsynth_stock(0));
+    vsynth_set(VP_ARP_ON, 0);
+    for (k = 0; k < sizeof FX0; k++)
+        vsynth_set(FX0[k], 0);
+    vsynth_set(VP_ATK, 0);
+    vsynth_set(VP_REL, 30);
+}
+
+/* one chord through the sound now: its rms while held (the 2nd second), its tail's end */
+static void effect_run(const char *name, uint32_t bit, double dry_rms, double settle)
+{
+    double r, rt, diff;
+    uint32_t pk, pk2, seen;
+    chord(1);
+    run(1.0, &r, &pk, 0);
+    run(1.0, &r, &pk, 0);
+    seen = fx_seen;
+    {                                     /* how far from the dry sound: the difference's rms over the dry's */
+        double dd = 0, d0 = 0;
+        uint32_t i;
+        for (i = 0; i < CAP; i++)
+            dd += ((double)cap[i] - dry_cap[i]) * ((double)cap[i] - dry_cap[i]), d0 += (double)dry_cap[i] * dry_cap[i];
+        diff = sqrt(dd / (d0 + 1));
+    }
+    chord(0);
+    run(settle, &rt, &pk2, 0);
+    run(0.5, &rt, &pk2, 0);
+    printf("%-26s held rms %8.0f (dry %8.0f, difference %.2f of it) peak %8u  ran %02x  end peak %u\n", name, r,
+           dry_rms, diff, pk, seen, pk2);
+    check(bit == 0xFF ? (seen & 0x7Fu) == 0x7Fu : (seen >> bit & 1u) != 0, "the effect did not run");
+    check(diff > 0.2, "the sound did not change");
+    check(pk < 8388607, "clipped");
+    check(pk2 <= 2000, "not silent after the release");
 }
 
 int main(void)
 {
     static uint8_t mem[VS_MEM_BYTES];
-    uint32_t p, k, fails = 0;
+    uint32_t p;
     const char *dir = getenv("WAV");
     vsynth_start(mem, sizeof mem);
+    vsynth_tempo(120);
     for (p = 0; p < vsynth_presets(); p++) {
         double r1, r2, r3, r4;
         uint32_t k1, k2, k3, k4, steps0, vmax;
         FILE *wav = 0;
+        const struct vs_preset *pr = vsynth_stock(p);
+        char name[VS_NAME + 1];
+        memcpy(name, pr->name, VS_NAME);
+        name[VS_NAME] = 0;
         if (dir) {
             char f[256];
             snprintf(f, sizeof f, "%s/%02u.raw", dir, p);
             wav = fopen(f, "wb");
         }
-        vsynth_preset(p);
-        vsynth_arp(ARP_OFF, RATE_8, 120);
-        static const uint8_t CH[4] = {60, 64, 67, 71};
-        for (k = 0; k < 4; k++)
-            vsynth_key(CH[k], 1);
+        vsynth_load(pr);
+        vsynth_set(VP_ARP_ON, 0);
+        chord(1);
         run(1.5, &r1, &k1, wav);
-        for (k = 0; k < 4; k++)
-            vsynth_key(CH[k], 0);
+        chord(0);
         run(7.0, &r2, &k2, wav);                       /* released: the tail, then silence */
         run(0.5, &r3, &k3, wav);
         vmax = vsynth_stats()->voices;
         steps0 = vsynth_stats()->arp_steps;
-        for (k = 0; k < 4; k++)
-            vsynth_key(CH[k], 1);
-        vsynth_arp(ARP_UP + p % 3u, p % 3u, 100 + p * 5);
+        vsynth_set(VP_ARP_ON, 1);
+        vsynth_set(VP_ARP_PAT, (int32_t)(p % 4u));
+        vsynth_tempo(100 + p * 3);
+        chord(1);
         run(2.0, &r4, &k4, wav);
-        for (k = 0; k < 4; k++)
-            vsynth_key(CH[k], 0);
-        vsynth_arp(ARP_OFF, RATE_8, 120);
-        run(7.5, &r3, &k3, wav);
+        chord(0);
+        vsynth_set(VP_ARP_ON, 0);
+        vsynth_tempo(120);
+        run(9.5, &r3, &k3, wav);
         run(0.5, &r3, &k3, wav);                       /* the last half second: silent */
-        printf("%2u %-17s held rms %8.0f peak %8u  tail-end voices %u  arp steps %u rms %8.0f  end peak %u\n", p,
-               vsynth_preset_name(p), r1, k1, vmax, vsynth_stats()->arp_steps - steps0, r4, k3);
-        if (r1 < 20000 || k1 >= 8388607 || vmax || vsynth_stats()->arp_steps - steps0 < 4 || r4 < 1000 || k3 > 2000)
-            fails++, printf("   ^ FAIL\n");
+        printf("%2u %-12s %-6s held rms %8.0f peak %8u  tail-end voices %u  arp steps %u rms %8.0f  end peak %u\n",
+               p, name, vsynth_engine_name(pr->engine), r1, k1, vmax, vsynth_stats()->arp_steps - steps0, r4, k3);
+        check(r1 >= 20000 || (p == 8 && r1 >= 3000), "too quiet");     /* (RISER: a 6 s attack) */
+        check(k1 < 8388607, "clipped");
+        check(!vmax, "a voice never ended");
+        check(vsynth_stats()->arp_steps - steps0 >= 4 && r4 >= 1000, "the arpeggio");
+        check(k3 <= 2000, "not silent at the end");
         if (wav)
             fclose(wav);
     }
-    {                                     /* M6: the arp's rates (1/8 triplets keep time), RANDOM, reverb, crush */
+    {                                     /* the arp's rates (1/8 triplets keep time), RANDOM, OCTAVES */
         static const uint32_t RATE_STEPS[RATES] = {8, 16, 24, 32};   /* in 4 s at 120 BPM */
-        double r, rd, rr, rc;
-        uint32_t pk, st0, rt, notes[128] = {0}, distinct = 0;
-        vsynth_preset(9);                 /* CHIP BLIP: short */
+        double r;
+        uint32_t pk, st0, rt, n;
+        vsynth_load(vsynth_stock(9));     /* CHIP BLIP: short */
         for (rt = 0; rt < RATES; rt++) {
             vsynth_key(60, 1);
             vsynth_key(64, 1);
-            vsynth_arp(ARP_UP, rt, 120);
+            vsynth_set(VP_ARP_ON, 1);
+            vsynth_set(VP_ARP_PAT, ARP_UP);
+            vsynth_set(VP_ARP_RATE, (int32_t)rt);
             st0 = vsynth_stats()->arp_steps;
             run(4.0, &r, &pk, 0);
-            printf("arp rate %u at 120 BPM: %u steps in 4 s (want %u)\n", rt, vsynth_stats()->arp_steps - st0,
-                   RATE_STEPS[rt]);
-            if (vsynth_stats()->arp_steps - st0 + 1u < RATE_STEPS[rt] || vsynth_stats()->arp_steps - st0 > RATE_STEPS[rt] + 1u)
-                fails++, printf("   ^ FAIL\n");
-            vsynth_arp(ARP_OFF, RATE_8, 120);
+            n = vsynth_stats()->arp_steps - st0;
+            printf("arp rate %u at 120 BPM: %u steps in 4 s (want %u)\n", rt, n, RATE_STEPS[rt]);
+            check(n + 1u >= RATE_STEPS[rt] && n <= RATE_STEPS[rt] + 1u, "arp rate");
+            vsynth_set(VP_ARP_ON, 0);
             vsynth_key(60, 0);
             vsynth_key(64, 0);
             run(1.0, &r, &pk, 0);
         }
-        (void)notes;
         for (rt = 0; rt < 5; rt++)
             vsynth_key(60 + 2 * rt, 1);
-        vsynth_arp(ARP_RANDOM, RATE_16, 120);
+        vsynth_set(VP_ARP_ON, 1);
+        vsynth_set(VP_ARP_PAT, ARP_RANDOM);
+        vsynth_set(VP_ARP_RATE, RATE_16);
+        vsynth_set(VP_ARP_OCT, 2);
         st0 = vsynth_stats()->arp_steps;
         run(4.0, &r, &pk, 0);
-        distinct = vsynth_stats()->arp_steps - st0;
-        printf("arp RANDOM over 5 keys: %u steps in 4 s\n", distinct);
-        if (distinct < 30)
-            fails++, printf("   ^ FAIL\n");
-        vsynth_arp(ARP_OFF, RATE_8, 120);
+        n = vsynth_stats()->arp_steps - st0;
+        printf("arp RANDOM over 5 keys x 3 octaves: %u steps in 4 s\n", n);
+        check(n >= 30, "RANDOM");
+        vsynth_set(VP_ARP_ON, 0);
+        vsynth_set(VP_ARP_OCT, 0);
         for (rt = 0; rt < 5; rt++)
             vsynth_key(60 + 2 * rt, 0);
         run(8.0, &r, &pk, 0);
-        vsynth_preset(19);                /* DEEP SUB: dry, no delay */
-        vsynth_set_knob(VS_REVERB, 0);
-        vsynth_set_knob(VS_DELAY, 0);
-        vsynth_key(60, 1);
-        run(0.5, &r, &pk, 0);
-        vsynth_key(60, 0);
-        run(0.4, &r, &pk, 0);
-        run(0.5, &rd, &pk, 0);            /* the dry tail, 0.4..0.9 s after */
-        run(6.0, &r, &pk, 0);
-        vsynth_set_knob(VS_REVERB, 127);
-        vsynth_key(60, 1);
-        run(0.5, &r, &pk, 0);
-        vsynth_key(60, 0);
-        run(0.4, &r, &pk, 0);
-        run(0.5, &rr, &pk, 0);
-        run(7.5, &r, &pk, 0);
-        run(0.5, &r, &pk, 0);             /* 8.5..9 s after: silent */
-        printf("reverb: the tail 0.4..0.9 s after release, rms %.0f dry, %.0f at 127; silent 8 s later (peak %u)\n",
-               rd, rr, pk);
-        if (rr < 4 * rd + 1000 || pk > 2000)
-            fails++, printf("   ^ FAIL\n");
-        vsynth_set_knob(VS_REVERB, 0);
-        vsynth_key(60, 1);
-        run(0.5, &r, &pk, 0);
-        vsynth_set_knob(VS_CRUSH, 127);
-        run(0.5, &rc, &pk, 0);
-        vsynth_key(60, 0);
-        vsynth_set_knob(VS_CRUSH, 0);
-        run(3.0, &rd, &pk, 0);
-        run(0.5, &rd, &pk, 0);
-        printf("bit-crush 127: rms %.0f (clean %.0f), silent after (peak %u)\n", rc, r, pk);
-        if (rc < r / 4 || pk > 2000)
-            fails++, printf("   ^ FAIL\n");
+    }
+    {                                     /* M7: the effects, each alone, then all together */
+        double rd, r;
+        uint32_t pk;
+        dry();
+        run(0.5, &r, &pk, 0);             /* (the lines found silent: skipped from then on) */
+        chord(1);
+        run(1.0, &r, &pk, 0);
+        run(1.0, &rd, &pk, 0);
+        memcpy(dry_cap, cap, sizeof cap);
+        check((fx_seen & 0x7Fu) == 0, "an effect at 0 ran (dry)");
+        printf("%-26s held rms %8.0f  ran %02x (none: every effect at 0 skipped)\n", "dry", rd, fx_seen);
+        chord(0);
+        run(3.0, &r, &pk, 0);
+        dry(), vsynth_set(VP_FUZZ, 127), effect_run("fuzz 127", FXB_FUZZ, rd, 3.0);
+        dry(), vsynth_set(VP_FUZZ, 30), effect_run("fuzz 30", FXB_FUZZ, rd, 3.0);
+        dry(), vsynth_set(VP_CRUSH, 127), effect_run("crush 127", FXB_CRUSH, rd, 3.0);
+        dry(), vsynth_set(VP_TREM_DEPTH, 127), vsynth_set(VP_TREM_RATE, 90), effect_run("tremolo 127", FXB_TREM, rd, 3.0);
+        dry(), vsynth_set(VP_PHA_MIX, 127), vsynth_set(VP_PHA_DEPTH, 127), vsynth_set(VP_PHA_RATE, 60),
+            effect_run("phaser 127", FXB_PHASER, rd, 3.0);
+        dry(), vsynth_set(VP_CHO_MIX, 127), vsynth_set(VP_CHO_DEPTH, 127), effect_run("chorus 127", FXB_CHORUS, rd, 3.0);
+        dry(), vsynth_set(VP_DLY_MIX, 127), effect_run("delay 127 (feedback 64)", FXB_DELAY, rd, 8.0);
+        dry(), vsynth_set(VP_DLY_MIX, 127), vsynth_set(VP_DLY_FB, 127), vsynth_set(VP_DLY_TIME, 0),
+            effect_run("delay 127, feedback 127", FXB_DELAY, rd, 30.0);
+        dry(), vsynth_set(VP_REV_MIX, 127), vsynth_set(VP_REV_SIZE, 127), effect_run("reverb 127 (size 127)", FXB_REVERB,
+                                                                                     rd, 14.0);
+        dry();
+        vsynth_set(VP_FUZZ, 127), vsynth_set(VP_CRUSH, 127), vsynth_set(VP_TREM_DEPTH, 127);
+        vsynth_set(VP_PHA_MIX, 127), vsynth_set(VP_PHA_DEPTH, 127), vsynth_set(VP_CHO_MIX, 127);
+        vsynth_set(VP_DLY_MIX, 127), vsynth_set(VP_REV_MIX, 127);
+        effect_run("all at 127", 0xFF, rd, 14.0);
+        {                                 /* and nothing runs once silent with every mix back at 0 */
+            double rr;
+            dry();
+            run(0.5, &rr, &pk, 0);
+            run(1.0, &rr, &pk, 0);
+            printf("after: every effect at 0 again (0.5 s on): ran %02x\n", fx_seen);
+            check((fx_seen & 0x7Fu) == 0, "an effect at 0 still ran");
+        }
     }
     printf("voices at most %u, notes %u: %s\n", vsynth_stats()->voices_max, vsynth_stats()->notes,
            fails ? "FAILURES" : "ALL PASS");

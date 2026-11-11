@@ -396,3 +396,30 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 3 (effects).
+
+2026-11-10 — Step M7 Part 3 (effects) —
+Status: done (emulator); committed
+Did:
+- New, ours: fuzz (2x..64x into dsp.c's tanh curve, a one-pole tone filter, its level following the dry sound's
+  envelope x 1.2 so FUZZ changes the colour, not the loudness), tremolo (sine 0.1..12 Hz, ramped per control block),
+  phaser (6 first-order all-passes, no buffer, swept 300 Hz .. +2.5 kHz by a 0.05..5 Hz triangle). Kept: chorus (now
+  DEPTH and MIX), delay (TIME as note values 1/16..1/2 at the tempo, halved until it fits; FEEDBACK), reverb (SIZE,
+  DAMPING, MIX), bit-crush. Chain: voices -> fuzz -> crush -> tremolo -> phaser -> chorus -> delay -> reverb -> LEVEL.
+  Nothing from Felucca's fx.c or EAS's reverb.
+- Each effect at 0 is skipped; the delay and reverb only once their lines have gone silent (else a later mix would
+  play stale sound). The delay's feedback rounding changed to toward-zero: M6's arithmetic shifts left a +-2 limit
+  cycle in the lines, so they never went silent.
+- tools/vsynth_test.c on the new API: every preset (held, released, its arpeggio), arp rates / RANDOM / OCTAVES, each
+  effect alone and all together (differs from the dry waveform by >= 0.2 of it, ran, no clipping, silent after the
+  release), nothing running with every mix at 0.
+Learned / measured:
+- vsynth_test ALL PASS (difference from dry: fuzz 127 0.55, crush 0.32, tremolo 0.62, phaser 0.78, chorus 1.03, delay
+  0.76, reverb 2.52, all 1.24; every tail ends at peak <= 1,024 of 8,388,607).
+- Emulator: every effect at its top + 8 voices of SYNC SCREAM: synth render 32 % of a block. m7p3 3 PASS; m7p2 rerun
+  ALL PASS. Image 466,992 B.
+- The build's ROM-address check refused one build (a clamp after / 128 compiled to the constant 0xFFC00001); the line
+  needs no clamp (bounded). That failed build left the previous package in place and one test run used it: from now
+  on I check the "package" line, not only "image".
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 4 (drums).

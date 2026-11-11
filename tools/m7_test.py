@@ -208,7 +208,42 @@ def test_m7p2(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m7p1": test_m7p1, "m7p2": test_m7p2}
+# --------------------------------------------------------------------------------------------- part 3
+KEYS8 = ("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
+
+
+def fx_max(t):
+    """FX 1..4 pages, every knob turned to its top (and on FX 4 the level left): the script from time t"""
+    sc = m5.press_raw(t, "FX")
+    for pg in range(4):
+        for k in range(4 if pg < 3 else 3):
+            sc.append(f"{t + 200 + 3000 * pg + 700 * k}:e{2 + k}:64")   # (64 clicks arrive over ~0.6 s)
+        sc.append(f"{t + 200 + 3000 * pg + 2900}:e1:1")
+    return sc
+
+
+def test_m7p3(all_songs, rep):
+    lines, st, check = m5.checker("M7 part 3: the effects")
+    names = ["fuzz", "crush", "tremolo", "phaser", "chorus", "delay", "reverb"]
+    d = syrun("m7p3-dry", 6600, ["4600:e6:10"] + m5.press_raw(4700, "FX") + ["4900:e3:-64", "5000:e3:-64"]
+              + m5.press_raw(5100, "HOME") + ["5300:e4:-64", "5400:e5:-64", "5600:C4", "6400:C4^"])
+    check(d["stats"]["fx_active"] == 0, f"DRIVE BASS with its chorus, reverb and delay at 0: no effect runs "
+          f"(ran {d['stats']['fx_active']:#04x})")
+    a = syrun("m7p3-all", 19500, ["4500:e6:4"] + fx_max(4700) + [f"17000:{k}" for k in KEYS8]
+              + [f"19100:{k}^" for k in KEYS8])
+    s = a["stats"]
+    on = [n for i, n in enumerate(names) if s["fx_active"] >> i & 1]
+    load = s["synth_render_max"] / s["budget"] if s["budget"] else 9
+    check(s["fx_active"] == 0x7F and s["synth_voices_max"] == 8 and not a["halt"] and s["synth_peak"] <= 8388607,
+          f"every effect at its top ({', '.join(on)}), 8 voices of SYNC SCREAM: the synth render {load * 100:.0f} % of "
+          f"a block (emulated), no crash")
+    snd = m5.rms(a["left"][int(17.2 * m5.RATE):int(18.9 * m5.RATE)])
+    check(snd > 300, f"... and it sounds (rms {snd:.0f})")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m7p1": test_m7p1, "m7p2": test_m7p2, "m7p3": test_m7p3}
 
 
 def main():
