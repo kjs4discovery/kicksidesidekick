@@ -297,7 +297,188 @@ def test_m7p4(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m7p1": test_m7p1, "m7p2": test_m7p2, "m7p3": test_m7p3, "m7p4": test_m7p4}
+# --------------------------------------------------------------------------------------------- part 5
+def test_m7p5(all_songs, rep):
+    lines, st, check = m5.checker("M7 part 5: engines and the 30 presets")
+    ch4 = ["5000:C4", "5000:E4", "5000:G4", "5000:B4", "6400:C4^", "6400:E4^", "6400:G4^", "6400:B4^"]
+    every = os.environ.get("M7_ALL_PRESETS") is not None
+    bad, out, eng = [], [], {}
+    for i in range(0, 30, 1 if every else 3):
+        r = syrun(f"m7p5-preset-{i}", 6600, ([f"4600:e6:{i}"] if i else []) + ch4)
+        s = r["stats"]
+        v = max(m5.rms(r["left"][int(t * m5.RATE):int((t + 0.1) * m5.RATE)]) for t in
+                [4.8 + 0.02 * k for k in range(80)])   # (the loudest 100 ms, as the laptop's level matching; the
+        # recorded audio runs ~0.1 s ahead of the script)
+        out.append((i, round(v)))
+        eng[i] = s["synth_engine"]
+        if s["synth_preset"] != i or (v < 300 and i != 8) or s["synth_peak"] >= 8388607 or r["halt"]:   # (RISER: slow)
+            bad.append((i, s["synth_preset"], round(v)))
+    check(not bad, f"the presets by PRESET ({'all 30' if every else 'every 3rd'}): each sounds, none clips {out} "
+                   f"{bad or ''}")
+    n = syrun("m7p5-count", 5000, ["4600:e6:-1"])
+    check(n["stats"]["synth_preset"] == 29, f"30 presets (PRESET back from the first: number "
+                                            f"{n['stats']['synth_preset'] + 1})")
+    ep = syrun("m7p5-epiano-sound", 5600, ["4600:e6:19"] + presses(4900, ["EDIT", "EDIT", "EDIT"], 200))
+    an = syrun("m7p5-analog-sound", 5600, presses(4900, ["EDIT", "EDIT", "EDIT"], 200))
+    check(ep["stats"]["synth_engine"] == 1 and an["stats"]["synth_engine"] == 0 and ep["stats"]["synth_page"] == 3 and
+          m5.ImageChops.difference(ep["lcd"], an["lcd"]).getbbox() is not None,
+          "E-PIANO is a PHASE preset: its SOUND A page shows PHASE's parameters (m7p5-epiano-sound.png), NEON PAD's "
+          "ANALOG's (m7p5-analog-sound.png)")
+    pk = syrun("m7p5-phase-chord", 6600, ["4600:e6:19"] + ch4)
+    v = m5.rms(pk["left"][int(5.1 * m5.RATE):int(6.3 * m5.RATE)])
+    check(v > 300 and pk["stats"]["synth_voices_max"] == 4, f"E-PIANO (PHASE): a 4-note chord, 4 voices (rms {v:.0f})")
+    lv = [x for i, x in out if i not in (8,)]
+    spread = max(lv) / min(lv) if lv and min(lv) else 99
+    check(spread < 1.6, f"the presets level-matched (LEVEL): the chord's loudest 100 ms within {spread:.2f}x of each other "
+                        f"(RISER left out: its 6 s attack; the 100 ms loudest of each, laptop: within 0.3 dB)")
+    rep += lines
+    return st["ok"]
+
+
+# --------------------------------------------------------------------------------------------- part 6
+BUTTONS = list(B)
+# the screens of the census: name -> (the script that opens it from power-on, mode for m5.run, its exclusions: buttons
+# allowed to do nothing there, D044: the mode screen and the WIPE question are not given the pop-up)
+P = m5.PLAY_MS
+
+
+def census_screens(g):
+    sy = lambda sc: (SYNTH + sc, None)
+    return {
+        "LEARN folders": ((m5.press_raw(4400, "HOME"), "LEARN"), set()),
+        "LEARN songs": (([], "LEARN"), set()),
+        "LEARN play, stopped": ((m5.open_song(g) + m5.press_raw(O + 300, "ARP"), "LEARN"), set()),
+        "LEARN play, playing": ((m5.open_song(g) + m5.press_raw(P, "PLAY"), "LEARN"), set()),
+        "LEARN help": ((m5.press_raw(4400, "GLO"), "LEARN"), set()),
+        "LEARN settings": ((presses(4400, ["GLO", "GLO"]), "LEARN"), set()),
+        "LEARN views": ((presses(4400, ["GLO", "GLO"]) + ["4900:e0:7"] + m5.press_raw(5100, "PLAY"), "LEARN"), set()),
+        "mode screen": (([], None), set(BUTTONS) - {"PLAY", "EDIT"}),
+        "SYNTH main": (sy([]), set()),
+        "SYNTH page": (sy(m5.press_raw(4600, "ENV")), set()),
+        "SYNTH menu": (sy(m5.press_raw(4600, "SEQ")), set()),
+        "SYNTH help": (sy(m5.press_raw(4600, "GLO")), set()),
+        "SYNTH settings": (sy(presses(4600, ["GLO", "GLO"])), set()),
+    }
+
+
+WATCH = ("ui_view mode synth_page drum_on drum_pattern arp_pattern keys_octave settings folder view loop_step "
+         "popups starts pauses transpose part drum_kit synth_bpm").split()
+
+
+def test_m7p6(all_songs, rep):
+    lines, st, check = m5.checker("M7 part 6: the button census, the rescues, HOME taps, leaving SYNTH")
+    g = [c["slug"] for c in all_songs].index("amazing-grace")
+    scr = census_screens(g)
+    end = {"LEARN play, stopped": O + 1700, "LEARN play, playing": P + 1300}
+    table, bad = [], []
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(job):
+        name, b = job
+        (sc, mode), _ = scr[name]
+        t = max([int(e.split(":")[0]) for e in sc] + [4300]) + 400 if sc else (4600 if mode else 4300)
+        t = max(t, end.get(name, 0))
+        if b is None:
+            return name, b, m5.run(f"m7p6-c-{name.replace(' ', '-').replace(',', '')}", t + 500, sc, mode=mode)
+        return name, b, m5.run(f"m7p6-c-{name.replace(' ', '-').replace(',', '')}-{b}", t + 500,
+                               sc + m5.press_raw(t, b), mode=mode)
+    jobs = [(n, None) for n in scr] + [(n, b) for n in scr for b in BUTTONS]
+    with ThreadPoolExecutor(3) as ex:
+        res = {(n, b): r for n, b, r in ex.map(one, jobs)}
+    for name, (_, excl) in scr.items():
+        base = res[(name, None)]
+        row = []
+        for b in BUTTONS:
+            r = res[(name, b)]
+            s, s0 = r["stats"], base["stats"]
+            if r["halt"] or s is None:
+                row.append(f"{b}: CRASH")
+                bad.append((name, b, "crash"))
+                continue
+            if s["popup_open"] and s["popup_btn"] == B[b] and s["popups"] > s0["popups"]:
+                what = "pop-up"
+            elif any(s[k] != s0[k] for k in WATCH) or m5.ImageChops.difference(r["lcd"], base["lcd"]).getbbox():
+                what = "job"
+            else:
+                what = "nothing"
+            if what == "pop-up" and name in ("mode screen",):
+                bad.append((name, b, "a pop-up where D044 has none"))
+            if what == "nothing" and b not in excl:
+                bad.append((name, b, "nothing"))
+            row.append(f"{b} {what}")
+        table.append(f"  - {name}: " + ", ".join(row))
+    check(not bad, f"the button census: {len(scr)} screens x 14 buttons, each its job or the pop-up, none does nothing "
+                   f"(but the mode screen's, D044), no crash {bad or ''}")
+    lines += table
+    # the power-on rescues with M7: fm1-base's two, and ours (GLO + HOME: the WIPE question), no pop-up anywhere
+    oc = m5.run("m7p6-boot-oct-both", 4000, ["0:OCTDN", "0:OCTUP"], mode=None)
+    rc = m5.run("m7p6-boot-rec", 4000, ["0:REC"], mode=None)
+    wp = m5.run("m7p6-boot-wipe", 6000, ["0:GLO", "0:HOME", "5600:GLO^", "5600:HOME^"], mode=None)
+    check(oc["stats"] is not None and oc["stats"]["ui_view"] == 0xFF and not oc["halt"] and
+          (rc["stats"] is None or rc["stats"]["ui_view"] == 0xFF) and not rc["halt"],
+          "OCT- + OCT+ and REC held at power-on: fm1-base's panel set-up / update mode, our screens never start "
+          "(m7p6-boot-oct-both.png, m7p6-boot-rec.png)")
+    check(wp["stats"]["ui_view"] == V_WIPE and wp["stats"]["popups"] == 0 and wp["stats"]["mode_switches"] == 0,
+          "GLO + HOME held at power-on: the WIPE question, no pop-up (m7p6-boot-wipe.png)")
+    # 24 quick HOME taps (with PLAY between) in SYNTH: never the mode screen
+    taps = [x for k in range(24) for x in m5.press_raw(4600 + 251 * k + k % 3, "PLAY" if k % 2 else "HOME")]
+    tp = syrun("m7p6-synth-home-taps", 4600 + 251 * 24 + 400, taps)
+    check(tp["stats"]["ui_view"] == V_SYNTH and tp["stats"]["mode_switches"] == 0,
+          "SYNTH: 24 quick HOME / PLAY taps: never the mode screen")
+    # leaving SYNTH with the drums on: silent on the mode screen; LEARN: a song plays
+    lj = syrun("m7p6-drums-leave", 14000, m5.press_raw(4600, "PLAY") + m6.hold_home(5200) + [
+        "7800:e0:-1", "8000:PLAY!", "8060:PLAY^!"] + ([f"8300:e0:{g}"] if g else []) +
+        ["8600:PLAY!", "8660:PLAY^!", "9100:PLAY!", "9160:PLAY^!"])
+    q = m5.rms(lj["left"][int(7.5 * m5.RATE):int(7.9 * m5.RATE)])
+    snd = m5.rms(lj["left"][int(12.0 * m5.RATE):int(14.0 * m5.RATE)])
+    check(q < 30 and lj["stats"]["mode"] == 1 and lj["stats"]["ui_view"] == V_PLAY and snd > 50 and not lj["halt"],
+          f"the drums on, HOME held: silence on the mode screen (rms {q:.0f}); LEARN, a song: it plays (rms {snd:.0f})")
+    rep += lines
+    return st["ok"]
+
+
+def cpu_worst(rep):
+    """the budget (Part 6): 8 voices of each preset (the heaviest found), then that preset with every effect at its top
+    and the busiest drum pattern on each kit: (synth render + EAS render) / one block"""
+    lines, st, check = m5.checker("M7 budget: CPU worst case")
+    loads = {}
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(i):
+        r = syrun(f"m7cpu-preset-{i}", 7400, ([f"4600:e6:{i}"] if i else []) + [f"5000:{k}" for k in KEYS8]
+                  + [f"7000:{k}^" for k in KEYS8])
+        s = r["stats"]
+        return i, s["synth_render_max"] / s["budget"]
+    with ThreadPoolExecutor(3) as ex:
+        loads = dict(ex.map(one, range(30)))
+    heavy = max(loads, key=loads.get)
+    lines.append("  - 8 voices, each preset as made: " + ", ".join(f"{i + 1} {v * 100:.0f}%" for i, v in loads.items()))
+    words = [x for x in (ROOT / "firmware/app/jam_patterns.h").read_text().split("{\"")[1:]]
+    busiest, most = 0, -1
+    for k, w in enumerate(words):
+        steps = [int(x, 16) for x in w.split("{")[1].split("}")[0].split(",")]
+        hits = max(sum(1 for i in range(8) if st_ >> 2 * i & 3) for st_ in steps)
+        tot = sum(sum(1 for i in range(8) if st_ >> 2 * i & 3) for st_ in steps) / len(steps)
+        if hits * 100 + tot > most:
+            most, busiest = hits * 100 + tot, k
+    worst = 0
+    for kit, name in enumerate(("ACOUSTIC", "808", "CHIP")):
+        sc = ([f"4500:e6:{heavy}"] if heavy else []) + fx_max(4700) + kit_set(17000, kit) + \
+            m5.press_raw(18600, "SEQ") + [f"18800:e0:{busiest}"] + m5.press_raw(19200, "PLAY") + \
+            [f"19400:{k}" for k in KEYS8] + [f"23000:{k}^" for k in KEYS8]
+        r = syrun(f"m7cpu-worst-{name.lower()}", 23400, sc)
+        s = r["stats"]
+        load = (s["synth_render_max"] + s["render_max"]) / s["budget"] if s["budget"] else 9
+        worst = max(worst, load)
+        check(load <= 0.60 and s["fx_active"] == 0x7F and s["drum_on"] == 1 and s["synth_voices_max"] == 8 and
+              not r["halt"], f"{name}: preset {heavy + 1} x 8 voices, every effect at its top, pattern {busiest + 1}: "
+              f"synth + EAS render {load * 100:.0f} % of a block (limit 60 %)")
+    rep += lines
+    return st["ok"], loads, heavy, worst
+
+
+PARTS = {"m7p1": test_m7p1, "m7p2": test_m7p2, "m7p3": test_m7p3, "m7p4": test_m7p4, "m7p5": test_m7p5,
+         "m7p6": test_m7p6, "m7cpu": lambda a, rep: cpu_worst(rep)[0]}
 
 
 def main():

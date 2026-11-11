@@ -9,7 +9,10 @@
 #         contrast; the melody roll's piano keyboard
 #   m6p2  the views: ukulele chord boxes, melody guitar / ukulele tab, harmony bar view, zoom, the chord boxes'
 #         rhythm icon
-#   m6p3  SYNTH round 2: reverb, bit-crush, arp rates and RANDOM, the SHIFT layer, the drum jam
+#   m6p3  SYNTH round 2: reverb, bit-crush, arp rates and RANDOM, the SHIFT layer, the drum jam. RETIRED in M7 (not
+#         run): M7 replaced the SHIFT layer and the jam (D039, D041); their checks moved to tools/m7_test.py (m7p2 the
+#         controls, m7p3 the effects and CPU, m7p4 the drums, m7p6 leaving SYNTH with the drums on) and
+#         tools/vsynth_test.c (reverb tail, crush, arp rates, RANDOM)
 # The full suite (Part 4) is this plus tools/m5_test.py (all of M2..M5's checks) and tools/m51_test.py.
 import argparse
 import os
@@ -365,7 +368,7 @@ def test_m6p3(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m6p1": test_m6p1, "m6p2": test_m6p2, "m6p3": test_m6p3}
+PARTS = {"m6p1": test_m6p1, "m6p2": test_m6p2}   # (m6p3: retired in M7, see the header)
 
 
 def main():

@@ -101,6 +101,32 @@ static void effect_run(const char *name, uint32_t bit, double dry_rms, double se
     check(pk2 <= 2000, "not silent after the release");
 }
 
+/* a preset's loudness: a chord (C E G B; with its arpeggio if it has one) for 2 s, the loudest 100 ms (rms, left) */
+static double loudness(uint32_t p)
+{
+    double r, best = 0;
+    uint32_t pk, k, w;
+    vsynth_load(vsynth_stock(p));
+    chord(1);
+    for (k = 0; k < 20; k++) {
+        run(0.1, &r, &pk, 0);
+        for (w = 0, r = 0; w < ncap; w++)
+            r += (double)cap[w] * cap[w];
+        r = sqrt(r / (ncap ? ncap : 1));
+        best = r > best ? r : best;
+    }
+    chord(0);
+    vsynth_set(VP_ARP_ON, 0);
+    run(9.0, &r, &pk, 0);
+    return best;
+}
+
+static int cmp_d(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return x < y ? -1 : x > y;
+}
+
 int main(void)
 {
     static uint8_t mem[VS_MEM_BYTES];
@@ -108,6 +134,27 @@ int main(void)
     const char *dir = getenv("WAV");
     vsynth_start(mem, sizeof mem);
     vsynth_tempo(120);
+    {                                     /* M7: the presets' loudness (LEVELS=1: and each one's LEVEL to match) */
+        static double ld[64], sorted[64];
+        uint32_t n = vsynth_presets();
+        double med;
+        for (p = 0; p < n; p++)
+            ld[p] = sorted[p] = loudness(p);
+        qsort(sorted, n, sizeof sorted[0], cmp_d);
+        med = sorted[n / 2];
+        for (p = 0; p < n; p++) {
+            char name[VS_NAME + 1];
+            uint32_t lv = vsynth_stock(p)->v[VP_LEVEL];
+            memcpy(name, vsynth_stock(p)->name, VS_NAME);
+            name[VS_NAME] = 0;
+            if (getenv("LEVELS"))
+                printf("level %2u %-12s loudest 100 ms %8.0f (median %8.0f) LEVEL %3u -> %3.0f\n", p, name, ld[p], med,
+                       lv, lv + 12.0 * log2(med / ld[p]));
+            check(ld[p] < med * 1.41 && ld[p] > med / 1.41, "a preset's level is more than 3 dB from the median");
+        }
+        printf("presets' loudness: %.0f .. %.0f, median %.0f (within 3 dB of it: %s)\n", sorted[0], sorted[n - 1], med,
+               sorted[0] > med / 1.41 && sorted[n - 1] < med * 1.41 ? "yes" : "NO");
+    }
     for (p = 0; p < vsynth_presets(); p++) {
         double r1, r2, r3, r4;
         uint32_t k1, k2, k3, k4, steps0, vmax;

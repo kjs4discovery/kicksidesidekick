@@ -449,3 +449,33 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 5 (PHASE, the 30 presets).
+
+2026-11-11 — Step M7 Part 5 (engines, the 30 presets) —
+Status: done (emulator); committed
+Did:
+- Vendored eng_phase.c (MIT, unchanged, the same commit). A preset chooses ANALOG or PHASE; SOUND A / B show the
+  engine's own parameters from its descriptors (PHASE: WAVE WAVE2 DCW ENV | DTN LINE SUB FOLD). PHASE has no filter:
+  the FILTER page drives our SVF after it (ANALOG's LP/BP/HP taps, per voice; skipped when wide open).
+- 30 stock presets: M6's 21 minus DEEP SUB and ANALOG BELL, plus E-PIANO (PHASE double-sine, DCW from the envelope,
+  tremolo, chorus), E-GUITAR (ANALOG saw pluck into the fuzz), E-SITAR (PHASE resonant saw, bright, short, a little
+  chorus), POTATO (ANALOG sub-osc, low cutoff, driven, a slow tremolo and phaser: warm and lumpy), PARKER (ANALOG PWM
+  with LFO, a little noise, filter envelope: breathy), EDS (square, bit-crushed 60, its own up-down 1/16 arp over 2
+  octaves), and mine: OUTRUN BASS (ANALOG saw bass, resonant envelope), MIAMI PAD (PHASE saw + saw-pulse, slow,
+  chorus, phaser, reverb), CHROME ARP (PHASE pulse arp 1/16 over 2 octaves, delay), NEON BELLS (PHASE resonant
+  triangle, decaying, reverb; takes ANALOG BELL's place), VHS STRINGS (ANALOG detuned saws, deep chorus, a little
+  tremolo and crush). The user may rename or re-voice POTATO / PARKER / EDS.
+- LEVEL made logarithmic (100 = as made, half a dB a step: 127 = x4.76, 0 = -50 dB): the linear 0..1.27 could not lift
+  the arpeggio presets (one note at a time) to the chords'. Each preset's LEVEL set from its measured loudness
+  (tools/vsynth_test.c LEVELS=1: a C E G B chord, or its arpeggio, the loudest 100 ms; the median as the target).
+- m5p3 (M5's SYNTH checks) ported to M7's controls: presets by PRESET, 30 presets, arp pattern/rate on the ARP page.
+  m6p3 RETIRED (not run; header note): it tested the SHIFT layer and the jam, both replaced by D039 / D041; its checks
+  live on in m7p2-m7p4, m7p6 and vsynth_test.
+Learned / measured:
+- Laptop: the 30 presets' loudest 100 ms 928k..987k (+-0.3 dB of the median) after matching (before: 0.20x..6.4x;
+  MIAMI PAD had a deep reverb: its size 80 -> 64, mix 70 -> 55). vsynth_test ALL PASS (30 presets, effects, drums).
+- Emulator: m7p5 6 PASS (every 3rd preset sounds, the loudest 100 ms within 1.42x; 30 presets; E-PIANO is PHASE and
+  its SOUND A page differs; a PHASE chord); m5p3 10 PASS on this build. 8 voices SYNC SCREAM + chorus + delay: 30 %.
+- Image 479,920 B: 105,808 B free in the slot (the M7.1 reserve of 32 KB is there).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 6 (census, budget, the full suite once, the install checklist).

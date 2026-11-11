@@ -23,6 +23,7 @@ typedef struct track {
 static track_t trk[NPART];
 #include "dsp.c"
 #include "eng_analog.c"
+#include "eng_phase.c"                   /* M7 (D042): the second synth engine */
 #include "eng_noise.c"                   /* M7 (D041): the 808 kit's snare, hats, clap */
 #include "eng_lofi.c"                    /* M7: the CHIP kit */
 
@@ -47,7 +48,8 @@ static const struct vs_param VS_PARAMS[VP_N] = {
     NUM("PHASER RATE", PG_FX2), NUM("PHASER DEPTH", PG_FX2), NUM("PHASER MIX", PG_FX2), NUM("CRUSH", PG_FX2),
     {"DELAY TIME", PG_FX3, 0, 7, SHOW_NAMES, N_DLY}, NUM("FEEDBACK", PG_FX3), NUM("DELAY MIX", PG_FX3),
     NUM("FUZZ", PG_FX3),
-    NUM("REVERB SIZE", PG_FX4), NUM("DAMPING", PG_FX4), NUM("REVERB MIX", PG_FX4), NUM("LEVEL", PG_FX4),
+    NUM("REVERB SIZE", PG_FX4), NUM("DAMPING", PG_FX4), NUM("REVERB MIX", PG_FX4),
+    NUM("LEVEL", PG_FX4),                 /* (100: as made; half a dB a step) */
     {"ARP", PG_NONE, 0, 1, SHOW_NAMES, N_OFFON},
 };
 typedef char vs_rec_size[sizeof(struct vs_preset) == VS_REC_BYTES ? 1 : -1];
@@ -56,16 +58,17 @@ typedef char vs_rec_size[sizeof(struct vs_preset) == VS_REC_BYTES ? 1 : -1];
  * page's (one place for them), so its SOUND B ends with our LFO's rate and its depth on the pulse width instead */
 #define S_LFO 0xFE                        /* (host: the LFO's rate) */
 #define S_PWM 0xFD                        /* (host: its depth on the pulse width) */
-static const uint8_t SLOT_ANALOG[8] = {P_E0, P_E1, P_E2, P_E3, P_E6, P_E7, S_LFO, S_PWM};
+static const uint8_t SLOTS[VS_ENGINES][8] = {{P_E0, P_E1, P_E2, P_E3, P_E6, P_E7, S_LFO, S_PWM},   /* ANALOG */
+                                             {P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7}};  /* PHASE */
 static const param_desc_t D_LFO = {"LFO RATE", F_PCT, 0, 127, 0, 0, 0};
 static const param_desc_t D_PWM = {"PWM DEPTH", F_PCT, 0, 127, 0, 0, 0};
 
-static const engine_t *engine_of(uint32_t e) { (void)e; return &ENG_ANALOG; }
+static const engine_t *engine_of(uint32_t e) { return e == VS_PHASE ? &ENG_PHASE : &ENG_ANALOG; }
 
 static const param_desc_t *slot_desc(uint32_t e, uint32_t k, const track_t *t)
 {
     const engine_t *en = engine_of(e);
-    uint32_t p = SLOT_ANALOG[k & 7u];
+    uint32_t p = SLOTS[e < VS_ENGINES ? e : 0][k & 7u];
     if (p == S_LFO)
         return &D_LFO;
     if (p == S_PWM)
@@ -98,53 +101,75 @@ static void defaults(struct vs_preset *r, uint32_t e)
 /* the order of a record's values: ATK DEC SUS REL | CUT RES FENV(64 = 0) FTYPE | SOUND A, B (ANALOG: WAVE DTN MIX
  * NOIS DRV KTR LFO PWM) | ARP: PATTERN RATE OCTAVES(0..2) GATE | CHORUS DEPTH, MIX, TREM RATE, DEPTH | PHASER RATE,
  * DEPTH, MIX, CRUSH | DELAY TIME (N_DLY), FEEDBACK, MIX, FUZZ | REVERB SIZE, DAMPING, MIX, LEVEL | ARP ON.
- * ANALOG waves: 0 SAW 1 SQR 2 TRI 3 SIN 4 PWM 5 SYNC 6 SUB. M7 Part 2: M6's 21 presets as records (their sound as
- * before: chorus depth 64, delay 1/8D at feedback 64, reverb size and damping 64 were M6's fixed values) */
+ * ANALOG waves: 0 SAW 1 SQR 2 TRI 3 SIN 4 PWM 5 SYNC 6 SUB. M7 Part 2: M6's presets as records (their sound as
+ * before: chorus depth 64, delay 1/8D at feedback 64, reverb size and damping 64 were M6's fixed values); Part 5:
+ * DEEP SUB and ANALOG BELL out, 11 new (30 in all); every LEVEL matched (tools/vsynth_test.c LEVELS=1) */
 #define PR(nm, eng, ...) {VS_REC_VERSION, eng, nm, {__VA_ARGS__}, {0}}
 #define AN VS_ANALOG
+#define PH VS_PHASE
 static const struct vs_preset PRESETS[] = {
     PR("NEON PAD", AN, 70, 90, 110, 88, 58, 18, 74, 0, 0, 18, 64, 0, 0, 40, 20, 0, ARP_UP, RATE_8, 0, 64,
-       64, 100, 0, 0, 0, 0, 0, 0, 3, 64, 40, 0, 64, 64, 50, 100, 0),
+       64, 100, 0, 0, 0, 0, 0, 0, 3, 64, 40, 0, 64, 64, 50, 95, 0),
     PR("DUSK STRINGS", AN, 62, 80, 112, 84, 72, 10, 70, 0, 4, 9, 50, 0, 0, 40, 28, 46, ARP_UP, RATE_8, 0, 64,
-       64, 110, 0, 0, 0, 0, 0, 0, 3, 64, 30, 0, 64, 64, 44, 100, 0),
+       64, 110, 0, 0, 0, 0, 0, 0, 3, 64, 30, 0, 64, 64, 44, 96, 0),
     PR("OCT BOUNCE", AN, 0, 45, 40, 18, 44, 62, 98, 0, 0, 0, 0, 0, 20, 64, 0, 0, ARP_UPDOWN, RATE_16, 0, 64,
-       64, 10, 0, 0, 0, 0, 0, 0, 3, 64, 25, 0, 64, 64, 10, 100, 1),
+       64, 10, 0, 0, 0, 0, 0, 0, 3, 64, 25, 0, 64, 64, 10, 116, 1),
     PR("SUNSET LEAD", AN, 4, 70, 105, 40, 86, 26, 78, 0, 0, 12, 64, 0, 24, 64, 36, 0, ARP_UP, RATE_8, 0, 64,
-       64, 40, 0, 0, 0, 0, 0, 0, 3, 64, 70, 0, 64, 64, 30, 100, 0),
+       64, 40, 0, 0, 0, 0, 0, 0, 3, 64, 70, 0, 64, 64, 30, 97, 0),
     PR("SYNC SCREAM", AN, 2, 60, 100, 34, 98, 22, 88, 0, 5, 70, 127, 0, 16, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 30, 0, 0, 0, 0, 0, 0, 3, 64, 60, 0, 64, 64, 20, 100, 0),
+       64, 30, 0, 0, 0, 0, 0, 0, 3, 64, 60, 0, 64, 64, 20, 93, 0),
     PR("CHROME BRASS", AN, 24, 66, 90, 40, 40, 16, 108, 0, 0, 8, 64, 0, 12, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 50, 0, 0, 0, 0, 0, 0, 3, 64, 30, 0, 64, 64, 26, 100, 0),
+       64, 50, 0, 0, 0, 0, 0, 0, 3, 64, 30, 0, 64, 64, 26, 102, 0),
     PR("GLASS PLUCK", AN, 0, 44, 0, 44, 34, 52, 112, 0, 2, 5, 50, 0, 0, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 60, 0, 0, 0, 0, 0, 0, 3, 64, 80, 0, 64, 64, 40, 100, 0),
+       64, 60, 0, 0, 0, 0, 0, 0, 3, 64, 80, 0, 64, 64, 40, 114, 0),
     PR("VAPOR KEYS", AN, 2, 84, 40, 60, 120, 0, 72, 0, 3, 7, 45, 0, 10, 30, 22, 0, ARP_UP, RATE_8, 0, 64,
-       64, 90, 0, 0, 0, 0, 0, 0, 3, 64, 45, 0, 64, 64, 46, 100, 0),
+       64, 90, 0, 0, 0, 0, 0, 0, 3, 64, 45, 0, 64, 64, 46, 99, 0),
     PR("RISER", AN, 127, 127, 127, 80, 16, 96, 127, 0, 0, 22, 64, 70, 0, 30, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 70, 0, 0, 0, 0, 0, 0, 3, 64, 70, 0, 64, 64, 60, 100, 0),
+       64, 70, 0, 0, 0, 0, 0, 0, 3, 64, 70, 0, 64, 64, 60, 108, 0),
     PR("CHIP BLIP", AN, 0, 30, 60, 10, 127, 0, 64, 0, 1, 0, 0, 0, 0, 64, 0, 0, ARP_UP, RATE_16, 0, 64,
-       64, 0, 0, 0, 0, 0, 0, 70, 3, 64, 35, 0, 64, 64, 0, 100, 1),
+       64, 0, 0, 0, 0, 0, 0, 70, 3, 64, 35, 0, 64, 64, 0, 122, 1),
     PR("DRIVE BASS", AN, 0, 55, 70, 16, 36, 40, 90, 0, 0, 6, 40, 0, 80, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 6, 100, 0),
+       64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 6, 98, 0),
     PR("HAZE PAD", AN, 86, 100, 115, 96, 64, 14, 68, 0, 2, 25, 64, 12, 0, 32, 14, 0, ARP_UP, RATE_8, 0, 64,
-       64, 120, 0, 0, 0, 0, 0, 0, 3, 64, 50, 0, 64, 64, 64, 100, 0),
+       64, 120, 0, 0, 0, 0, 0, 0, 3, 64, 50, 0, 64, 64, 64, 93, 0),
     PR("LASER ARP", AN, 0, 36, 10, 22, 30, 70, 114, 0, 1, 4, 30, 0, 0, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 40, 0, 0, 0, 0, 0, 0, 3, 64, 75, 0, 64, 64, 30, 100, 1),
-    PR("ANALOG BELL", AN, 0, 104, 0, 92, 127, 0, 64, 0, 3, 40, 64, 0, 0, 20, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 80, 0, 0, 0, 0, 0, 0, 3, 64, 55, 0, 64, 64, 70, 100, 0),
+       64, 40, 0, 0, 0, 0, 0, 0, 3, 64, 75, 0, 64, 64, 30, 127, 1),
     PR("NIGHT DRIVE", AN, 0, 50, 90, 20, 48, 30, 82, 0, 6, 10, 80, 0, 30, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
        64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 6, 100, 0),
     PR("SAW STRINGS", AN, 66, 90, 110, 86, 62, 10, 64, 0, 0, 24, 64, 0, 0, 40, 18, 0, ARP_UP, RATE_8, 0, 64,
-       64, 110, 0, 0, 0, 0, 0, 0, 3, 64, 35, 0, 64, 64, 50, 100, 0),
+       64, 110, 0, 0, 0, 0, 0, 0, 3, 64, 35, 0, 64, 64, 50, 96, 0),
     PR("HORIZON PWM", AN, 6, 70, 100, 46, 80, 20, 76, 0, 4, 14, 64, 0, 10, 64, 40, 70, ARP_UP, RATE_8, 0, 64,
-       64, 60, 0, 0, 0, 0, 0, 0, 3, 64, 65, 0, 64, 64, 34, 100, 0),
+       64, 60, 0, 0, 0, 0, 0, 0, 3, 64, 65, 0, 64, 64, 34, 98, 0),
     PR("TAPE CHOIR", AN, 74, 96, 112, 90, 52, 24, 64, 0, 2, 30, 64, 16, 0, 30, 16, 0, ARP_UP, RATE_8, 0, 64,
-       64, 127, 0, 0, 0, 0, 0, 0, 3, 64, 40, 0, 64, 64, 64, 100, 0),
+       64, 127, 0, 0, 0, 0, 0, 0, 3, 64, 40, 0, 64, 64, 64, 92, 0),
     PR("STAB 84", AN, 0, 45, 20, 22, 58, 30, 104, 0, 0, 15, 64, 0, 14, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 60, 0, 0, 0, 0, 0, 0, 3, 64, 50, 0, 64, 64, 24, 100, 0),
-    PR("DEEP SUB", AN, 0, 60, 120, 24, 40, 0, 64, 0, 3, 0, 0, 0, 12, 20, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 4, 100, 0),
+       64, 60, 0, 0, 0, 0, 0, 0, 3, 64, 50, 0, 64, 64, 24, 114, 0),
     PR("GRID PULSE", AN, 0, 40, 30, 20, 54, 46, 94, 0, 4, 0, 0, 0, 0, 64, 50, 60, ARP_DOWN, RATE_16, 0, 64,
-       64, 50, 0, 0, 0, 0, 0, 30, 3, 64, 60, 0, 64, 64, 20, 100, 1),
+       64, 50, 0, 0, 0, 0, 0, 30, 3, 64, 60, 0, 64, 64, 20, 119, 1),
+    /* M7 (D042): the new ones. PHASE waves: 0 SAW 1 SQR 2 PLS 3 DSIN 4 SPLS 5 RSAW 6 RTRI 7 RTRP; its SOUND A, B:
+     * WAVE WAVE2 DCW ENV DTN LINE SUB FOLD (the FILTER page: our filter after it) */
+    PR("E-PIANO", PH, 0, 80, 30, 40, 127, 0, 64, 0, 3, 0, 36, 90, 6, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
+       64, 50, 50, 40, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 40, 96, 0),
+    PR("E-GUITAR", AN, 0, 70, 50, 30, 70, 20, 94, 0, 0, 6, 64, 0, 0, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
+       64, 0, 0, 0, 0, 0, 0, 0, 2, 50, 20, 90, 64, 64, 30, 100, 0),
+    PR("E-SITAR", PH, 0, 55, 10, 30, 127, 0, 64, 0, 5, 0, 90, 60, 3, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
+       40, 30, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 30, 119, 0),
+    PR("POTATO", AN, 6, 60, 100, 30, 50, 30, 74, 0, 6, 8, 70, 0, 30, 40, 0, 0, ARP_UP, RATE_8, 0, 64,
+       64, 30, 30, 25, 20, 40, 30, 0, 3, 64, 20, 0, 64, 80, 30, 104, 0),
+    PR("PARKER", AN, 10, 60, 90, 25, 55, 20, 104, 0, 4, 6, 40, 18, 10, 64, 30, 50, ARP_UP, RATE_8, 0, 64,
+       64, 20, 0, 0, 0, 0, 0, 0, 3, 64, 20, 0, 64, 64, 35, 101, 0),
+    PR("EDS", AN, 0, 40, 30, 20, 80, 40, 90, 0, 1, 0, 0, 0, 20, 64, 0, 0, ARP_UPDOWN, RATE_16, 1, 50,
+       64, 0, 0, 0, 0, 0, 0, 60, 3, 64, 50, 0, 64, 64, 20, 117, 1),
+    PR("OUTRUN BASS", AN, 0, 50, 60, 18, 45, 50, 94, 0, 0, 8, 64, 0, 20, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
+       64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 0, 107, 0),
+    PR("MIAMI PAD", PH, 80, 90, 110, 90, 90, 10, 64, 0, 0, 5, 50, 30, 14, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
+       80, 110, 0, 0, 20, 50, 40, 0, 3, 64, 30, 0, 64, 64, 55, 72, 0),
+    PR("CHROME ARP", PH, 0, 40, 20, 24, 110, 20, 64, 0, 2, 0, 70, 70, 0, 0, 0, 0, ARP_UP, RATE_16, 1, 60,
+       64, 30, 0, 0, 0, 0, 0, 0, 3, 64, 60, 0, 64, 64, 30, 97, 1),
+    PR("NEON BELLS", PH, 0, 100, 0, 90, 127, 0, 64, 0, 6, 0, 80, 50, 4, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
+       64, 40, 0, 0, 0, 0, 0, 0, 3, 64, 30, 0, 90, 64, 60, 111, 0),
+    PR("VHS STRINGS", AN, 60, 90, 112, 80, 60, 10, 64, 0, 0, 26, 64, 6, 0, 40, 24, 0, ARP_UP, RATE_8, 0, 64,
+       100, 90, 20, 15, 0, 0, 0, 12, 3, 64, 30, 0, 64, 64, 50, 101, 0),
 };
 #define NPRESETS (sizeof PRESETS / sizeof PRESETS[0])
 
@@ -319,6 +344,7 @@ static uint32_t c_bpm = 120;
 static int32_t env_a, env_d, env_r;       /* per control tick: the attack's step (Q24), decay / release (Q16) */
 static uint32_t lfo_ph, vage;
 static const engine_t *eng = &ENG_ANALOG;
+static int32_t hf_ic[NVOICE][2];          /* M7: PHASE's filter (ours, after the engine: it has none), per voice */
 
 /* a time 0..127 -> control ticks (1 ms .. ~5.9 s, cubed) */
 static int32_t ticks_of(int32_t p)
@@ -355,10 +381,12 @@ static void sound_update(void)
     }
     trk[0].p[P_FTYPE] = cv[VP_FTYPE];
     for (k = 0; k < 8u; k++)
-        if (SLOT_ANALOG[k] < S_PWM)
-            trk[0].p[SLOT_ANALOG[k]] = cv[VP_S0 + k];
-    trk[0].p[P_E4] = cv[VP_CUT];
-    trk[0].p[P_E5] = cv[VP_RES];
+        if (SLOTS[e][k] < S_PWM)
+            trk[0].p[SLOTS[e][k]] = cv[VP_S0 + k];
+    if (e == VS_ANALOG) {                 /* (ANALOG: the FILTER page's cutoff and resonance are its own) */
+        trk[0].p[P_E4] = cv[VP_CUT];
+        trk[0].p[P_E5] = cv[VP_RES];
+    }
     env_a = (1 << 24) / ticks_of(cv[VP_ATK]);
     env_d = 65536 / ticks_of(cv[VP_DEC] / 2);
     env_r = 65536 / ticks_of(cv[VP_REL] / 2 + 8);
@@ -393,6 +421,7 @@ static void voice_start(uint32_t note)
             v->ph[0] = v->ph[1] = v->ph[2] = 0;
             for (i = 0; i < 8u; i++)
                 v->s[i] = 0;
+            hf_ic[best][0] = hf_ic[best][1] = 0;
         }
         v->active = 1;
         eng->note_on(&trk[0], v);
@@ -878,7 +907,11 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                                                               * of 0.23, M6's 0.25), 127 -> 104 (0.66) */
     rev = cv[VP_REV_MIX];
     crush = cv[VP_CRUSH];
-    level = cv[VP_LEVEL];
+    {   /* LEVEL: 100 as made, 12 steps an octave (half a dB a step): 127 x 4.76, 0 x 0.003; Q12 */
+        static const uint16_t OCT12[12] = {4096, 4340, 4598, 4871, 5161, 5468, 5793, 6137, 6502, 6889, 7298, 7732};
+        int32_t e = (int32_t)cv[VP_LEVEL] - 100 + 120, ip = e / 12 - 10;   /* (e >= 20: no negative division) */
+        level = ip >= 0 ? OCT12[e % 12] << ip : OCT12[e % 12] >> -ip;
+    }
     {
         int32_t s = 127 - cv[VP_REV_SIZE];
         rv_fb = 31130 - s * s * 2622 / 4096;   /* 0.64 .. 0.95, 64: 0.87 */
@@ -941,7 +974,28 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             m.shape = (64 << 8) + ((lfo * cv[VP_S7]) >> 9);   /* (ANALOG: PWM DEPTH) */
             m.envq15 = e;
             m.fine = 0;
-            eng->render(&trk[0], v, mix, CTL, &m);
+            if (c_engine == VS_PHASE) {                      /* M7: PHASE, then our filter (the FILTER page) */
+                static int32_t vb[CTL];
+                int32_t cut = (cv[VP_CUT] << 8) + m.cutoff, kd = ANALOG_K(cv[VP_RES]);
+                uint32_t ft = cv[VP_FTYPE], j;
+                m.cutoff = 0;                                /* (PHASE would add it to its DCW) */
+                m.shape = 64 << 8;
+                for (j = 0; j < CTL; j++)
+                    vb[j] = 0;
+                eng->render(&trk[0], v, vb, CTL, &m);
+                if (cut >= (127 << 8) && !ft && !cv[VP_RES]) {   /* (open: no filter) */
+                    for (j = 0; j < CTL; j++)
+                        mix[j] += vb[j];
+                } else {
+                    tsvf_t f;
+                    int32_t *ic = hf_ic[k];
+                    tsvf_coef_k(&f, cut, kd);
+                    for (j = 0; j < CTL; j++)
+                        mix[j] += analog_tap(&f, kd, vb[j] >> 1, &ic[0], &ic[1], ft) * 2;
+                }
+            } else {
+                eng->render(&trk[0], v, mix, CTL, &m);
+            }
         }
         tr_g0 = tr_g;
         {   /* the tremolo's gain at the end of this block (from tr_g0 at its start), the phaser's coefficient */
@@ -1041,9 +1095,11 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 rpk = vl > rpk ? vl : rpk;
             }
             /* LEVEL (100: as is), to 24 bits at MASTER (16-bit x master / 16), a soft limit, then the clamp */
-            l = clamp(l * level / 100 + (dmix[i] >> 3), -98304, 98304) * (int32_t)master_q12 / 16;   /* (M7: the
-                                                              * drums after the preset's LEVEL) */
-            r = clamp(r * level / 100 + (dmix[i] >> 3), -98304, 98304) * (int32_t)master_q12 / 16;
+            l = clamp(l, -300000, 300000);                   /* (LEVEL up to x 4.76, Q12: within 2^31) */
+            r = clamp(r, -300000, 300000);
+            l = clamp((l >> 2) * level / 1024 + (dmix[i] >> 3), -98304, 98304) * (int32_t)master_q12 / 16;   /* (M7:
+                                                              * the drums after the preset's LEVEL) */
+            r = clamp((r >> 2) * level / 1024 + (dmix[i] >> 3), -98304, 98304) * (int32_t)master_q12 / 16;
             for (k = 0; k < 2u; k++) {
                 int32_t *y = k ? &r : &l, a = *y < 0 ? -*y : *y;
                 if (a > 6000000)

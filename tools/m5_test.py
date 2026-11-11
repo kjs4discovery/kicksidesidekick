@@ -1809,28 +1809,29 @@ def test_m5p3(all_songs, rep):
           ss["synth_peak"] < 8388607, f"SELECT + PLAY: SYNTH (m5p3-synth.png); a chord of 3 keys: 3 voices, sound "
           f"(rms {snd:.0f}), no clipping (peak {ss['synth_peak']} of 8388607)")
     check(m2["stats"]["ui_view"] == 6, "the mode screen's cursor moves to SYNTH (m5p3-mode-synth-cursor.png)")
-    # presets: SELECT; every one sounds (5 keys held 1 s each)
+    # presets: M7: the PRESET knob (M5, M6: SELECT); every one sounds (5 keys held 1 s each)
     bad, peaks = [], []
-    n = 21
+    n = 30
     for i in range(0, n, 4):
-        sc = pick + ([f"4600:e0:{i}"] if i else []) + [f"5000:{k}" for k in ("C4", "E4", "G4", "B4")] + \
+        sc = pick + ([f"4600:e6:{i}"] if i else []) + [f"5000:{k}" for k in ("C4", "E4", "G4", "B4")] + \
             [f"6000:{k}^" for k in ("C4", "E4", "G4", "B4")]
         r1 = run(f"m5p3-preset-{i}", 6200, sc, mode=None)
         v = rms(r1["left"][int(5.1 * RATE):int(6.0 * RATE)])
         peaks.append((i, round(v)))
         if r1["stats"]["synth_preset"] != i or v < 50 or r1["stats"]["synth_peak"] >= 8388607:   # (RISER: a 6 s attack)
             bad.append((i, r1["stats"]["synth_preset"], round(v)))
-    check(not bad, f"presets by SELECT: each sounds, none clips (rms of 0, 4, .. 20: {peaks}) {bad or ''}")
-    # the arpeggiator: a preset with one (OCTAVE BOUNCE, 3rd), and ARP on preset 1 (press and release)
-    a1 = run("m5p3-arp-preset", 7000, pick + ["4600:e0:2", "5000:C4", "5000:G4", "6800:C4^", "6800:G4^"], mode=None)
+    check(not bad, f"presets by PRESET (M7): each sounds, none clips (rms of 0, 4, .. 28: {peaks}) {bad or ''}")
+    # the arpeggiator: a preset with one (OCT BOUNCE, 3rd), and ARP on preset 1 (a press). M7: pattern and rate on the
+    # ARP page (M5, M6: SEQ and GLO; SEQ is now the drum pattern menu, GLO the help)
+    a1 = run("m5p3-arp-preset", 7000, pick + ["4600:e6:2", "5000:C4", "5000:G4", "6800:C4^", "6800:G4^"], mode=None)
     a2 = run("m5p3-arp-button", 7500, pick + ["4600:ARP", "4700:ARP^", "5000:C4", "5000:E4", "5000:G4",
                                               "7200:C4^", "7200:E4^", "7200:G4^"], mode=None)
-    a3 = run("m5p3-arp-seq", 7500, pick + ["4600:ARP", "4700:ARP^", "4800:SEQ", "4900:SEQ^", "5000:GLO", "5100:GLO^",
-                                           "5200:C4", "5200:G4", "7200:C4^", "7200:G4^"], mode=None)
+    a3 = run("m5p3-arp-seq", 8400, pick + ["4600:ARP", "4700:ARP^", "4800:e1:-5", "5000:e2:2", "5400:e3:2",
+                                           "6200:C4", "6200:G4", "8200:C4^", "8200:G4^"], mode=None)
     check(a1["stats"]["arp_steps"] >= 12 and a2["stats"]["arp_steps"] >= 3 and   # (1/16 at 120 BPM: 8 a second)
           a3["stats"]["arp_steps"] > a2["stats"]["arp_steps"],
-          f"the arpeggiator: OCTAVE BOUNCE's own up-down 1/16 ({a1['stats']['arp_steps']} steps in 1.8 s); ARP on "
-          f"preset 1, up 1/8 at 120 BPM ({a2['stats']['arp_steps']} in 2.2 s); SEQ, GLO: down 1/8T (M6; M5: 1/16) "
+          f"the arpeggiator: OCT BOUNCE's own up-down 1/16 ({a1['stats']['arp_steps']} steps in 1.8 s); ARP on "
+          f"preset 1, up 1/8 at 120 BPM ({a2['stats']['arp_steps']} in 2.2 s); on the ARP page DOWN, 1/8T "
           f"({a3['stats']['arp_steps']} in 2 s; m5p3-arp-seq.png)")
     # the knobs and the octave (the screen: m5p3-knobs.png)
     run("m5p3-knobs", 6000, pick + ["4600:e2:-10", "4700:e3:10", "4800:e4:5", "4900:e5:-5", "5000:e1:4", "5100:OCTUP",
@@ -1839,7 +1840,7 @@ def test_m5p3(all_songs, rep):
     check(oc["stats"]["key_note_last"] == 72, f"OCT+: the keys an octave up (C4 key -> {oc['stats']['key_note_last']})")
     # CPU: 8 voices of the busiest sound (SYNC SCREAM, 5th), chorus and delay on
     keys8 = ("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
-    cp = run("m5p3-cpu", 7000, pick + ["4600:e0:4"] + [f"5000:{k}" for k in keys8] + [f"6800:{k}^" for k in keys8],
+    cp = run("m5p3-cpu", 7000, pick + ["4600:e6:4"] + [f"5000:{k}" for k in keys8] + [f"6800:{k}^" for k in keys8],
              mode=None)
     c = cp["stats"]
     load = c["synth_render_max"] / c["budget"] if c["budget"] else 9
