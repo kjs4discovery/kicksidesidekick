@@ -1440,8 +1440,9 @@ def test_m4p5(all_songs, rep):
         c = read_compiled(compile_folder(f)[0])
         n = {l: len(c["layers"][l]["variants"]) for l in c["layers"]}
         cs.append(c)
-        check(c["version"] == "2.0" and n.get("harmony") == 5 and n.get("bass") == 4 and n.get("drums") == 3 and
-              c["category"] == "Private test", f"{f.name}: format 2.0 (M5), every level ({n}), category Private test, "
+        check(c["version"] == ("2.1" if f.name == "zombie" else "2.0") and n.get("harmony") == 5 and
+              n.get("bass") == 4 and n.get("drums") == 3 and c["category"] == "Private test",
+              f"{f.name}: format {c['version']} (M5; M7: Zombie 2.1, its bass's start level), every level ({n}), category Private test, "
               f"{c['size']} bytes, {c['bar_count']} bars")
     r = run("m4p5-send", 180000, [], flash="empty_quiet", host=f"{SEND} send --emu-pipe " + " ".join(str(f) for f in priv))
     check(r["out"].count(": stored (") == len(priv), f"all {len(priv)} sent over emulated USB and stored")

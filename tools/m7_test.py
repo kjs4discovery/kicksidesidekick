@@ -300,14 +300,15 @@ def test_m7p4(all_songs, rep):
 # --------------------------------------------------------------------------------------------- part 5
 def test_m7p5(all_songs, rep):
     lines, st, check = m5.checker("M7 part 5: engines and the 30 presets")
-    ch4 = ["5000:C4", "5000:E4", "5000:G4", "5000:B4", "6400:C4^", "6400:E4^", "6400:G4^", "6400:B4^"]
+    ch4 = ["5000:C4", "5000:E4", "5000:G4", "5000:B4", "7100:C4^", "7100:E4^", "7100:G4^", "7100:B4^"]   # (held
+    # 2.1 s: as the laptop's level matching, which measures 2 s; slow attacks such as HAZE PAD's peak after 1.8 s)
     every = os.environ.get("M7_ALL_PRESETS") is not None
     bad, out, eng = [], [], {}
     for i in range(0, 30, 1 if every else 3):
-        r = syrun(f"m7p5-preset-{i}", 6600, ([f"4600:e6:{i}"] if i else []) + ch4)
+        r = syrun(f"m7p5-preset-{i}", 7300, ([f"4600:e6:{i}"] if i else []) + ch4)
         s = r["stats"]
         v = max(m5.rms(r["left"][int(t * m5.RATE):int((t + 0.1) * m5.RATE)]) for t in
-                [4.8 + 0.02 * k for k in range(80)])   # (the loudest 100 ms, as the laptop's level matching; the
+                [4.8 + 0.02 * k for k in range(110)])   # (the loudest 100 ms, as the laptop's level matching; the
         # recorded audio runs ~0.1 s ahead of the script)
         out.append((i, round(v)))
         eng[i] = s["synth_engine"]

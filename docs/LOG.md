@@ -479,3 +479,40 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 6 (census, budget, the full suite once, the install checklist).
+
+2026-11-11 — Step M7 Part 6 (tests, budget, the full suite once, install checklist) —
+Status: done (prepared; not installed). STOPPED for review.
+Did:
+- m7p6: the button census (13 screens x 14 buttons, both modes: each its job or the pop-up; only the mode screen's
+  others do nothing, D044), the power-on rescues with M7 (OCT-+OCT+, REC: fm1-base's; GLO+HOME: WIPE, no pop-up),
+  24 quick HOME/PLAY taps in SYNTH never the mode screen, leaving SYNTH with the drums on. The census found two gaps,
+  fixed: ENV pressed on the ENVELOPE page did nothing (now: the main screen; FX on an FX page: the next one) and the
+  HOME press that opens the folder list opened the pop-up on its release (now only a press begun on that screen).
+  HOME tapped on the SYNTH main screen shows a hint. m7cpu: the budget.
+- Version 0.7.0-m7; docs/controls.md "M7" (control map, census table, the 25 pattern grids, presets, 19 screenshots
+  from the release package in docs/step-M7/); docs/step-M7-install.md.
+- The full suite once on the release package (test-runner subagent), then 3 stale expectations fixed and only their
+  groups re-run on the same package (see below).
+Learned / measured:
+- Package build/step-M7/fm1acc-0.7.0-m7.fwsc, FM-1_46000700, sha256 8478a955eb29c1de7474274a94ff6d96e4f7e2b0bfb8d98580012764bbfdb512,
+  from d1140ba, reproducible (two builds). App 479,968 B (105,760 B free in the slot); RAM .data+.bss 81,128; pool
+  289,864. fm1-base unchanged since 98fc08c.
+- CPU worst (8 voices of the heaviest preset, MIAMI PAD, every effect at its top, SYNTHWAVE2): ACOUSTIC 35 %, 808 44 %,
+  CHIP 42 % of a block (limit 60 %): nothing dropped. 8 voices as made: 9..34 %.
+- Suite: store ALL PASS; pytest 94/1; vsynth ALL PASS; guitar+uke ok; fuzz 600 s 2,452,000 files clean; m7 52/1;
+  m6 21/1; m51 16/1; m5 283/1. Longest stretch without a watchdog feed 92 ms, 0 resets, 0 XIP-off reads.
+- Failures: (1) pytest golden test and (2) m5 m4p5 asserted every private song is 2.0 (Zombie is 2.1 by design):
+  fixed to the exact expectation (Zombie 2.1, its generated levels still compared), re-run: pytest 95 passed, m4p5 9
+  PASS. (3) m51 sends: the M4 incident store keeps Rockin' (never deleted in that scenario): 14 songs all ok vs 13
+  expected; the check now expects the repo's songs plus the fixture's own; re-run: sends ALL PASS. (4) m6p1 Zombie
+  drums L1 1.68x: known, the plan accepts it (backlog); left failing. (5) m7p5 preset loudness in the emulator 1.88x
+  (my fast checks had sampled every 3rd preset); holding the chord 2.1 s as the laptop matching does: 1.78x, DUSK
+  STRINGS +2.3 dB, GLASS PLUCK -2.7 dB (the laptop: all within 0.3 dB). Left failing, not relaxed, not re-levelled
+  (it would change the package after its one full run). In the checklist's Known.
+- Laptop tools: `fm1song list` now says "2.0..2.1" for an M7 FM-1.
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M7-install.md (install over M6; then the user deletes Rockin' and resends Zombie 2.1).
+- Preset levels: re-level DUSK STRINGS / GLASS PLUCK by the emulator's measure in M7.1, or by the user's ear?
+- The synth UI is 1,856 B bigger than M6's (5 screens instead of 1): acceptable?
+Next: STOP. The user runs docs/step-M7-install.md; Claude Code runs only --info / fm1song list and records.

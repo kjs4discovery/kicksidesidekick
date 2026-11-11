@@ -162,7 +162,8 @@ def cmd_list(args):
         print(f"  {e['slug']:24} {e['len']:6} bytes  {room}  {e['status']}", file=args.out)
     if end.get("blocks"):                # M5: blocks of 512 bytes, several songs a sector
         print(f"{end['count']} song(s); {end['free_blocks']} of {end['blocks']} blocks free (512 bytes each; "
-              f"longest run {end['largest']} sectors); reads format 1.0..1.{end['minor']} and 2.0", file=args.out)
+              f"longest run {end['largest']} sectors); reads format 1.0..1.{end['minor']} and 2.0"
+              f"{'..2.' + str(end['minor2']) if end.get('minor2') else ''}", file=args.out)
     else:
         print(f"{end['count']} song(s); {end['free']} of {end['sectors']} sectors free (longest run {end['largest']}); "
               f"reads format 1.0..1.{end['minor']}", file=args.out)

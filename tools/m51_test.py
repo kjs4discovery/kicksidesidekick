@@ -149,10 +149,15 @@ def test_sends(empty, rep):
               f"the incident's store (M4: 9 songs + 2 private, 68 of 69 sectors), `send songs/*/`: all {len(OURS)} "
               f"stored, longest stretch without the watchdog {a['gap']} ms, {a['busy']} of them made room first")
         b = timed("m51-incident-priv", 300000, [], flash=str(a["flash"]), host=send(PRIV)) if PRIV else a
-        n, free, bad, _ = listed(b["flash"], "m51-incident-list")
-        check(b["stored"] == (len(PRIV) if PRIV else len(OURS)) and healthy(b) and n == len(ALL) and not bad,
-              f"then `send songs/private/*/`: all {len(ALL)} songs on the FM-1, each ok ({free} blocks free); longest "
-              f"stretch {b['gap']} ms")
+        n, free, bad, lr = listed(b["flash"], "m51-incident-list")
+        slugs = set(re.findall(r"^  (\S+) +\d+ bytes", lr["out"], re.M))
+        mine = {m5.read_compiled(m5.compile_folder(f)[0])["slug"] for f in OURS + PRIV}
+        old = slugs - mine                # (M7: the M4 store's own songs not sent again, e.g. Rockin', removed from
+                                          # the repo; on the unit checklist step 2 deletes it)
+        check(b["stored"] == (len(PRIV) if PRIV else len(OURS)) and healthy(b) and mine <= slugs and
+              n == len(ALL) + len(old) and not bad,
+              f"then `send songs/private/*/`: all {len(ALL)} songs on the FM-1, each ok ({free} blocks free; besides "
+              f"them, from the M4 store: {', '.join(sorted(old)) or 'none'}); longest stretch {b['gap']} ms")
         p = timed("m51-incident-play", m5.PLAY_MS + 4000, m5.press(m5.OPEN_MS, "PLAY") + m5.press(m5.OPEN_MS + 900, "HOME")
                   + m5.press(m5.PLAY_MS, "PLAY"),   # (HOME closes the controls hint: on, as the FM-1 comes)
                   flash=str(b["flash"]))

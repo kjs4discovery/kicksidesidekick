@@ -30,7 +30,7 @@ def test_c_and_python_generate_the_same(folder, tmp_path):
         pytest.skip("build tools/song_fuzz first (tools/song_fuzz.sh)")
     blob = compile_folder(folder)[0]
     c = read_compiled(blob)
-    assert c["version"] == "2.0"
+    assert c["version"] in ("2.0", "2.1")             # (M7: 2.1 adds start levels; the generators are the same)
     got = c_events(exe, blob, tmp_path)
     for name, ly in c["layers"].items():
         for v, evs in ly["variants"].items():
