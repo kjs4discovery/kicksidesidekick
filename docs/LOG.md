@@ -310,3 +310,25 @@ Learned / measured: the user's report only; Claude Code ran no device command th
 Hardware touched: WRITE by the user (install, private song resends), per the checklist.
 Questions for the planning chat: none
 Next: M7 Parts 0-6 (docs/plan-M7.md).
+
+2026-11-10 — Step M7 Part 0 (measure first; no behaviour change) —
+Status: done
+Did: built 0.6.0-m6 from HEAD (dev build) and measured; checked the flash area 0xDE000..0xDFFFF.
+Learned / measured:
+- App image 460,480 B; slot 0x4000..0x92FFF = 585,728 B -> 125,248 B free. RAM .data+.bss 78,888 of 98,304; pool 289,864.
+- vsynth.o (engine host, effects, arp, 21 presets): 9,720 B code + 4,393 rodata + 48 data = 14,161 B in the image
+  (+1,790 B bss). synth.c: 798 B code (3,127 bss). EAS host (eas/eas_host_fw.c): 1,006 B code (41,236 B bss).
+  jam_songs.h: 6 x 364 B + a 72 B table = 2,256 B. synthui.c (unity build, inlined into input/app_frame): measured by
+  building with synth_input / draw_synth / synth_hash stubbed: 460,480 - 454,016 = 6,464 B (incl. what only they reach).
+  Part 2 is measured the same way.
+- SYNTH CPU worst case (step-M6-install.md, m6p3-cpu on the 0.6.0-m6 package, the same code): 8 voices SYNC SCREAM,
+  chorus + delay + reverb 127 + jam L3: synth + EAS render 34 % of a block (emulated).
+- 0xDE000..0xDFFFF: unused. Code: the song store ends at STORE_HI 0xDC000 and refuses anything outside it; OBJ_PANEL
+  (fm1-base, APP_STORE_MAP 0xDC000) takes the A/B pair 0xDC000 + 0xDD000; OBJ_SETTINGS 0xFC000/0xFD000; no
+  APP_STORE_POOL; nothing in firmware/app or fm1-base device/ names 0xDE000 (only fm1-base's examples/template).
+  PLAT_DATA_HI is 0xE0000, so it is inside the data area. Dumps: the unit's backup has 0xDC000..0xDFFFF all 0xFF;
+  1,207 emulator flash images under build/emu (M2..M6 and M5.1's timed runs): none has a byte written there.
+  Not used in M7.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 1 (learning mode).
