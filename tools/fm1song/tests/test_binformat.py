@@ -39,6 +39,59 @@ def blobs11():
     return [compile_folder(f, (1, 1))[0] for f in SONGS]
 
 
+def _with_starts(folder, starts):
+    """M7: a song with start levels (format 2.1), compiled"""
+    from fm1song.binformat import compile_song
+    from fm1song.source import load_song
+    song, _ = load_song(folder)
+    for name, lv in starts.items():
+        song.layers[name].start_level = lv
+    return compile_song(song)
+
+
+@pytest.fixture(scope="module")
+def blobs21():
+    return [_with_starts(f, {"bass": 2, "harmony": 3 + k % 3, "drums": 1 + k % 3}) for k, f in enumerate(SONGS)]
+
+
+def test_v21_start_levels(blobs, blobs21):
+    """M7: 2.1 only when a layer opens on another level: the start level in LAYR's flags byte; 2.0 otherwise"""
+    for b, b21 in zip(blobs, blobs21):
+        assert b[4:6] == bytes([2, 0]) and b21[4:6] == bytes([2, 1])
+        c = read_compiled(b21)
+        assert c["version"] == "2.1" and c["layers"]["bass"]["start_level"] == 2
+        assert read_compiled(b)["layers"]["bass"]["start_level"] == 1
+        layr = b21.index(b"LAYR")                 # (the directory entry; the chunk's offset follows)
+        off = struct.unpack_from("<I", b21, layr + 4)[0]
+        assert b21[off + 4 + 8 + 5] == 2          # bass (layer 1): r[5]
+    folder = SONGS[0]
+    assert _with_starts(folder, {"bass": 1}) == compile_folder(folder)[0]   # start 1 = the default: 2.0, the same bytes
+
+
+def test_v21_start_level_refused(blobs21):
+    """a start level out of 2..levels, or in a 2.0 file, is refused"""
+    b = blobs21[0]
+    layr = b.index(b"LAYR")
+    off = struct.unpack_from("<I", b, layr + 4)[0]
+    for lv in (1, 5, 255):                        # bass has 4 levels; 1 is stored as 0
+        x = bytearray(b)
+        x[off + 4 + 8 + 5] = lv
+        with pytest.raises(SongError):
+            read_compiled(fix_crc(bytes(x)))
+    x = bytearray(b)
+    x[5] = 0                                      # 2.0 with a start level
+    with pytest.raises(SongError):
+        read_compiled(fix_crc(bytes(x)))
+
+
+def test_v21_bad_yaml(song_copy):
+    from fm1song.source import load_song
+    folder, edit = song_copy("saints")
+    edit("  bass:\n", "  bass:\n    start_level: 9\n")
+    with pytest.raises(SongError):
+        load_song(folder)
+
+
 def test_header_layout(blobs):
     b = blobs[0]
     assert b[:4] == b"FM1S" and b[4:6] == bytes([2, 0])       # M5: our songs (with a style) are 2.0
@@ -236,7 +289,7 @@ def test_fuzz_yaml():
             pass
 
 
-def test_device_parser_agrees(blobs, blobs10, blobs11, blobs13, tmp_path):
+def test_device_parser_agrees(blobs, blobs10, blobs11, blobs13, blobs21, tmp_path):
     """the C parser (firmware/app/song.c, via build/fuzz/song_fuzz --diff) accepts exactly what this reader accepts"""
     import subprocess
     from conftest import ROOT
@@ -245,7 +298,7 @@ def test_device_parser_agrees(blobs, blobs10, blobs11, blobs13, tmp_path):
         pytest.skip("build tools/song_fuzz first (tools/song_fuzz.sh)")
     rng = random.Random(4)
     files, expect = [], {}
-    seeds = blobs + blobs10 + blobs11 + blobs13
+    seeds = blobs + blobs10 + blobs11 + blobs13 + blobs21
     for k in range(3000):
         b = mutate(rng, rng.choice(seeds))
         if k % 4:

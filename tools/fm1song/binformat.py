@@ -25,6 +25,7 @@ MAX_VARIANTS = {0: 3, 1: 3, 2: 3, 3: 5}                  # levels a layer may ha
 #   u16 patterns, u16 bars (= the song's), u16 pattern per bar (0xFFFF: none), then each pattern: u16 notes, and per
 #   note: varint start in the bar, varint length (ticks; LEB128, at most 3 bytes), u8 pitch, u8 velocity (1..127)
 VERSION2 = (2, 0)
+VERSION21 = (2, 1)                                       # M7: 2.0 + a start level per layer (LAYR's flags byte, r[5])
 GEN_LEVELS = {"harmony": 5, "bass": 4, "drums": 3}
 STYL = struct.Struct("<BBH")                             # style (arrange.STYLE_NAMES index), swing, 0
 NT_MAX_NOTES = 65535
@@ -269,8 +270,9 @@ def generate_notes(compiled, layer, level):
 
 
 def compile_song(song, version=None):
-    if version is None:
-        version = VERSION2 if song.style else VERSION
+    starts = song.style and any(ly.start_level > 1 for ly in song.layers.values())
+    if version is None:              # (2.1 only when a layer opens on another level: every other song stays 2.0)
+        version = (VERSION21 if starts else VERSION2) if song.style else VERSION
     if song.style and version < VERSION2:
         song = _expanded(song)           # (an older device: the generated levels as events)
     nvars = lambda ly: min(len(ly.variants), MAX_VARIANTS[version[1]]) if version[0] == 1 else ly.levels or \
@@ -304,8 +306,9 @@ def compile_song(song, version=None):
             layr += LAYR.pack(0xFF, 0xFF, 0, 0, 0, 0, 0)
         else:
             mask = sum(1 << (v - 1) for v in ly.variants) if version[0] == 2 else 0
+            start = ly.start_level if version == VERSION21 and ly.start_level > 1 else 0
             layr += LAYR.pack(ly.channel, 0xFF if ly.program is None else ly.program, nvars(ly),
-                              ly.volume, ly.pan, 0, mask)
+                              ly.volume, ly.pan, start, mask)
     chunks.append((b"LAYR", layr))
     if version >= (1, 2):
         chunks.append((b"CATG", _cstr(song.category, 16)))
@@ -383,9 +386,10 @@ def read_compiled(blob, diag=None):
      flags) = HEADER.unpack_from(blob)
     if magic != MAGIC:
         bad(f"magic {magic!r}, expected {MAGIC!r}", "header")
-    if not (vmaj == 1 and vmin in READS or (vmaj, vmin) == VERSION2):
-        bad(f"format version {vmaj}.{vmin}; this reader reads 1.0 to 1.{READS[-1]} and 2.0", "header")
+    if not (vmaj == 1 and vmin in READS or (vmaj, vmin) in (VERSION2, VERSION21)):
+        bad(f"format version {vmaj}.{vmin}; this reader reads 1.0 to 1.{READS[-1]}, 2.0 and 2.1", "header")
     fmt2 = vmaj == 2
+    fmt21 = (vmaj, vmin) == VERSION21
     if fmt2:
         vmin = 3                         # (2.0 has every 1.3 rule; its own below)
     if size != len(blob) or size > MAX_FILE:
@@ -432,7 +436,7 @@ def read_compiled(blob, diag=None):
         return [rec.unpack_from(body, head + k * rec.size) for k in range(count)], body
 
     bar_ticks = bpb * ppq
-    out = Compiled(version=f"{vmaj}.{0 if fmt2 else vmin}", size=size, crc32=f"{crc:08x}", ppq=ppq,
+    out = Compiled(version=f"{vmaj}.{(1 if fmt21 else 0) if fmt2 else vmin}", size=size, crc32=f"{crc:08x}", ppq=ppq,
                    time_signature=f"{bpb}/{unit}", tempo_us=tempo_us, tempo_bpm=round(60e6 / tempo_us, 2),
                    end_tick=end_tick, bar_count=bar_count, pickup_beats=pickup, swing=bool(flags & 1))
     meta = chunk(b"META")
@@ -520,8 +524,9 @@ def read_compiled(blob, diag=None):
             if chan != 0xFF or mask:
                 bad(f"{name}: no variants but a channel", "LAYR")
             continue
-        if chan > 15 or nvar > MAX_VARIANTS[vmin] or vol > 127 or pan > 127 or lfl or prog > 127 and prog != 0xFF:
-            bad(f"{name} out of range", "LAYR")
+        if chan > 15 or nvar > MAX_VARIANTS[vmin] or vol > 127 or pan > 127 or prog > 127 and prog != 0xFF or \
+                (lfl and not (fmt21 and 2 <= lfl <= nvar)):
+            bad(f"{name} out of range (2.1: the start level 2..levels, else 0)", "LAYR")
         variants = {}
         if fmt2:                           # 2.0: each level stored (NT) or generated
             full = (1 << nvar) - 1
@@ -539,7 +544,8 @@ def read_compiled(blob, diag=None):
                     bad("a generated level stored too", tag.decode())
             out["stored"][name] = [v for v in range(1, nvar + 1) if mask >> (v - 1) & 1]
             out["layers"][name] = {"channel": chan, "program": None if prog == 0xFF else prog,
-                                   "volume": vol, "pan": pan, "variants": variants, "levels": nvar}
+                                   "volume": vol, "pan": pan, "variants": variants, "levels": nvar,
+                                   "start_level": lfl or 1}
             continue
         for v in range(1, nvar + 1):
             tag = LAYER_LETTER[li].encode() + str(v).encode()

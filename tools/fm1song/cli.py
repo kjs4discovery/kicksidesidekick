@@ -208,6 +208,21 @@ def cmd_send(args):
                 else:
                     older.append((path, _load(path, (1, minor))[1]))
             blobs = older
+        if end["major"] >= 2 and end.get("minor2", 0) < 1 and \
+                any(read_compiled(b)["version"] == "2.1" for _, b in blobs):   # M7: before the M7 firmware
+            print("the FM-1 reads format 2.0, not 2.1: sending 2.0 (the song opens on level 1; install M7 for the "
+                  "start levels)", file=args.out)
+            older = []
+            for path, blob in blobs:
+                if read_compiled(blob)["version"] != "2.1":
+                    older.append((path, blob))
+                elif not Path(path).is_dir():
+                    print(f"{path}: a compiled 2.1 file: send its song folder instead (the FM-1 reads 2.0)",
+                          file=sys.stderr)
+                    return 2
+                else:
+                    older.append((path, _load(path, (2, 0))[1]))
+            blobs = older
         if minor < 3:
             lost = "levels above 3" + ("" if minor >= 2 else ", the song category")
             print(f"the FM-1 reads formats up to 1.{minor}: sending 1.{minor} (without {lost})", file=args.out)
@@ -318,8 +333,8 @@ def main(argv=None):
     p = sub.add_parser("compile", help="song folder -> .fm1s")
     p.add_argument("song")
     p.add_argument("-o", "--output")
-    p.add_argument("--format", choices=["2.0", "1.3", "1.2", "1.1", "1.0"], default=None,
-                   help="default: 2.0 for a song with a style (M5), else 1.3; 1.0: the M1 layout (8-byte events), "
+    p.add_argument("--format", choices=["2.1", "2.0", "1.3", "1.2", "1.1", "1.0"], default=None,
+                   help="default: 2.0 for a song with a style (M5; 2.1 when a layer has a start_level, M7), else 1.3; 1.0: the M1 layout (8-byte events), "
                         "for an M1 device or tests")
     p.set_defaults(fn=cmd_compile)
     p = sub.add_parser("info", help="summary of a .fm1s file or a song folder")

@@ -9,7 +9,8 @@
  *   0x70 LIST                    -> 0x71 ENTRY per song {index, count, status, sectors, len u24, slug[23], blocks
  *                                   u16}, then 0x72 END {count, free sectors, longest free run, sectors, minor,
  *                                   result, free blocks u16, blocks u16, major, mode} (M5: the fields after result;
- *                                   major 2: it reads 2.0 too; mode 2: SYNTH, sends refused)
+ *                                   major 2: it reads 2.0 too; mode 2: SYNTH, sends refused; M7: + minor2, 1:
+ *                                   it reads 2.1)
  *   0x73 SEND {len u32, crc u32[, slug[24]]} -> the FM-1 makes room (store_begin), pulls the file with the update's
  *                                   read requests (plat_host_read) straight into the flash (M5; M4: into RAM, 64 KiB
  *                                   at most), checks its CRC and the whole song (song_open) in place, then commits it
@@ -181,13 +182,15 @@ static int lib_open(uint32_t i, const struct song **out)
     r = song_open(&current, store_file(e), e->len, dec, sizeof dec);
     if (r == SONG_OK && song_crc32(store_file(e), e->len, 0) != e->crc)
         r = SONG_E_CRC;                   /* (song_open checked the file's own CRC; this is the record's) */
-    if (r == SONG_OK && current.fmt2) {   /* 2.0: each layer's region, and level 1 built in it */
+    if (r == SONG_OK && current.fmt2) {   /* 2.0: each layer's region, and level 1 built in it (M7, 2.1: its start
+                                           * level) */
         uint32_t l, at = 0;
         for (l = 0; l < SONG_LAYERS && r == SONG_OK; l++) {
             region[l] = at;
             at += current.layer[l].need * 8u;   /* (song_open: the sum is at most SONG_BUILD_BYTES) */
             if (current.layer[l].variants)
-                r = song_build(&current, l, 1, dec + region[l], current.layer[l].need * 8u);
+                r = song_build(&current, l, current.layer[l].start ? current.layer[l].start : 1u, dec + region[l],
+                               current.layer[l].need * 8u);
         }
     }
     if (r) {
@@ -205,6 +208,8 @@ static void lib_level(uint32_t l, uint32_t v)
 {
     uint32_t t;
     struct song_layer *ly = &current.layer[l];
+    if (l < SONG_LAYERS)                  /* (M7: for the tests) */
+        player_stats.levels = (player_stats.levels & ~(15u << 4u * l)) | (v & 15u) << 4u * l;
     if (current_i >= 0 && current.fmt2 && l < SONG_LAYERS && ly->variants && v >= 1u && v <= ly->variants &&
         ly->built != v) {
         player_hold(1u << l);
@@ -335,7 +340,8 @@ static void sc_list(void)
     b[9] = (uint8_t)(STORE_BLOCKS >> 8);
     b[10] = 2;                           /* M5: and 2.0 */
     b[11] = (uint8_t)player_stats.mode;  /* M5 part 3: 0 the mode screen, 1 LEARN, 2 SYNTH (sends refused) */
-    ota_send_msg(SC_END, b, 12);
+    b[12] = 1;                           /* M7: 2.0 .. 2.this (2.1: a start level per layer) */
+    ota_send_msg(SC_END, b, 13);
 }
 
 static void sc_send(const uint8_t *body, uint32_t n)

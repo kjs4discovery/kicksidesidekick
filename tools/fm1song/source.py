@@ -36,6 +36,7 @@ class Layer:
         self.variants = {}               # n -> [(tick, status, d1, d2)], status 0x80/0x90/0xB0/0xE0
         self.descriptions = {}
         self.levels = 0                  # 2.0: how many levels (generated or stored); 0: len(variants) (1.x)
+        self.start_level = 1             # M7 (format 2.1): the level the FM-1 opens the song with (1: the default)
 
 
 class Song:
@@ -397,6 +398,12 @@ def _read_layers(song, data, midi, chart_events, diag):
             if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= MAX_VARIANTS:
                 diag.error(f"variant {n!r}: must be 1..{MAX_VARIANTS}", "song.yaml", where)
         layer.descriptions = {n: str(d) for n, d in desc.items() if isinstance(n, int)}
+        sl = ly.get("start_level", 1)    # M7 (format 2.1): the level the song opens with on the FM-1
+        if isinstance(sl, bool) or not isinstance(sl, int) or not 1 <= sl <= MAX_VARIANTS:
+            diag.error(f"start_level {sl!r}: must be 1..{MAX_VARIANTS} (and at most the layer's levels)", "song.yaml",
+                       where)
+            sl = 1
+        layer.start_level = sl
         song.layers[name] = layer
 
     seen = {}
@@ -429,6 +436,11 @@ def _read_layers(song, data, midi, chart_events, diag):
 
     for name, layer in song.layers.items():
         have = sorted(layer.variants)
+        nlev = GEN_LEVELS[name] if song.style and name in GEN_LEVELS else len(have)
+        if layer.start_level > 1 and (not song.style or layer.start_level > nlev):
+            diag.error(f"start_level {layer.start_level}: {name} has levels 1..{nlev}" if song.style else
+                       "start_level needs format 2 (a song with a style)", "song.yaml", f"layers.{name}")
+            layer.start_level = 1
         if song.style and name in GEN_LEVELS:   # generated: any of its levels may be in song.mid (they override)
             layer.levels = GEN_LEVELS[name]
             for n in have:

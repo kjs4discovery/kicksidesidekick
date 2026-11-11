@@ -122,6 +122,16 @@ struct player_stats {
     uint32_t arp_pattern, arp_rate;       /* SYNTH: ARP_*, RATE_* now */
     uint32_t jam_style, jam_level;        /* SYNTH: the drum jam's style (tools/jam_songs.py order), level */
     uint32_t m6_pad[3];
+    /* M7 (16 words: tools/m7_test.py reads them by these names) */
+    uint32_t popups, popup_open, popup_btn;   /* the "NOT IMPLEMENTED" pop-up: times shown, open now, its button */
+    uint32_t synth_page;                  /* SYNTH: 0 the main screen, 1.. the edit pages; 0xFF the pattern menu */
+    uint32_t drum_on, drum_pattern, drum_kit, drum_hits, drum_voices_max, drum_bar;   /* SYNTH's drums */
+    uint32_t fx_active;                   /* SYNTH: bit k: effect k ran in the last block (vsynth.h FXB_*) */
+    uint32_t synth_engine;                /* SYNTH: the preset's engine, 0 ANALOG, 1 PHASE */
+    uint32_t synth_bpm;                   /* SYNTH: the tempo */
+    uint32_t synth_level;                 /* SYNTH: the preset level parameter */
+    uint32_t levels;                      /* LEARN: the level of each layer, 4 bits each (drums low) */
+    uint32_t m7_pad;
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

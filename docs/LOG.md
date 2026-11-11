@@ -332,3 +332,35 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 1 (learning mode).
+
+2026-11-10 — Step M7 Part 1 (learning mode) —
+Status: done (emulator); committed
+Did:
+- Rockin' removed: songs/private/ is git-ignored (never committed), so `git rm` had nothing to remove: deleted the local
+  folder songs/private/rockin and its line in songs/private/import_all.sh; import/private/Rockin_in_the_Free_World.mid
+  kept. The loudness checks glob songs/private/*: its rows are gone. The unit: `tools/fm1song.sh delete
+  rockin-free-world` (the user, in the checklist).
+- Format 2.1 (additive): song.yaml layers.<layer>.start_level (1..levels, style songs only); stored in LAYR's flags byte
+  r[5] (2..levels, 0 = L1); header 2.1 only when a layer has one, else 2.0 byte for byte (golden tests unchanged).
+  Parser (song.c), the song's open (library.c / ui.c open_song: each layer built and played at its start level),
+  Python reader + writer, `compile --format 2.1/2.0`, song_fuzz.sh (a 2.1 seed), pytest (3 new tests, the 2.1 seeds in
+  the C-vs-Python agreement test), docs/song-format.md 2.6. The song list's END message gets byte 12 = 1 ("reads
+  2.1"); `fm1song send` sends 2.0 (no start level) to an FM-1 that does not say so (M5/M6), so no refusal.
+- Zombie: bass start_level 2; melody volume 88 (was 100). import_all.sh re-applies both after a re-import.
+- The NOT IMPLEMENTED pop-up (D044) in LEARN: list (free: FX SCL ENV LFO SAVE ARP SEQ REC; HOME on the folder list,
+  on release), settings and views screens (the same 8), play screen (only the layer buttons of layers the song lacks),
+  help (none: any button goes back). Never: splash, mode screen, hint, WIPE, a button held since power-on. Any button
+  closes it (that press and its release do nothing else); it also closes itself after 2.5 s (decided: the screen under
+  it is frozen while it is open); encoder turns are dropped while it is open; HOME held 2 s works; keys play.
+Learned / measured:
+- Zombie's melody plays only in bars 28-32, 92-96 and 168-200 (the lead): measured from bar 168 (PRESETS to Part 22),
+  20 s, each alone, level 1. Melody / (harmony + bass) before: rms 1.05, A-weighted 2.80; the 9 public songs (first
+  21 s): rms 0.56..2.52 (median 1.23), A-weighted 1.12..4.16 (median 2.90). So by the numbers it already sat at the
+  public median. Decided (the user hears it too loud; an overdrive lead is louder than its rms): volume 88 -> after
+  (with bass L2): rms 0.90, A-weighted 2.40, the public songs' lower quartile.
+- pytest 96 passed; fuzz 20 s 62,000 files clean (the full run: Part 6); m7p1 11 PASS. Image 461,216 B.
+Hardware touched: none
+Questions for the planning chat:
+- Zombie's lead measured at the public median before any change; I lowered it to the lower quartile (volume 88) on
+  the user's ear. Please ask the user after the install whether it is right now.
+Next: Part 2 (the SYNTH UI on the parameter table).

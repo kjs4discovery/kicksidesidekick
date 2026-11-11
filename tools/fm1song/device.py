@@ -174,7 +174,8 @@ def song_list(dev):
             return {"count": body[0], "free": body[1], "largest": body[2], "sectors": body[3], "minor": body[4],
                     "result": body[5], "major": body[10] if m5 else 1,
                     "free_blocks": body[6] | body[7] << 8 if m5 else None, "blocks": body[8] | body[9] << 8 if m5 else None,
-                    "mode": body[11] if len(body) >= 12 else None}
+                    "mode": body[11] if len(body) >= 12 else None,
+                    "minor2": body[12] if len(body) >= 13 else 0}   # M7: it reads 2.0 .. 2.minor2 (2.1: start levels)
         return None
 
     dev.link.drain()

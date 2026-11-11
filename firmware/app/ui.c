@@ -144,6 +144,9 @@ static struct {
     uint32_t wipe_t0, wipe_done;         /* when PLAY went down on it (0: not held); 1 + the result once done */
     uint32_t wipe_armed;                 /* PLAY seen up since it opened: only a new press counts */
     uint32_t home_t, home_armed;         /* M6: when HOME went down (0: up); HOME seen up since power-on */
+    uint32_t seen_up;                    /* M7: the buttons seen up since power-on (a held one never raises the pop-up) */
+    uint32_t popup, popup_until;         /* M7 (D044): the NOT IMPLEMENTED pop-up open (1: to draw, 2: drawn) */
+    uint32_t closed;                     /* M7: the buttons that closed it, still held (their release does nothing) */
     struct settings set;
     uint32_t set_row, set_dirty;
     uint32_t sel, top;                   /* the list's cursor and first row */
@@ -784,7 +787,8 @@ static void open_song(uint32_t i)
     player_load(ui.s);
     player_mute(0);
     for (r = 0; r < (int)SONG_LAYERS; r++)
-        lib_level((uint32_t)r, 1);       /* (2.0: level 1 is built at open; a song opened again: built anew) */
+        lib_level((uint32_t)r, s->layer[r].start ? s->layer[r].start : 1u);   /* (2.0: level 1 is built at open;
+                                          * a song opened again: built anew. M7, 2.1: the song's start level) */
     player_tempo(player_song_bpm(s));    /* every song opens at its own tempo, in its own key */
     ui.key = 0;
     ui.kb_lo = 0;
@@ -1185,6 +1189,92 @@ static void input_play(uint32_t down, uint32_t now)
     }
 }
 
+/* ------------------------------------------------------------ M7: the NOT IMPLEMENTED pop-up (D044) --- */
+/* A button with no job on the screen shown opens a small pop-up; any button closes it (that press does nothing else,
+ * nor its release), and so does POPUP_MS. Never for a button held since power-on; never on the WIPE question, the mode
+ * screen, the splash or the hint (they have a job for every button); HOME held 2 s works with it open; the keys keep
+ * playing; the encoders never open it (while it is open their turns are dropped). docs/controls.md, "M7", lists each
+ * screen's free buttons (the census). */
+#define POPUP_MS 2500u
+#define ALL_BUTTONS ((1u << NB) - 1u)
+
+/* the learning screens' buttons with a job (the rest are free) */
+static uint32_t learn_jobs(void)
+{
+    uint32_t j = 1u << B_OCTDN | 1u << B_OCTUP | 1u << B_GLO, l;   /* everywhere: the octave, the help */
+    switch (ui.view) {
+    case V_LIST:                         /* PLAY / EDIT open; HOME: up to the folders (the song list only) */
+        j |= 1u << B_PLAY | 1u << B_EDIT;
+        if (ui.folder >= 0 && lib_count())
+            j |= 1u << B_HOME;
+        return j;
+    case V_PLAY:                         /* every button, but the layer buttons of layers the song does not have */
+        j = ALL_BUTTONS;
+        for (l = 0; l < SONG_LAYERS; l++)
+            if (!ui.s->layer[l].variants)
+                j &= ~(1u << LAYER_BUTTON[l]);
+        return j;
+    case V_SETTINGS:
+    case V_VIEWSET:                      /* PLAY / EDIT change, GLO / HOME back */
+        return j | 1u << B_PLAY | 1u << B_EDIT | 1u << B_HOME;
+    default:                             /* the help (any button: back), the hint, WIPE, the mode screen: all */
+        return ALL_BUTTONS;
+    }
+}
+
+static void popup_open(uint32_t b)
+{
+    ui.popup = 1;
+    ui.popup_until = plat_ms() + POPUP_MS;
+    player_stats.popups++;
+    player_stats.popup_open = 1;
+    player_stats.popup_btn = b;
+}
+
+/* free: the buttons with no job now. 1: the pop-up has this input (open now, or just closed) */
+static int popup_input(uint32_t down, uint32_t free, uint32_t now)
+{
+    uint32_t b, e;
+    if (ui.popup) {
+        for (e = 0; e < NE; e++)
+            (void)plat_enc(e);           /* (dropped) */
+        if (down || (int32_t)(now - ui.popup_until) >= 0) {
+            ui.popup = 0;
+            player_stats.popup_open = 0;
+            ui.redraw = 1;
+            ui.hold_done = 0xFu;         /* (a layer button that closed it: neither a hold nor a press) */
+            ui.closed |= down;           /* (its release does nothing either) */
+            ui.sh_status = 0xFFFFFFFFu;
+        }
+        ui.released &= ~ui.closed;
+        ui.closed &= ui.buttons;
+        return 1;
+    }
+    ui.released &= ~ui.closed;
+    ui.closed &= ui.buttons;
+    free &= ui.seen_up;
+    if (free & 1u << B_HOME & ui.released) {   /* (HOME free: on release, a short press; a hold is the mode screen's) */
+        popup_open(B_HOME);
+        return 1;
+    }
+    free &= ~(1u << B_HOME);
+    for (b = 0; b < NB; b++)
+        if (down & free & 1u << b) {
+            popup_open(b);
+            return 1;
+        }
+    return 0;
+}
+
+static void draw_popup(void)
+{
+    cv_begin(200, 64, C_BLACK);
+    frame_rect(0, 0, 200, 64, C_AMB);
+    text_in(0, 200, 10, &FONT_B, "NOT IMPLEMENTED", C_WHITE);
+    text_in(0, 200, 38, &FONT_XS, "any button: close", C_GRAY);
+    cv_blit(20, 88);
+}
+
 #include "synthui.c"
 
 /* how long since a hold began at t (t = now | 1u, so 0 means "not held"; t can be 1 ms ahead of now: 0, not a wrap) */
@@ -1196,6 +1286,7 @@ static uint32_t held_ms(uint32_t t, uint32_t now)
 static void input(void)
 {
     uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k, now = plat_ms();
+    ui.seen_up |= ~btn & ALL_BUTTONS;    /* M7: a button held since power-on never opens the pop-up */
     if (!(btn >> B_HOME & 1u)) {         /* M6: HOME held 2 s, from any screen (not the WIPE question): the mode
                                           * screen. A HOME held since power-on (GLO + HOME: WIPE) never counts */
         ui.home_t = 0;
@@ -1237,6 +1328,10 @@ static void input(void)
     ui.released = ui.buttons & ~btn;
     ui.buttons = btn;
     if (ui.splash) {                     /* the splash is still up: only the keys */
+        lights();
+        return;
+    }
+    if (ui.view != V_HINT && ui.view != V_WIPE && popup_input(down, ALL_BUTTONS & ~learn_jobs(), now)) {   /* M7 */
         lights();
         return;
     }
@@ -3764,6 +3859,12 @@ void app_frame(void)
     player_stats.ui_view = (uint32_t)ui.view + (ui.splash ? 16u : 0u);
     if (ui.splash)
         return;
+    if (ui.popup) {                      /* M7: the pop-up over the screen (frozen under it until it closes) */
+        if (ui.popup == 1u)
+            draw_popup();
+        ui.popup = 2;
+        return;
+    }
     if (ui.view == V_MODE || ui.view == V_SYNTH) {
         if (ui.view == V_MODE ? ui.redraw : synth_dirty(now))
             ui.view == V_MODE ? draw_mode() : draw_synth();

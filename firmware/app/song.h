@@ -46,6 +46,7 @@ struct song_layer {
     uint8_t variants;                     /* 0: the song has no such layer */
     uint8_t volume, pan;
     uint8_t built;                        /* 2.0: the level in var[] (song_build), 0 none yet */
+    uint8_t start;                        /* M7 (2.1): the level the song opens with, 1..variants (else 1) */
     uint16_t stored;                      /* 2.0: bit v-1 = level v is in the file (NT); the rest are generated */
     uint32_t need;                        /* 2.0: events its largest level needs (song_build's buffer: need x 8) */
     struct song_stream var[SONG_MAX_VARIANTS];   /* 2.0: every entry is the built level */
@@ -55,7 +56,8 @@ struct song {
     const uint8_t *data;
     uint32_t size;
     uint32_t minor;                       /* format version 1.minor (2.0: 3, it has 1.3's rules) */
-    uint8_t fmt2;                         /* 2.0 */
+    uint8_t fmt2;                         /* 2.0 (and 2.1) */
+    uint8_t fmt21;                        /* M7: 2.1 (LAYR's flags byte: the start level) */
     uint8_t style;                        /* 2.0: the generators' style, 0..SONG_STYLES-1 */
     uint32_t ppq, beats_per_bar, bar_ticks, tempo_us, end_tick, bar_count, pickup_beats, swing;
     uint32_t start_tick;                  /* where playback starts: after the pickup bar's empty beats */

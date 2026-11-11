@@ -95,7 +95,8 @@ The device uses it for loops (§3.3).
 
 **Layers.** `channel` 1..16 (the device plays the layer on this channel, whatever the track says);
 `program` is the General MIDI number 1..128 as printed in GM lists (stored 0-based); optional `volume` and
-`pan` 0..127 (defaults 100, 64). `variants` maps 1..3 to a short description; every variant needs a track
+`pan` 0..127 (defaults 100, 64); optional `start_level` (M7, format 2.1): the level the FM-1 opens the song with,
+1..the layer's levels (default 1; a song with a style only). `variants` maps 1..3 to a short description; every variant needs a track
 in `song.mid` and vice versa. Variant 1 is the simplest (the default on the device).
 
 **Chart syntax.** Bars are separated by `|`; every line starts and ends with `|`; lines just continue.
@@ -225,6 +226,16 @@ The header, `META`, `CATG`, `SECT`, `CHRD`, `CEVT` and `BARS` as 1.3, with these
 The device builds a level when the song opens (level 1) and when a level knob turns (the player holds that layer
 meanwhile; the others play on). `tools/song_fuzz.sh` fuzzes the C parser and generators against the Python reader
 (`--diff`) and prints the C's events (`--events`) for the golden test (`tools/fm1song/tests/test_gen_golden.py`).
+
+### 2.6 Format 2.1 (M7)
+
+2.0 with one addition: **`LAYR`'s flags byte** (a layer record's byte 5, 0 in every other version) is the layer's
+**start level**, 2..its levels, or 0 for level 1. The FM-1 builds and plays that level when the song opens (each
+song opens fresh, as M5). Header version **2.1**; everything else as 2.0. `fm1song compile` writes 2.1 only when a
+layer has `start_level` above 1, so every other song stays 2.0 and byte for byte what it was (the golden tests
+unchanged); `--format 2.0` leaves the start levels out. The FM-1 from M7 on reads 2.0 and 2.1 (its song list's END
+message: byte 12, 1); M5/M6 refuse 2.1 safely (VERSION), and `fm1song send` sends such an FM-1 the 2.0 form. The
+level generators did not change.
 
 ## 3. What the device does with it (M1b; M2)
 
