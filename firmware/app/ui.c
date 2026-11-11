@@ -60,6 +60,7 @@ static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 18
 #define BOX_W 56
 #define BOX_H 44
 #define BOX_STEP 60
+#define SET_ROW_H 22                     /* the settings' rows (8 above the legend) */
 
 enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH,   /* (M5: the mode screen, SYNTH) */
        V_WIPE };                         /* M5.1: WIPE SONG STORE, asked first */
@@ -115,8 +116,11 @@ struct settings {
     uint8_t hide2[4];                    /* (bits 8..: PV_DNOTE) */
     uint8_t v2[8];                       /* M5: S_* values 8.. */
     uint8_t hint_count, pad[3];          /* M5: times the controls hint was shown */
+    uint8_t synth[4];                    /* M7: SYNTH's settings: drum volume 0..10, drum kit (KIT_*); 2 spare */
 };
 #define SET_SIZE_M4 24u                  /* M4's record: read too, the M5 fields then get their defaults */
+#define SET_SIZE_M5 36u                  /* M5..M6's: read too, the M7 fields then get their defaults */
+#define SYNTH_SET_DEFAULT {7, 0, 0, 0}   /* drum volume 7 of 10, kit ACOUSTIC */
 #define SV(i) (*((uint32_t)(i) < 8u ? &ui.set.v[(i)] : &ui.set.v2[(uint32_t)(i) - 8u]))
 #define HINT_TIMES 10u                   /* the controls hint shows itself this many times, then stays off */
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
@@ -206,8 +210,9 @@ static void settings_apply(void)
 static void settings_load(void)
 {
     uint32_t i;
+    static const uint8_t SYD[4] = SYNTH_SET_DEFAULT;
     int n = plat_store_load(OBJ_SETTINGS, &ui.set, sizeof ui.set);
-    if ((n != (int)sizeof ui.set && n != (int)SET_SIZE_M4) || ui.set.magic != SET_MAGIC) {
+    if ((n != (int)sizeof ui.set && n != (int)SET_SIZE_M5 && n != (int)SET_SIZE_M4) || ui.set.magic != SET_MAGIC) {
         ui.set.magic = SET_MAGIC;        /* none yet (or not ours): the defaults */
         ui.set.hide[0] = ui.set.hide[1] = ui.set.hide[2] = ui.set.hide[3] = 0;
         ui.set.hide2[0] = ui.set.hide2[1] = ui.set.hide2[2] = ui.set.hide2[3] = 0;
@@ -220,7 +225,10 @@ static void settings_load(void)
             SV(i) = i < S_N ? SET_DEFAULT[i] : 0;
         ui.set.hint_count = 0;
     }
-    ui.set.version = 3;                  /* (M5) */
+    if (n != (int)sizeof ui.set)         /* M7: an older record: SYNTH's settings' defaults */
+        for (i = 0; i < 4u; i++)
+            ui.set.synth[i] = SYD[i];
+    ui.set.version = 4;                  /* (M5: 3; M7: 4, the synth fields) */
     for (i = 0; i < S_N; i++)            /* (a value out of range: the default) */
         if (SV(i) >= SET_COUNT[i])
             SV(i) = SET_DEFAULT[i];
@@ -1304,12 +1312,12 @@ static void input(void)
         return;
     }
     if (!ui.splash && (ui.view == V_MODE || ui.view == V_SYNTH)) {   /* M5: the mode screen, SYNTH mode */
+        ui.released = ui.buttons & ~btn;
         if (ui.view == V_MODE)
             mode_input(keys, btn, down);
         else
-            synth_input(keys, btn, down);
+            synth_input(keys, btn, down, now);
         ui.keys = keys;
-        ui.released = ui.buttons & ~btn;
         ui.buttons = btn;
         return;
     }
@@ -1712,7 +1720,6 @@ static void draw_help(void)
 }
 
 /* ---------------------------------------------------------------------- settings --- */
-#define SET_ROW_H 22                     /* (8 rows above the legend) */
 
 /* the controls hint (M5): before a song's play screen, what a layer button does; up to HINT_TIMES times */
 /* M5.1: the WIPE SONG STORE screen (from the settings, or GLO + HOME held at power-on) */

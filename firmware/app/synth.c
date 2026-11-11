@@ -140,3 +140,20 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     }
     eas_block(lr, n, master_q12);
 }
+
+/* ------------------------------------------------------------- M7: SYNTH mode's drums --- */
+#include "jam_patterns.h"
+static volatile uint8_t dr_on, dr_kit;
+static volatile uint32_t dr_pat = JAM_DEFAULT, dr_vol = 89, dr_bpm = 120;
+
+void synth_drums(int on) { dr_on = (uint8_t)(on != 0); }
+int synth_drums_on(void) { return dr_on; }
+void synth_drum_pattern(uint32_t i) { dr_pat = i < JAM_PATTERNS ? i : JAM_DEFAULT; }
+uint32_t synth_drum_pattern_of(void) { return dr_pat; }
+uint32_t synth_patterns(void) { return JAM_PATTERNS; }
+const char *synth_pattern_name(uint32_t i) { return JAM[i < JAM_PATTERNS ? i : 0].name; }
+uint32_t synth_pattern_beats(uint32_t i) { return JAM[i < JAM_PATTERNS ? i : 0].beats; }
+void synth_drum_kit(uint32_t kit) { dr_kit = (uint8_t)(kit < KITS ? kit : KIT_ACOUSTIC); }
+void synth_drum_volume(uint32_t v) { dr_vol = v > 127u ? 127u : v; }
+void synth_drum_tempo(uint32_t bpm) { dr_bpm = bpm; }
+uint32_t synth_drum_beat(void) { return dr_on ? 0 : 0xFFu; }

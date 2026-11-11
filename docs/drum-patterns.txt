@@ -1,0 +1,150 @@
+# SYNTH mode's drum patterns (M7 Part 4, D041). tools/jam_patterns.py turns this file into firmware/app/jam_patterns.h.
+# Our own patterns, written from common genre conventions; the user listens and prunes (docs/controls.md lists them).
+#
+#   pattern NAME BEATS STEPS      BEATS: beats a bar (the tempo counts them); STEPS: steps a bar (16, or 12 for
+#                                 triplet feels: 3 a beat in 4/4, or 6/8's 2 x 6)
+#   KICK  x...o...|x...o...       one row per instrument, any order, missing rows are silent; a second bar after "|"
+#                                 (1 or 2 bars); spaces are ignored
+#   x accent   o normal   g ghost (soft)   . rest
+# Instruments: KICK SNARE CHH (closed hat) OHH (open hat) CLAP TOMLO TOMHI RIM (rim / percussion)
+
+pattern ROCK1 4 16
+CHH   x.o.x.o.x.o.x.o.
+SNARE ....x.......x...
+KICK  x.......x.o.....
+
+pattern ROCK2 4 16
+CHH   x.o.x.o.x.o.x.o.|x.o.x.o.x.o.x.o.
+SNARE ....x.......x...|....x.......x..g
+KICK  x......ox.x.....|x......ox.x...o.
+
+pattern ROCK3 4 16
+OHH   x.o.x.o.x.o.x.o.|x.o.x.o.x.o.....
+SNARE ....x.......x...|....x.......x.xx
+KICK  x.x.....x.x.....|x.x.....x.x.....
+TOMHI ................|............o...
+TOMLO ................|.............o..
+
+pattern POP1 4 16
+CHH   o.o.o.o.o.o.o.o.
+SNARE ....x.......x...
+KICK  x.......x.......
+
+pattern POP2 4 16
+CHH   oooooooooooooooo
+CLAP  ....x.......x...
+KICK  x.....o.x.......
+
+pattern POP3 4 16
+CHH   o.o.o.o.o.o.o.o.|o.o.o.o.o.o.o.o.
+SNARE ....x.......x...|....x.......x...
+CLAP  ....o.......o...|....o.......o...
+KICK  x.....o...o.....|x.....o...o..o..
+OHH   ................|..............o.
+
+pattern FUNK1 4 16
+CHH   xoxoxoxoxoxoxoxo
+SNARE ....x..g.g..x..g
+KICK  x.x.......x..o..
+
+pattern FUNK2 4 16
+CHH   x.ox.ox.x.ox.ox.|x.ox.ox.x.ox.o..
+OHH   ................|..............o.
+SNARE ....x..g.g.gx...|.g..x..g.g..x.g.
+KICK  x..x..x...x.....|x..x......xx....
+
+pattern DISCO 4 16
+CHH   x...x...x...x...
+OHH   ..o...o...o...o.
+SNARE ....x.......x...
+KICK  x...x...x...x...
+
+pattern HOUSE 4 16
+CHH   ..o...o...o...o.
+OHH   ..x...x...x...x.
+CLAP  ....x.......x...
+KICK  x...x...x...x...
+
+pattern TECHNO 4 16
+CHH   ooxoooxoooxoooxo
+OHH   ..o...o...o...o.
+RIM   ..........o.....
+KICK  x...x...x...x...
+
+pattern SYNTHWAVE1 4 16
+CHH   o.o.o.o.o.o.o.o.
+SNARE ....x.......x...
+CLAP  ....o.......o...
+KICK  x...x...x...x...
+
+pattern SYNTHWAVE2 4 16
+CHH   o.oxo.oxo.oxo.ox|o.oxo.oxo.oxo.o.
+OHH   ................|..............x.
+SNARE ....x.......x...|....x.......x...
+KICK  x.....x.x.......|x.....x.x...o...
+TOMLO ................|...........o....
+
+pattern HIPHOP1 4 16
+CHH   o.o.o.o.o.o.o.o.
+SNARE ....x.......x...
+KICK  x......x..x.....
+
+pattern HIPHOP2 4 16
+CHH   x.o.x.oox.o.x.oo|x.o.x.oox.o.x.o.
+OHH   ................|..............o.
+SNARE ....x.......x..g|....x...g...x...
+KICK  x..o......x.....|x..o..o...x.....
+
+pattern REGGAE 4 16
+CHH   ..o...o...o...o.
+RIM   ........x.......
+SNARE ........x.......
+KICK  ........x.......
+
+pattern SALSA 4 16
+RIM   x..x..x...x.x...|..x.x...x..x..x.
+CHH   x.o.x.o.x.o.x.o.|x.o.x.o.x.o.x.o.
+TOMHI ......o.......o.|......o.......o.
+TOMLO .......x.......x|.......x.......x
+KICK  ...o.......o....|...o.......o....
+
+pattern BOSSA 4 16
+CHH   o.o.o.o.o.o.o.o.|o.o.o.o.o.o.o.o.
+RIM   x..x..x...x..x..|..x..x..x..x....
+KICK  x..ox..ox..ox..o|x..ox..ox..ox..o
+
+pattern SHUFFLE 4 12
+CHH   x.ox.ox.ox.o
+SNARE ...x.....x..
+KICK  x.....x.....
+
+pattern BLUES 4 12
+CHH   x.ox.ox.ox.o|x.ox.ox.ox.o
+SNARE ...x.....x..|...x.....x.o
+KICK  x.....x.....|x.....x.o...
+
+pattern WALTZ 3 12
+CHH   ....o...o...
+SNARE ....o...o...
+KICK  x...........
+
+pattern BALLAD 4 16
+CHH   o.o.o.o.o.o.o.o.|o.o.o.o.o.o.o.o.
+RIM   ....x.......x...|....x...........
+SNARE ................|............x.g.
+KICK  x.......o.o.....|x.......o.....o.
+
+pattern 6/8 2 12
+CHH   x.o.o.x.o.o.
+SNARE ......x.....
+KICK  x...........
+
+pattern TRAIN 4 16
+SNARE gogxgogxgogxgogx
+CHH   ..o...o...o...o.
+KICK  x.......x.......
+
+pattern MARCH 4 16
+SNARE x...x...x.gox...|x...x...xgxgx.x.
+KICK  x.......x.......|x.......x.......
+OHH   ................|x...............

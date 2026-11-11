@@ -113,7 +113,102 @@ def test_m7p1(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m7p1": test_m7p1}
+# --------------------------------------------------------------------------------------------- part 2
+SY_MENU, SY_HELP, SY_SET = 0xF2, 0xF3, 0xF4        # player_stats.synth_page for the screens that are not pages
+
+
+def syrun(name, ms, sc, flash="songs"):
+    return m5.run(name, ms, SYNTH + sc, mode=None, flash=flash)
+
+
+def presses(t, names, gap=200):
+    return [x for k, n in enumerate(names) for x in m5.press_raw(t + gap * k, n)]
+
+
+def test_m7p2(all_songs, rep):
+    lines, st, check = m5.checker("M7 part 2: the SYNTH UI on the parameter table")
+    m = syrun("m7p2-main", 5200, [])
+    s = m["stats"]
+    check(s["mode"] == 2 and s["ui_view"] == V_SYNTH and s["synth_page"] == 0 and s["synth_bpm"] == 120 and
+          s["drum_pattern"] == 0 and s["drum_on"] == 0,
+          "SYNTH: the main screen (the preset big, the drum pattern ROCK1, 120 BPM, the instruction row; m7p2-main.png)")
+    a = syrun("m7p2-preset", 5600, ["4600:e6:3"])
+    b = syrun("m7p2-preset-back", 5600, ["4600:e6:-1"])
+    check(a["stats"]["synth_preset"] == 3 and b["stats"]["synth_preset"] > 3,
+          f"PRESET: the preset (+3: {a['stats']['synth_preset'] + 1}; -1 from the first: the last, "
+          f"{b['stats']['synth_preset'] + 1})")
+    t = syrun("m7p2-tempo", 6200, [f"{4600 + 120 * k}:e0:1" for k in range(10)])
+    tf = syrun("m7p2-tempo-fast", 5600, ["4600:e0:4"])
+    check(t["stats"]["synth_bpm"] == 130 and tf["stats"]["synth_bpm"] > 124,
+          f"SELECT: the tempo (10 slow clicks: {t['stats']['synth_bpm']} BPM; turned quickly, 5 a click: "
+          f"{tf['stats']['synth_bpm']})")
+    q = syrun("m7p2-quick", 5000, ["4600:e4:5"])
+    check(q["stats"]["fx_reverb"] == m["stats"]["fx_reverb"] + 10 and q["stats"]["synth_page"] == 0,
+          f"K3 on the main screen: the reverb mix ({m['stats']['fx_reverb']} -> {q['stats']['fx_reverb']}), the bottom "
+          f"row shows it (m7p2-quick.png)")
+    pages = []
+    for k in range(10):
+        r = syrun(f"m7p2-edit-{k}", 4700 + 220 * k + 300, presses(4600, ["EDIT"] * k, 220))
+        pages.append(r["stats"]["synth_page"])
+    check(pages == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9][:1] + [1, 2, 3, 4, 5, 6, 7, 8, 9], f"EDIT: the pages in turn, "
+          f"after the ninth the main screen again ({pages})")
+    for k in (1, 2, 5, 9):               # (each page's screen, for docs/controls.md)
+        syrun(f"m7p2-page-{k}", 4700 + 220 * k + 300, presses(4600, ["EDIT"] * k, 220))
+    ab = syrun("m7p2-algo-back", 5000, ["4600:e1:-1"])
+    af = syrun("m7p2-algo-fwd", 5000, ["4600:e1:2"])
+    check(ab["stats"]["synth_page"] == 9 and af["stats"]["synth_page"] == 2,
+          f"ALGO from the main screen: back to the last page ({ab['stats']['synth_page']}), forward 2: page "
+          f"{af['stats']['synth_page']}")
+    ev = syrun("m7p2-env", 5000, m5.press_raw(4600, "ENV"))
+    fx = syrun("m7p2-fx", 5000, m5.press_raw(4600, "FX"))
+    check(ev["stats"]["synth_page"] == 1 and fx["stats"]["synth_page"] == 6,
+          "ENV: the ENVELOPE page; FX: FX 1 (m7p2-fx.png)")
+    rv = syrun("m7p2-page-k3", 5200, ["4600:e1:-1", "4800:e4:5"])
+    check(rv["stats"]["fx_reverb"] == m["stats"]["fx_reverb"] + 10, "on FX 4, K3: the reverb mix (the page's third)")
+    hm = syrun("m7p2-home", 5400, m5.press_raw(4600, "FX") + m5.press_raw(4900, "HOME"))
+    check(hm["stats"]["synth_page"] == 0 and hm["stats"]["ui_view"] == V_SYNTH, "HOME (a tap) on a page: the main "
+          "screen")
+    mn = syrun("m7p2-menu", 5200, m5.press_raw(4600, "SEQ") + ["4800:e0:3"])
+    ch = syrun("m7p2-menu-choose", 5600, m5.press_raw(4600, "SEQ") + ["4800:e0:3"] + m5.press_raw(5000, "SEQ"))
+    check(mn["stats"]["synth_page"] == SY_MENU and ch["stats"]["synth_page"] == 0 and ch["stats"]["drum_pattern"] == 3
+          and ch["stats"]["drum_on"] == 0, "SEQ: the drum pattern menu (m7p2-menu.png); SELECT, SEQ: chosen "
+          "(the 4th), back to the main screen, the drums still off")
+    pl = syrun("m7p2-menu-play", 5600, m5.press_raw(4600, "SEQ") + ["4800:e0:1"] + m5.press_raw(5000, "PLAY"))
+    hb = syrun("m7p2-menu-home", 5600, m5.press_raw(4600, "SEQ") + ["4800:e0:1"] + m5.press_raw(5000, "HOME"))
+    check(pl["stats"]["drum_pattern"] == 1 and pl["stats"]["drum_on"] == 1 and hb["stats"]["drum_pattern"] == 0 and
+          hb["stats"]["synth_page"] == 0, "in the menu PLAY chooses and plays; HOME goes back unchanged")
+    dr = syrun("m7p2-play", 5600, m5.press_raw(4600, "PLAY"))
+    d2 = syrun("m7p2-play-off", 5600, presses(4600, ["PLAY", "PLAY"], 300))
+    check(dr["stats"]["drum_on"] == 1 and d2["stats"]["drum_on"] == 0, "PLAY: the drums on, PLAY again: off")
+    hp = syrun("m7p2-help", 5200, m5.press_raw(4600, "GLO"))
+    se = syrun("m7p2-settings", 5400, presses(4600, ["GLO", "GLO"]))
+    check(hp["stats"]["synth_page"] == SY_HELP and se["stats"]["synth_page"] == SY_SET,
+          "GLO: SYNTH's controls (m7p2-help.png); GLO again: SYNTH's settings (m7p2-settings.png)")
+    kit = syrun("m7p2-kit", 6400, presses(4600, ["GLO", "GLO"]) + ["5100:e0:1", "5300:e1:1"]
+                + m5.press_raw(5600, "GLO"))
+    check(kit["stats"]["drum_kit"] == 1 and kit["stats"]["synth_page"] == 0 and kit["stats"]["settings_saves"] >= 1,
+          "settings: Drum kit 808 (ALGO), GLO: saved, the main screen")
+    m5.FLASH["kit808"] = kit["flash"]
+    kp = syrun("m7p2-kit-power", 5200, [], flash="kit808")
+    check(kp["stats"]["drum_kit"] == 1, "the kit kept over a power-off (OBJ_SETTINGS)")
+    ar = syrun("m7p2-arp", 7000, m5.press_raw(4600, "ARP") + ["5000:C4", "5000:G4", "6800:C4^", "6800:G4^"])
+    check(ar["stats"]["arp_pattern"] == 1 and ar["stats"]["arp_steps"] >= 6, f"ARP: the arpeggiator on (UP 1/8: "
+          f"{ar['stats']['arp_steps']} steps in 1.8 s at 120 BPM)")
+    bad = []
+    for n in ("LFO", "SCL", "SAVE", "REC"):
+        r = syrun(f"m7p2-free-{n}", 5000, m5.press_raw(4600, n))
+        if not (r["stats"]["popup_open"] == 1 and r["stats"]["popup_btn"] == B[n]):
+            bad.append(n)
+    check(not bad, f"LFO, SCL, SAVE, REC: the NOT IMPLEMENTED pop-up (m7p2-free-SAVE.png) {bad or ''}")
+    k = syrun("m7p2-keys", 6400, ["5000:C4", "5000:E4", "5000:G4", "6200:C4^", "6200:E4^", "6200:G4^"])
+    snd = m5.rms(k["left"][int(5.2 * m5.RATE):int(6.1 * m5.RATE)])
+    check(k["stats"]["synth_notes"] == 3 and snd > 300 and k["stats"]["synth_peak"] < 8388607,
+          f"the keys play the preset (3 voices, rms {snd:.0f}, no clipping)")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m7p1": test_m7p1, "m7p2": test_m7p2}
 
 
 def main():

@@ -364,3 +364,35 @@ Questions for the planning chat:
 - Zombie's lead measured at the public median before any change; I lowered it to the lower quartile (volume 88) on
   the user's ear. Please ask the user after the install whether it is right now.
 Next: Part 2 (the SYNTH UI on the parameter table).
+
+2026-11-10 — Step M7 Part 2 (the SYNTH UI on the parameter table) —
+Status: done (emulator); committed
+Did:
+- vsynth.h/.c: one parameter table (VS_PARAMS: name, page, range, display) for 36 settings on 9 pages + ARP on; the
+  preset record (u8 version, u8 engine, name[12], 37 values, padded to 64 B; vsynth_record reads one back, an older
+  version's new values from the defaults, out-of-range values to the default); stock presets are const records, the
+  sound plays from a RAM copy (vsynth_load / vsynth_set). M6's 21 presets converted value for value (chorus depth 64,
+  delay 1/8D feedback 64, reverb size / damping 64 = M6's fixed values). Arp: OCTAVES 1-3 and GATE (new).
+- synthui.c rewritten, table-driven: main screen (preset big, tempo, drum pattern, instruction row; the quick knob's
+  value in the bottom row 1.2 s), 9 edit pages (2 x 2 cells: name, value, bar), drum pattern menu, SYNTH help, SYNTH
+  settings (drum volume 0..10, drum kit; in OBJ_SETTINGS: the record grows 36 -> 40 B, an M5/M6 record reads the
+  defaults). The control map as approved; the SHIFT layer gone.
+- M6's drum jam removed already here (library.c lib_jam*, jam_songs.h, tools/jam_songs.py): the new UI drives synth.c's
+  drum API (stubs in this commit; the sequencer is Part 4). docs/drum-patterns.txt + tools/jam_patterns.py ->
+  jam_patterns.h (25 patterns) added now (the menu lists them).
+Decisions (the user away):
+- ANALOG's own CUT and RES are the FILTER page's; its SOUND B shows our LFO's rate and PWM depth in their place (the
+  same knob in two places would confuse). PHASE (Part 5) gets all eight of its own.
+- K1..K4 cells as 2 x 2 (K1 K2 / K3 K4). Values 0..127 move 2 a click; short lists (<= 16 values) one per 2 clicks.
+- HOME (a tap) on the main screen is its job (stay on it), so no pop-up there. The pattern menu: PLAY chooses and
+  starts the drums, SEQ only chooses. SELECT is the tempo on the pages too; PRESET changes the preset everywhere.
+- Renamed to fit 12 characters: MIDNIGHT STRINGS -> DUSK STRINGS, OCTAVE BOUNCE -> OCT BOUNCE, SOFT SAW STRINGS ->
+  SAW STRINGS, NIGHT DRIVE SUB -> NIGHT DRIVE.
+Learned / measured:
+- The synth UI measured as in Part 0 (synth_input, draw_synth, synth_hash stubbed): 8,320 B (M6: 6,464 B). The aim
+  "not bigger" is missed by 1,856 B: it now has five screens (main, pages, pattern menu, help, settings) instead of one.
+- Image 465,952 B. m7p2 19 PASS (main, preset, tempo, quick knob, EDIT through the 9 pages, ALGO, ENV, FX, HOME, menu,
+  PLAY, help, settings saved over a power-off, ARP, the 4 pop-up buttons, keys).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 3 (effects).
