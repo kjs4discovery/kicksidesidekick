@@ -151,6 +151,7 @@ static struct {
     uint32_t seen_up;                    /* M7: the buttons seen up since power-on (a held one never raises the pop-up) */
     uint32_t popup, popup_until;         /* M7 (D044): the NOT IMPLEMENTED pop-up open (1: to draw, 2: drawn) */
     uint32_t closed;                     /* M7: the buttons that closed it, still held (their release does nothing) */
+    uint32_t home_free;                  /* M7: HOME went down where it has no job (its release: the pop-up) */
     struct settings set;
     uint32_t set_row, set_dirty;
     uint32_t sel, top;                   /* the list's cursor and first row */
@@ -1261,9 +1262,16 @@ static int popup_input(uint32_t down, uint32_t free, uint32_t now)
     ui.released &= ~ui.closed;
     ui.closed &= ui.buttons;
     free &= ui.seen_up;
-    if (free & 1u << B_HOME & ui.released) {   /* (HOME free: on release, a short press; a hold is the mode screen's) */
-        popup_open(B_HOME);
-        return 1;
+    if (down & free & 1u << B_HOME)      /* (HOME free: on release, a short press that began on this screen; a hold is
+                                          * the mode screen's) */
+        ui.home_free = 1;
+    if (ui.released & 1u << B_HOME) {
+        int f = ui.home_free && (free & 1u << B_HOME);
+        ui.home_free = 0;
+        if (f) {
+            popup_open(B_HOME);
+            return 1;
+        }
     }
     free &= ~(1u << B_HOME);
     for (b = 0; b < NB; b++)

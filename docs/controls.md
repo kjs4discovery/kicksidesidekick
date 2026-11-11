@@ -540,3 +540,309 @@ Built: ![harmony notation L1](step-M4/m4p3-harm-notation1.png) ![L2](step-M4/m4p
   reverb is ours (about 1.5 s); each preset brings its own reverb and crush amounts (CHIP BLIP crushed).
 
 ![SHIFT held](step-M6/m6p3-shift.png) ![the drum jam](step-M6/m6p3-jam.png) ![another style](step-M6/m6p3-jam-style.png)
+
+## M7 (docs/plan-M7.md), part by part
+
+### Part 1: learning mode
+
+- **NOT IMPLEMENTED** (D044): a button with no job on the screen shown opens a small pop-up; **any button closes it**
+  (that press does nothing else, nor its release); it also closes itself after 2.5 s. Never for a button held since
+  power-on; never on the splash, the mode screen, the hint or the WIPE question. HOME held 2 s works with it open;
+  the keys keep playing; the encoders never open it (their turns are dropped while it is open).
+- **A song's start level** (format 2.1): a song can open with a layer on another level than 1 (Zombie: bass L2).
+- Rockin' in the Free World removed; Zombie's lead a little quieter.
+
+The census (tools/m7_test.py m7p6 checks every screen x every button: its job, or the pop-up, never nothing):
+
+| Screen | Free buttons (the pop-up) | Every other button's job |
+|---|---|---|
+| Song list | FX SCL ENV LFO SAVE ARP SEQ REC | PLAY / EDIT open, HOME the folders, GLO help, OCT- / OCT+ octave |
+| Folder list | FX SCL ENV LFO SAVE ARP SEQ REC, **HOME** (a short press) | PLAY / EDIT open, GLO help, OCT +- |
+| Play screen | the layer buttons of layers the song does not have (none for ours) | as M6 |
+| Help | none (any button: back; GLO: settings) | |
+| Settings, Views | FX SCL ENV LFO SAVE ARP SEQ REC | PLAY / EDIT change, GLO / HOME back, OCT +- |
+| Mode screen (no pop-up, D044) | the others do nothing | PLAY / EDIT choose |
+| SYNTH main, edit pages | LFO SCL SAVE REC (SAVE: M7.1) | see Part 2 |
+| SYNTH pattern menu | FX SCL ENV LFO EDIT GLO SAVE REC | SEQ / PLAY choose, HOME back, ARP, OCT +- |
+| SYNTH help | none (any button: back; GLO: settings) | |
+| SYNTH settings | FX SCL ENV LFO SAVE ARP SEQ REC | PLAY / EDIT change, GLO / HOME back, OCT +- |
+
+![the pop-up](step-M7/m7p1-popup-list.png) ![on the settings](step-M7/m7p1-free-settings-SEQ.png)
+
+### Part 2: SYNTH, rebuilt on one parameter table (D039)
+
+| Control | Does |
+|---|---|
+| **PRESET** | the preset, 1..30 |
+| **SELECT** | the tempo, 60..200 BPM (the arpeggio, the delay, the drums follow it); quickly: 5 a click |
+| **K1..K4** (main screen) | quick: cutoff, resonance, reverb mix, delay mix (the bottom row shows the value while turned) |
+| **EDIT** | the next edit page; after the last, the main screen |
+| **ALGO** | the pages forward / back (from the main screen: the first / the last) |
+| **K1..K4** (an edit page) | that page's four settings (0..127 ones 2 a click; short lists one a 2 clicks) |
+| **ENV** / **FX** | the ENVELOPE page / the first FX page (again: the main screen / the next FX page) |
+| **HOME** (a tap) | the main screen (on it: a hint "hold 2 s") |
+| HOME held 2 s | the mode screen (as M6) |
+| **SEQ** | the drum pattern menu: SELECT scrolls, SEQ chooses, PLAY chooses and plays, HOME back |
+| **PLAY** | the drums on / off |
+| **GLO** | SYNTH's controls; GLO again: SYNTH's settings (drum volume 0..10, drum kit), saved |
+| **ARP** | the arpeggiator on / off (pattern, rate, octaves, gate: the ARP page) |
+| LFO, SCL, SAVE, REC | NOT IMPLEMENTED (SAVE: user presets, M7.1) |
+| OCT- / OCT+ | the keys' octave |
+
+The pages, in order: ENVELOPE (attack, decay, sustain, release) - FILTER (cutoff, resonance, env amount, type
+LP / BP / HP) - SOUND A, SOUND B (the engine's own: ANALOG WAVE DTN MIX NOIS | DRV KTR LFO RATE PWM DEPTH; PHASE
+WAVE WAVE2 DCW ENV | DTN LINE SUB FOLD) - ARP (pattern UP / DOWN / UP-DOWN / RANDOM, rate 1/4 1/8 1/8T 1/16, octaves
+1-3, gate) - FX 1 (chorus depth, chorus mix, tremolo rate, tremolo depth) - FX 2 (phaser rate, depth, mix, crush) -
+FX 3 (delay time 1/16 .. 1/2, feedback, delay mix, fuzz) - FX 4 (reverb size, damping, reverb mix, LEVEL). Each page:
+its title, its number ("3/9"), four values in the K1..K4 places (2 x 2), the drum line, the instruction row. The
+EDIT-held SHIFT layer of M6 is gone. A preset is a 64-byte record (vsynth.h); the sound plays from a RAM copy, so
+turning a knob changes the sound, not the stock preset (M7.1 will save it).
+
+![main](step-M7/m7p2-main.png) ![a quick knob](step-M7/m7p2-quick.png) ![ENVELOPE](step-M7/m7p2-edit-1.png)
+![FILTER](step-M7/m7p2-edit-2.png) ![SOUND A, ANALOG](step-M7/m7p2-edit-3.png)
+![SOUND A, PHASE](step-M7/m7p5-epiano-sound.png) ![SOUND B](step-M7/m7p2-edit-4.png) ![ARP](step-M7/m7p2-edit-5.png)
+![FX 1](step-M7/m7p2-edit-6.png) ![FX 2](step-M7/m7p2-edit-7.png) ![FX 3](step-M7/m7p2-edit-8.png)
+![FX 4](step-M7/m7p2-edit-9.png) ![pattern menu](step-M7/m7p2-menu.png) ![help](step-M7/m7p2-help.png)
+![settings](step-M7/m7p2-settings.png) ![the pop-up in SYNTH](step-M7/m7p2-free-SAVE.png)
+
+### Part 3: effects
+
+Fixed chain: voices -> fuzz -> bit-crush -> tremolo -> phaser -> chorus -> delay -> reverb -> LEVEL. New: **tremolo**
+(0.1..12 Hz), **phaser** (6 all-passes), **fuzz** (drive into a soft curve, a tone filter; its loudness follows the dry
+sound, so FUZZ changes the colour, not the volume). All ours. An effect at 0 costs nothing (skipped).
+
+### Part 4: drums (D041)
+
+PLAY starts the pattern from its bar's start; a pattern chosen while it plays starts on the next bar. Three kits
+(SYNTH settings): **ACOUSTIC** (the GM drum kit), **808** (our sine kick and toms, noise snare / hats / clap),
+**CHIP** (the LOFI chip voice). The drums have their own 6 voices (never the synth's 8) and their own volume (SYNTH
+settings), not the preset's effects. ROCK1 at every SYNTH start. The patterns (docs/drum-patterns.txt, x accent,
+o normal, g ghost; the user listens and prunes):
+
+**ROCK1** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x.......x.o.....
+SNARE ....x.......x...
+CHH   x.o.x.o.x.o.x.o.
+```
+
+**ROCK2** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x......ox.x.....|x......ox.x...o.
+SNARE ....x.......x...|....x.......x..g
+CHH   x.o.x.o.x.o.x.o.|x.o.x.o.x.o.x.o.
+```
+
+**ROCK3** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x.x.....x.x.....|x.x.....x.x.....
+SNARE ....x.......x...|....x.......x.xx
+OHH   x.o.x.o.x.o.x.o.|x.o.x.o.x.o.....
+TOMLO ................|.............o..
+TOMHI ................|............o...
+```
+
+**POP1** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x.......x.......
+SNARE ....x.......x...
+CHH   o.o.o.o.o.o.o.o.
+```
+
+**POP2** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x.....o.x.......
+CHH   oooooooooooooooo
+CLAP  ....x.......x...
+```
+
+**POP3** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x.....o...o.....|x.....o...o..o..
+SNARE ....x.......x...|....x.......x...
+CHH   o.o.o.o.o.o.o.o.|o.o.o.o.o.o.o.o.
+OHH   ................|..............o.
+CLAP  ....o.......o...|....o.......o...
+```
+
+**FUNK1** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x.x.......x..o..
+SNARE ....x..g.g..x..g
+CHH   xoxoxoxoxoxoxoxo
+```
+
+**FUNK2** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x..x..x...x.....|x..x......xx....
+SNARE ....x..g.g.gx...|.g..x..g.g..x.g.
+CHH   x.ox.ox.x.ox.ox.|x.ox.ox.x.ox.o..
+OHH   ................|..............o.
+```
+
+**DISCO** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x...x...x...x...
+SNARE ....x.......x...
+CHH   x...x...x...x...
+OHH   ..o...o...o...o.
+```
+
+**HOUSE** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x...x...x...x...
+CHH   ..o...o...o...o.
+OHH   ..x...x...x...x.
+CLAP  ....x.......x...
+```
+
+**TECHNO** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x...x...x...x...
+CHH   ooxoooxoooxoooxo
+OHH   ..o...o...o...o.
+RIM   ..........o.....
+```
+
+**SYNTHWAVE1** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x...x...x...x...
+SNARE ....x.......x...
+CHH   o.o.o.o.o.o.o.o.
+CLAP  ....o.......o...
+```
+
+**SYNTHWAVE2** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x.....x.x.......|x.....x.x...o...
+SNARE ....x.......x...|....x.......x...
+CHH   o.oxo.oxo.oxo.ox|o.oxo.oxo.oxo.o.
+OHH   ................|..............x.
+TOMLO ................|...........o....
+```
+
+**HIPHOP1** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x......x..x.....
+SNARE ....x.......x...
+CHH   o.o.o.o.o.o.o.o.
+```
+
+**HIPHOP2** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x..o......x.....|x..o..o...x.....
+SNARE ....x.......x..g|....x...g...x...
+CHH   x.o.x.oox.o.x.oo|x.o.x.oox.o.x.o.
+OHH   ................|..............o.
+```
+
+**REGGAE** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  ........x.......
+SNARE ........x.......
+CHH   ..o...o...o...o.
+RIM   ........x.......
+```
+
+**SALSA** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  ...o.......o....|...o.......o....
+CHH   x.o.x.o.x.o.x.o.|x.o.x.o.x.o.x.o.
+TOMLO .......x.......x|.......x.......x
+TOMHI ......o.......o.|......o.......o.
+RIM   x..x..x...x.x...|..x.x...x..x..x.
+```
+
+**BOSSA** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x..ox..ox..ox..o|x..ox..ox..ox..o
+CHH   o.o.o.o.o.o.o.o.|o.o.o.o.o.o.o.o.
+RIM   x..x..x...x..x..|..x..x..x..x....
+```
+
+**SHUFFLE** (4 beats, 12 steps a bar, 1 bar)
+
+```text
+KICK  x.....x.....
+SNARE ...x.....x..
+CHH   x.ox.ox.ox.o
+```
+
+**BLUES** (4 beats, 12 steps a bar, 2 bars)
+
+```text
+KICK  x.....x.....|x.....x.o...
+SNARE ...x.....x..|...x.....x.o
+CHH   x.ox.ox.ox.o|x.ox.ox.ox.o
+```
+
+**WALTZ** (3 beats, 12 steps a bar, 1 bar)
+
+```text
+KICK  x...........
+SNARE ....o...o...
+CHH   ....o...o...
+```
+
+**BALLAD** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x.......o.o.....|x.......o.....o.
+SNARE ................|............x.g.
+CHH   o.o.o.o.o.o.o.o.|o.o.o.o.o.o.o.o.
+RIM   ....x.......x...|....x...........
+```
+
+**6/8** (2 beats, 12 steps a bar, 1 bar)
+
+```text
+KICK  x...........
+SNARE ......x.....
+CHH   x.o.o.x.o.o.
+```
+
+**TRAIN** (4 beats, 16 steps a bar, 1 bar)
+
+```text
+KICK  x.......x.......
+SNARE gogxgogxgogxgogx
+CHH   ..o...o...o...o.
+```
+
+**MARCH** (4 beats, 16 steps a bar, 2 bars)
+
+```text
+KICK  x.......x.......|x.......x.......
+SNARE x...x...x.gox...|x...x...xgxgx.x.
+OHH   ................|x...............
+```
+
+
+![drums playing (808)](step-M7/m7p4-808.png)
+
+### Part 5: the 30 presets (D042)
+
+1 NEON PAD, 2 DUSK STRINGS, 3 OCT BOUNCE (arp), 4 SUNSET LEAD, 5 SYNC SCREAM, 6 CHROME BRASS, 7 GLASS PLUCK,
+8 VAPOR KEYS, 9 RISER, 10 CHIP BLIP (arp), 11 DRIVE BASS, 12 HAZE PAD, 13 LASER ARP (arp), 14 NIGHT DRIVE,
+15 SAW STRINGS, 16 HORIZON PWM, 17 TAPE CHOIR, 18 STAB 84, 19 GRID PULSE (arp), 20 E-PIANO (PHASE), 21 E-GUITAR,
+22 E-SITAR (PHASE), 23 POTATO, 24 PARKER, 25 EDS (arp), 26 OUTRUN BASS, 27 MIAMI PAD (PHASE), 28 CHROME ARP (PHASE,
+arp), 29 NEON BELLS (PHASE), 30 VHS STRINGS. All ANALOG unless marked. Level-matched by LEVEL (FX 4: 100 as made,
+half a dB a step).

@@ -10,7 +10,8 @@
  * pattern and the tempo. PRESET: the preset; SELECT: the tempo (60..200: the arp, the delay, the drums); K1..K4 on the
  * main screen: cutoff, resonance, reverb mix, delay mix (the bottom row shows the value while turned). EDIT: the next
  * edit page (after the last: the main screen); ALGO: the pages forward / back (from the main screen: the first / last);
- * K1..K4 on a page: its four settings; ENV / FX: the ENVELOPE / the first FX page; HOME (a tap): the main screen.
+ * K1..K4 on a page: its four settings; ENV / FX: the ENVELOPE / the first FX page (again: the main screen / the next
+ * FX page); HOME (a tap): the main screen (on it: a hint).
  * SEQ: the drum pattern menu (SELECT, SEQ chooses, PLAY chooses and plays, HOME back); PLAY: the drums on / off;
  * ARP: the arpeggiator on / off; GLO: the controls, GLO again: SYNTH's settings (drum volume, drum kit); OCT- / OCT+:
  * the keys' octave. LFO, SCL, SAVE, REC: the NOT IMPLEMENTED pop-up (SAVE: M7.1).
@@ -281,12 +282,18 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
     if (down & 1u << B_EDIT)             /* the next page; after the last: the main screen */
         synth_page(sy.scr == SY_MAIN ? SY_PAGE : sy.page + 1u < VS_PAGES ? SY_PAGE : SY_MAIN,
                    sy.scr == SY_MAIN ? 0 : sy.page + 1u < VS_PAGES ? sy.page + 1u : 0);
-    if (down & 1u << B_ENV)
-        synth_page(SY_PAGE, PG_ENV);
-    if (down & 1u << B_FX)
-        synth_page(SY_PAGE, PG_FX1);
-    if (down & 1u << B_HOME)             /* a tap: the main screen (held 2 s: the mode screen, ui.c) */
-        synth_page(SY_MAIN, 0), sy.say_until = 0;
+    if (down & 1u << B_ENV)              /* the ENVELOPE page; on it: the main screen */
+        sy.scr == SY_PAGE && sy.page == PG_ENV ? synth_page(SY_MAIN, 0) : synth_page(SY_PAGE, PG_ENV);
+    if (down & 1u << B_FX)               /* the first FX page; on an FX page: the next, after FX 4 the main screen */
+        sy.scr == SY_PAGE && sy.page >= PG_FX1 ? (sy.page < PG_FX4 ? synth_page(SY_PAGE, sy.page + 1u)
+                                                                    : synth_page(SY_MAIN, 0))
+                                               : synth_page(SY_PAGE, PG_FX1);
+    if (down & 1u << B_HOME) {           /* a tap: the main screen (held 2 s: the mode screen, ui.c); on it, a hint */
+        if (sy.scr == SY_MAIN)
+            synth_say("HOME", "hold 2 s: LEARN / SYNTH");
+        else
+            synth_page(SY_MAIN, 0), sy.say_until = 0;
+    }
     for (k = 0; k < 4u; k++) {           /* K1..K4: the main screen's quick four, or the page's */
         d = plat_enc(KENC[k]);
         if (!d)
@@ -502,7 +509,7 @@ static void draw_synth_help(void)
     static const char *const L[7][2] = {{"PRESETS", "the sound"}, {"SELECT", "tempo"}, {"ALGO", "pages"},
                                         {"K1-K4", "quick / page"}, {"OCT- OCT+", "keys' octave"}, {"MASTER", "volume"},
                                         {"keys", "play"}};
-    static const char *const R[10][2] = {{"EDIT", "next page"}, {"ENV", "envelope"}, {"FX", "effects"},
+    static const char *const R[10][2] = {{"EDIT", "next page"}, {"ENV", "envelope"}, {"FX", "effect pages"},
                                          {"ARP", "arp on/off"}, {"PLAY", "drums"}, {"SEQ", "pattern"},
                                          {"HOME", "main / mode"}, {"GLO", "again: settings"},
                                          {"LFO SCL", "not yet"}, {"SAVE REC", "not yet"}};
