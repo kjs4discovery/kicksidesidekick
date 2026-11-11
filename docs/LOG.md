@@ -301,3 +301,12 @@ Questions for the planning chat:
 - Loudness of generated L1 for sustaining/sparse cases (rockin harmony/drums): fix in gen.c's level matching (M7?), or accept?
 - Please review docs/step-M6-install.md.
 Next: the user runs docs/step-M6-install.md steps 1–6; Claude Code runs only --info / fm1song list and records.
+
+2026-11-10 — Step M6 install (the user's report) —
+Status: done
+Did: the user installed 0.6.0-m6 (FM-1_46000600) and ran docs/step-M6-install.md steps 1-6, all fine, including the
+optional step 5 (the 5 private songs resent with the 4-bar loudness matching). device.md "Currently installed" updated.
+Learned / measured: the user's report only; Claude Code ran no device command this session.
+Hardware touched: WRITE by the user (install, private song resends), per the checklist.
+Questions for the planning chat: none
+Next: M7 Parts 0-6 (docs/plan-M7.md).

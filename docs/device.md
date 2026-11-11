@@ -4,14 +4,15 @@ All of these must be filled in before any write to the unit is even proposed
 (see CLAUDE.md, hardware safety rules). Note for each value how and when it was
 measured.
 
-## Currently installed (updated 2026-11-09 23:35)
+## Currently installed (updated 2026-11-10)
 
-**Milestone M5.1, FM-1_46000504** (fm1-accompaniment v0.5.4-m5p4, release build, commit 902eaa7, package
-`build/step-M5.1/fm1acc-0.5.4-m5p4.fwsc`, sha256 `197b84a5…0a187d`), installed by the user per
-docs/step-M5.1-install.md step 1 (reported 2026-11-09). Steps 1-5 run by the user: all 14 songs sent (9 of ours +
-5 private, format 2.0) and working (the user's report; no outputs recorded by Claude Code). Fallback: M4
-`build/step-M4/final/fm1acc-0.5.0-m4.fwsc` (sha256 `c811e0f7…195b`); not 0.5.3-m5p3 (has the send bug). Back to
-stock any time: `fm1_install.py backups/stock-firmware/FM-1_015.fwsc`. History of writes: docs/LOG.md and
+**Milestone M6, FM-1_46000600** (fm1-accompaniment v0.6.0-m6, release build, commit 920fa67, package
+`build/step-M6/fm1acc-0.6.0-m6.fwsc`, sha256 `8944fb02…88abec`), installed by the user per
+docs/step-M6-install.md step 1 (reported 2026-11-10). Steps 1-6 run by the user, all fine, including the optional
+step 5 (the 5 private songs resent with the 4-bar loudness matching); 14 songs, format 2.0 (the user's report; no
+outputs recorded by Claude Code). Fallback: M5.1 `build/step-M5.1/fm1acc-0.5.4-m5p4.fwsc` (sha256 `197b84a5…0a187d`;
+has the WIPE-question timer bug), behind it M4 `build/step-M4/final/fm1acc-0.5.0-m4.fwsc` (sha256 `c811e0f7…195b`).
+Back to stock any time: `fm1_install.py backups/stock-firmware/FM-1_015.fwsc`. History of writes: docs/LOG.md and
 docs/archive/.
 
 ## Stock firmware version
