@@ -10,7 +10,6 @@
 
 int synth_init(void);                     /* at boot, before audio runs: 0 = ready */
 int synth_ready(void);
-void synth_mix_eas(int on);               /* M6: SYNTH mode: EAS under the synth (M7: the ACOUSTIC drum kit) */
 /* M7 (D041): SYNTH mode's drums: a step sequencer (jam_patterns.h) at the synth's tempo, its hits to a kit (vsynth.h
  * KIT_*): ACOUSTIC = EAS's GM kit on channel 10, 808 / CHIP = vsynth's own drum voices. Main loop */
 void synth_drums(int on);                 /* on: from the bar's start; off: the hits stop */
@@ -25,6 +24,7 @@ void synth_drum_kit(uint32_t kit);
 void synth_drum_volume(uint32_t v);       /* 0..127 */
 void synth_drum_tempo(uint32_t bpm);
 uint32_t synth_drum_beat(void);           /* the beat playing in its bar (0..), 0xFF: off */
+uint32_t synth_drum_hits(void);           /* hits played since start-up, every kit */
 void synth_midi(uint8_t status, uint8_t d1, uint8_t d2);   /* main loop: queue a channel message */
 void synth_send_now(uint8_t status, uint8_t d1, uint8_t d2);   /* audio interrupt only: to EAS, now */
 void synth_panic(void);                   /* any context: all notes off, now */

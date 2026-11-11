@@ -23,6 +23,8 @@ typedef struct track {
 static track_t trk[NPART];
 #include "dsp.c"
 #include "eng_analog.c"
+#include "eng_noise.c"                   /* M7 (D041): the 808 kit's snare, hats, clap */
+#include "eng_lofi.c"                    /* M7: the CHIP kit */
 
 /* ------------------------------------------------------------------ the parameters --- */
 static const char *const N_FTYPE[] = {"LP", "BP", "HP"};
@@ -556,6 +558,7 @@ static void keys_in(void)
         nheld = 0;
         arp_note = -1;
         q_tail = q_head;
+        vsynth_drums_off();               /* (M7: the drum voices too) */
     }
     for (t = q_tail; t != q_head; t++) {
         uint32_t m = q[t % QLEN], note = m & 0xFFu;
@@ -668,16 +671,202 @@ static int32_t delay_len(void)
     return n;
 }
 
+/* --------------------------------------------------------- M7 (D041): the drum kits' voices --- */
+/* 808 and CHIP: up to VS_DRUM_VOICES voices of their own (never the synth's), each a sine part (our own: a pitch that
+ * falls from f0 to f1, then decays: the 808's kick and toms, the snare's body, the rim) and / or an engine part (NOISE
+ * for the 808's snare, hats and clap; LOFI for every CHIP sound), each with its own exponential decay. The clap
+ * restarts its noise twice, 12 ms apart. The closed hat chokes the open one. Not through the synth's effects; not
+ * at the preset's LEVEL: their own level (the drum volume setting, the hit's velocity). */
+enum { DE_NONE, DE_NOISE, DE_LOFI };
+struct dspec {
+    uint8_t eng;                          /* DE_* */
+    int8_t e[8];                          /* the engine's parameters (NOISE: MODE COLR FREQ RES TRK DENS DRFT CRSH;
+                                           * LOFI: CHIP WAVE DUTY CRSH SWP VIB ARP TONE) */
+    uint8_t note, ntau, nlev;             /* its note, decay (4 ms units), level */
+    uint16_t f0, f1;                      /* the sine part: from f0 to f1 Hz (0: none) */
+    uint8_t sweep, stau, slev;            /* its fall (2 ms units), decay (4 ms units), level */
+    uint8_t claps;
+};
+static const struct dspec KIT[2][DR_N] = {
+    {   /* 808 */
+        {DE_NONE, {0}, 0, 0, 0, 150, 48, 20, 45, 127, 0},                                   /* kick */
+        {DE_NOISE, {0, 20, 100, 30, 0, 0, 0, 0}, 60, 15, 110, 200, 175, 10, 10, 70, 0},     /* snare */
+        {DE_NOISE, {0, 0, 120, 90, 0, 0, 0, 0}, 60, 4, 90, 0, 0, 0, 0, 0, 0},              /* closed hat */
+        {DE_NOISE, {0, 0, 118, 90, 0, 0, 0, 0}, 60, 28, 80, 0, 0, 0, 0, 0, 0},             /* open hat */
+        {DE_NOISE, {0, 10, 95, 70, 0, 0, 0, 0}, 60, 12, 110, 0, 0, 0, 0, 0, 3},            /* clap */
+        {DE_NONE, {0}, 0, 0, 0, 140, 95, 30, 38, 110, 0},                                  /* tom low */
+        {DE_NONE, {0}, 0, 0, 0, 220, 150, 30, 32, 110, 0},                                 /* tom high */
+        {DE_NOISE, {0, 0, 110, 100, 0, 0, 0, 0}, 60, 2, 50, 1700, 1600, 2, 3, 80, 0},      /* rim */
+    },
+    {   /* CHIP */
+        {DE_LOFI, {2, 1, 0, 0, 127, 0, 0, 100}, 40, 30, 127, 0, 0, 0, 0, 0, 0},           /* kick: triangle, swept */
+        {DE_LOFI, {0, 3, 0, 0, 0, 0, 0, 110}, 72, 17, 100, 0, 0, 0, 0, 0, 0},             /* snare: noise */
+        {DE_LOFI, {0, 3, 0, 0, 0, 0, 0, 127}, 100, 5, 70, 0, 0, 0, 0, 0, 0},              /* closed hat */
+        {DE_LOFI, {0, 3, 0, 0, 0, 0, 0, 127}, 100, 25, 60, 0, 0, 0, 0, 0, 0},             /* open hat */
+        {DE_LOFI, {0, 3, 0, 0, 0, 0, 0, 100}, 84, 10, 90, 0, 0, 0, 0, 0, 3},              /* clap */
+        {DE_LOFI, {2, 1, 0, 0, 60, 0, 0, 100}, 45, 30, 110, 0, 0, 0, 0, 0, 0},            /* tom low */
+        {DE_LOFI, {2, 1, 0, 0, 60, 0, 0, 100}, 52, 25, 110, 0, 0, 0, 0, 0, 0},            /* tom high */
+        {DE_LOFI, {2, 0, 64, 0, 0, 0, 0, 127}, 84, 4, 70, 0, 0, 0, 0, 0, 0},              /* rim: pulse */
+    },
+};
+static track_t dtrk;                      /* the drum voices' engine parameters (set per voice before it runs) */
+static struct dvoice {
+    voice_t v;
+    const struct dspec *sp;
+    uint8_t on, inst, clap;
+    int32_t namp, namp0, ndec, samp, sdec;   /* Q15 amplitudes (namp0: the engine part's start) and their decay a
+                                              * control tick (Q15) */
+    uint32_t sph, sinc, sinc1, sfall;     /* the sine part's phase, increment, end increment, fall (Q15) */
+    uint32_t age, ticks;
+} dvx[VS_DRUM_VOICES];
+static struct dhit { uint8_t ctl, kit, inst, vel, vol; } dq[16];
+static uint32_t ndq, dage;
+
+static int32_t decay_of(uint32_t units4ms)   /* the per-control-tick factor (Q15) of a time constant */
+{
+    int32_t t = (int32_t)units4ms * 4 * 1378 / 1000;
+    return t < 1 ? 0 : 32768 - 32768 / (t + 1);
+}
+
+static void dspec_params(const struct dspec *sp)
+{
+    uint32_t k;
+    for (k = 0; k < 8u; k++)
+        dtrk.p[P_E0 + k] = sp->e[k];
+    dtrk.p[P_FTYPE] = 0;
+}
+
+void vsynth_drum(uint32_t ctl, uint32_t kit, uint32_t inst, uint32_t vel, uint32_t vol)
+{
+    if (ndq < sizeof dq / sizeof dq[0] && kit >= KIT_808 && kit < KITS && inst < DR_N && vel)
+        dq[ndq].ctl = (uint8_t)ctl, dq[ndq].kit = (uint8_t)kit, dq[ndq].inst = (uint8_t)inst,
+        dq[ndq].vel = (uint8_t)vel, dq[ndq].vol = (uint8_t)vol, ndq++;
+}
+
+void vsynth_drums_off(void)
+{
+    uint32_t i;
+    for (i = 0; i < VS_DRUM_VOICES; i++)
+        dvx[i].on = 0;
+}
+
+static void drum_start(const struct dhit *h)
+{
+    static const uint8_t VEL[4] = {0, 45, 90, 127};
+    const struct dspec *sp = &KIT[h->kit - KIT_808][h->inst];
+    uint32_t i, best = 0, oldest = 0;
+    int32_t a = VEL[h->vel & 3u] * h->vol;          /* 0..16129 */
+    struct dvoice *d;
+    if (h->inst == DR_CHH)                          /* the closed hat chokes the open one */
+        for (i = 0; i < VS_DRUM_VOICES; i++)
+            if (dvx[i].on && dvx[i].inst == DR_OHH)
+                dvx[i].on = 0;
+    for (i = 0; i < VS_DRUM_VOICES; i++) {
+        if (!dvx[i].on) {
+            best = i;
+            break;
+        }
+        if (dage - dvx[i].age > oldest)
+            oldest = dage - dvx[i].age, best = i;
+    }
+    d = &dvx[best];
+    for (i = 0; i < sizeof d->v; i++)
+        ((uint8_t *)&d->v)[i] = 0;
+    d->sp = sp;
+    d->inst = h->inst;
+    d->clap = sp->claps;
+    d->age = ++dage;
+    d->ticks = 0;
+    d->namp = d->namp0 = sp->eng ? sp->nlev * a / 63 : 0;   /* Q15 */
+    d->ndec = decay_of(sp->ntau);
+    d->samp = sp->f0 ? sp->slev * a / 63 : 0;
+    d->sdec = decay_of(sp->stau);
+    d->sph = 0;
+    d->sinc = sp->f0 * 97392u;                      /* 2^32 / 44100 a Hz */
+    d->sinc1 = sp->f1 * 97392u;
+    d->sfall = (uint32_t)decay_of(sp->sweep);
+    if (sp->eng) {
+        d->v.note = sp->note;
+        d->v.vel = 127;
+        d->v.gate = 0;
+        d->v.stage = 2;
+        d->v.active = 1;
+        d->v.env = 1 << 24;
+        d->v.age = d->age;
+        d->v.pitch16 = d->v.pitch_cur = (int32_t)sp->note * 16;
+        dspec_params(sp);
+        (sp->eng == DE_NOISE ? &ENG_NOISE : &ENG_LOFI)->note_on(&dtrk, &d->v);
+    }
+    d->on = 1;
+    st.drum_hits++;
+}
+
+/* one control tick of every drum voice into out[] (CTL samples, added) */
+static uint32_t drums_tick(int32_t *out)
+{
+    static int32_t eb[CTL];
+    uint32_t k, i, n = 0;
+    for (k = 0; k < VS_DRUM_VOICES; k++) {
+        struct dvoice *d = &dvx[k];
+        const struct dspec *sp = d->sp;
+        if (!d->on)
+            continue;
+        n++;
+        if (d->namp) {                              /* the engine part */
+            vmod_t m;
+            int32_t a0 = d->namp;
+            d->ticks++;
+            if (d->clap && d->ticks % 16u == 0) {   /* the clap: twice more, 12 ms apart */
+                d->clap--;
+                d->namp = d->namp0 * 4 / 5;
+            } else {
+                d->namp = d->namp * d->ndec / 32768;
+            }
+            m.inc = pitch_inc((uint32_t)clamp(d->v.pitch16, 0, 2047));
+            m.pitch16 = d->v.pitch16;
+            m.amp0 = a0 > 32767 ? 32767 : a0;
+            m.amp1 = d->namp > 32767 ? 32767 : d->namp;
+            m.cutoff = 0;
+            m.shape = 64 << 8;
+            m.envq15 = m.amp1;
+            m.fine = 0;
+            dspec_params(sp);
+            for (i = 0; i < CTL; i++)
+                eb[i] = 0;
+            (sp->eng == DE_NOISE ? &ENG_NOISE : &ENG_LOFI)->render(&dtrk, &d->v, eb, CTL, &m);
+            for (i = 0; i < CTL; i++)               /* (the engines' voices sit low beside the sine part: NOISE x 2,
+                                                     * LOFI x 3.5) */
+                out[i] += sp->eng == DE_LOFI ? eb[i] * 7 / 2 : eb[i] * 2;
+            if (d->namp < 8 && !d->clap)
+                d->namp = 0;
+        }
+        if (d->samp) {                              /* the sine part */
+            int32_t a = d->samp, a1 = d->samp * d->sdec / 32768;
+            for (i = 0; i < CTL; i++) {
+                int32_t g = a + (a1 - a) * (int32_t)i / (int32_t)CTL;
+                out[i] += (sine_i(d->sph) * (g > 32767 ? 32767 : g) >> 15) * 3;   /* (~ a synth voice's level) */
+                d->sph += d->sinc;
+            }
+            d->sinc = d->sinc1 + ((d->sinc - d->sinc1) >> 15) * (uint32_t)d->sfall;   /* (f0 > f1; < 2^13 x 2^15) */
+            d->samp = a1 < 8 ? 0 : a1;
+        }
+        if (!d->namp && !d->samp)
+            d->on = 0;
+    }
+    return n;
+}
+
 /* ------------------------------------------------------------------- the render --- */
 void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
-    static int32_t mix[CTL];
-    uint32_t b, i, k, voices = 0, fx = 0;
+    static int32_t mix[CTL], dmix[CTL];
+    uint32_t b, i, k, voices = 0, fx = 0, dvoices = 0;
     int32_t cho_mix, cho_depth, send, dfb, dlen, rev, crush, cr_bits, cr_every, level, dpk = 0, rpk = 0;
     int32_t fuzz, fz_gain, fz_tone, tdepth, pmix, tr_g0;
     if (!active || !dl_l) {
         for (i = 0; i < 2u * n; i++)
             lr[i] = 0;
+        ndq = 0;
         return;
     }
     sound_update();
@@ -726,7 +915,12 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         lfo = (int32_t)(lfo_ph >> 16) - 32768;
         lfo = (lfo < 0 ? -lfo : lfo) * 2 - 32768;            /* a triangle, Q15 */
         for (i = 0; i < CTL; i++)
-            mix[i] = 0;
+            mix[i] = dmix[i] = 0;
+        for (k = 0; k < ndq; k++)                            /* M7: the drum hits due at this control tick */
+            if (dq[k].ctl == b / CTL)
+                drum_start(&dq[k]);
+        k = drums_tick(dmix);
+        dvoices = k > dvoices ? k : dvoices;
         for (k = 0; k < NVOICE; k++) {
             voice_t *v = &trk[0].v[k];
             vmod_t m;
@@ -847,8 +1041,9 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
                 rpk = vl > rpk ? vl : rpk;
             }
             /* LEVEL (100: as is), to 24 bits at MASTER (16-bit x master / 16), a soft limit, then the clamp */
-            l = clamp(l * level / 100, -98304, 98304) * (int32_t)master_q12 / 16;
-            r = clamp(r * level / 100, -98304, 98304) * (int32_t)master_q12 / 16;
+            l = clamp(l * level / 100 + (dmix[i] >> 3), -98304, 98304) * (int32_t)master_q12 / 16;   /* (M7: the
+                                                              * drums after the preset's LEVEL) */
+            r = clamp(r * level / 100 + (dmix[i] >> 3), -98304, 98304) * (int32_t)master_q12 / 16;
             for (k = 0; k < 2u; k++) {
                 int32_t *y = k ? &r : &l, a = *y < 0 ? -*y : *y;
                 if (a > 6000000)
@@ -866,6 +1061,10 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         dly_quiet = !send && dpk < 2;
     if (fx >> FXB_REVERB & 1u)
         rev_quiet = !rev && rpk < 2;
+    ndq = 0;
+    st.drum_voices = dvoices;
+    if (dvoices > st.drum_voices_max)
+        st.drum_voices_max = dvoices;
     st.fx = fx;
     st.voices = voices / (n / CTL ? n / CTL : 1u);
     if (st.voices > st.voices_max)

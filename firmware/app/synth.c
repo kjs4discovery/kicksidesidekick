@@ -18,11 +18,11 @@ uint32_t fw_eas_pool_size(void);
 #define EAS_FRAMES (SYNTH_BLOCK / 2u)     /* 128: BUFFER_SIZE_IN_MONO_SAMPLES at 22.05 kHz */
 #define QLEN 64u                          /* queued messages (a power of two) */
 
+static int seq_block(uint32_t n);         /* M7: the drums (below) */
 static EAS_DATA_HANDLE eas;
 static EAS_HANDLE stream;
 static volatile uint8_t ready;
 static volatile uint8_t panic_req;
-static volatile uint8_t mix_eas;          /* M6: SYNTH mode with the drum jam: EAS (the song player) under the synth */
 
 static volatile uint32_t q[QLEN];
 static volatile uint32_t q_head, q_tail;  /* head: written by the main loop; tail: by the interrupt */
@@ -55,7 +55,6 @@ int synth_init(void)
 }
 
 int synth_ready(void) { return ready; }
-void synth_mix_eas(int on) { mix_eas = (uint8_t)(on != 0); }
 uint32_t synth_pool_used(void) { return fw_eas_pool_used(); }
 uint32_t synth_pool_size(void) { return fw_eas_pool_size(); }
 
@@ -121,9 +120,10 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             lr[i] = 0;
         return;
     }
-    if (vsynth_active()) {                /* M5: SYNTH mode: our synth instead of EAS and the song player; M6: with
-                                           * the drum jam, EAS under it */
+    if (vsynth_active()) {                /* M5: SYNTH mode: our synth instead of EAS and the song player; M7: the
+                                           * drums' steps first, and with the ACOUSTIC kit EAS under the synth */
         static int32_t vs[2u * SYNTH_BLOCK];
+        int mix_eas = seq_block(n);
         if (mix_eas)
             eas_block(lr, n, master_q12);
         t0 = plat_ticks24();
@@ -142,9 +142,22 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
 }
 
 /* ------------------------------------------------------------- M7: SYNTH mode's drums --- */
+/* The step sequencer (D041): the pattern (jam_patterns.h, from docs/drum-patterns.txt) at the synth's tempo, its steps
+ * counted in 1/256 control ticks (CTL = 32 samples) so 12-step bars keep time. Each block (in the audio interrupt,
+ * before anything renders) it finds the steps due in the block and sends each hit: ACOUSTIC to EAS's GM kit on
+ * channel 10 (EAS then renders this block under the synth: on the block, about 6 ms grid), 808 / CHIP to vsynth's own
+ * drum voices at their control tick. A new pattern chosen while it plays starts at the next bar. */
 #include "jam_patterns.h"
+#define CTL_FRAMES 32u                    /* vsynth's control tick (Felucca-Engines' CTL) */
 static volatile uint8_t dr_on, dr_kit;
 static volatile uint32_t dr_pat = JAM_DEFAULT, dr_vol = 89, dr_bpm = 120;
+static uint8_t sq_run, sq_kit, sq_vol_sent = 0xFF;
+static uint32_t sq_pat, sq_step, sq_left, sq_beat = 0xFFu, eas_tail;
+static volatile uint32_t sq_hits;         /* hits sent, every kit (for the tests) */
+static uint8_t sq_off[8];                 /* the GM notes sounding (note-offs at the next step) */
+static uint32_t sq_noff;
+static const uint8_t GM_DRUM[DR_N] = {36, 38, 42, 46, 39, 45, 50, 37};
+static const uint8_t GM_VEL[4] = {0, 40, 90, 124};
 
 void synth_drums(int on) { dr_on = (uint8_t)(on != 0); }
 int synth_drums_on(void) { return dr_on; }
@@ -155,5 +168,91 @@ const char *synth_pattern_name(uint32_t i) { return JAM[i < JAM_PATTERNS ? i : 0
 uint32_t synth_pattern_beats(uint32_t i) { return JAM[i < JAM_PATTERNS ? i : 0].beats; }
 void synth_drum_kit(uint32_t kit) { dr_kit = (uint8_t)(kit < KITS ? kit : KIT_ACOUSTIC); }
 void synth_drum_volume(uint32_t v) { dr_vol = v > 127u ? 127u : v; }
-void synth_drum_tempo(uint32_t bpm) { dr_bpm = bpm; }
-uint32_t synth_drum_beat(void) { return dr_on ? 0 : 0xFFu; }
+void synth_drum_tempo(uint32_t bpm) { dr_bpm = bpm < 60u ? 60u : bpm > 200u ? 200u : bpm; }
+uint32_t synth_drum_beat(void) { return dr_on && sq_run ? sq_beat : 0xFFu; }
+uint32_t synth_drum_hits(void) { return sq_hits; }
+
+static void gm_offs(void)
+{
+    uint32_t i;
+    for (i = 0; i < sq_noff; i++)
+        synth_send_now(0x89u, sq_off[i], 0);
+    sq_noff = 0;
+}
+
+/* one step's hits, at control tick ctl of this block */
+static void seq_hits(uint32_t ctl)
+{
+    const struct jam_pattern *p = &JAM[sq_pat];
+    uint32_t w = p->step[sq_step], i;
+    if (sq_kit == KIT_ACOUSTIC)
+        gm_offs();
+    for (i = 0; i < DR_N; i++) {
+        uint32_t v = w >> 2u * i & 3u;
+        if (!v)
+            continue;
+        sq_hits++;
+        if (sq_kit == KIT_ACOUSTIC) {
+            synth_send_now(0x99u, GM_DRUM[i], GM_VEL[v]);
+            if (sq_noff < sizeof sq_off)
+                sq_off[sq_noff++] = GM_DRUM[i];
+        } else {
+            vsynth_drum(ctl, sq_kit, i, v, dr_vol);
+        }
+    }
+}
+
+/* the block's steps (n frames: n / CTL control ticks); 1: EAS renders under the synth this block */
+static int seq_block(uint32_t n)
+{
+    uint32_t c, ticks = n / CTL_FRAMES;
+    if (dr_kit != sq_kit) {               /* another kit: the GM kit's notes end */
+        gm_offs();
+        sq_kit = dr_kit;
+    }
+    if (!dr_on) {
+        if (sq_run) {
+            gm_offs();
+            sq_run = 0;
+            eas_tail = 44100u * 2u / n;   /* (EAS mixed 2 s more: the last hits ring out) */
+        }
+        if (!eas_tail)
+            return 0;
+        eas_tail--;
+        return 1;
+    }
+    if (sq_kit == KIT_ACOUSTIC && sq_vol_sent != dr_vol) {
+        synth_send_now(0xB9u, 7u, (uint8_t)dr_vol);
+        sq_vol_sent = (uint8_t)dr_vol;
+    }
+    if (!sq_run) {                        /* on: from the bar's start, now */
+        sq_run = 1;
+        sq_pat = dr_pat;
+        sq_step = 0;
+        sq_left = 0;
+    }
+    for (c = 0; c < ticks; c++) {
+        while (sq_left < 256u) {          /* a step due in this control tick */
+            const struct jam_pattern *p = &JAM[sq_pat];
+            uint32_t per_beat = p->steps / p->beats;
+            seq_hits(c);
+            sq_beat = sq_step % p->steps / per_beat;
+            player_stats.drum_bar = sq_step / p->steps;
+            player_stats.drum_playing = sq_pat;
+            sq_left += 44100u * 60u * 8u / (dr_bpm * per_beat) * 32u / CTL_FRAMES;   /* (1/256 control ticks) */
+            if (++sq_step >= (uint32_t)p->steps * p->bars)
+                sq_step = 0;
+            if (sq_step % p->steps == 0 && dr_pat != sq_pat) {   /* the next bar: a new pattern */
+                sq_pat = dr_pat;
+                sq_step = 0;
+            }
+        }
+        sq_left -= 256u;
+    }
+    if (sq_kit == KIT_ACOUSTIC)           /* (and EAS on 2 s after: its last hits ring out) */
+        eas_tail = 44100u * 2u / n;
+    if (!eas_tail)
+        return 0;
+    eas_tail--;
+    return 1;
+}

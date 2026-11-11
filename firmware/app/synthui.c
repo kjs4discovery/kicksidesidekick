@@ -97,7 +97,6 @@ static void mode_leave(void)
     if (vsynth_active()) {
         uint32_t t = plat_ms();
         synth_drums(0);
-        synth_mix_eas(0);
         vsynth_stop();                   /* (the song buffer is free again once a render running now has ended: a
                                           * block is 5.8 ms; a song opened next reads into it) */
         while (plat_ms() - t < 20u)
@@ -332,7 +331,7 @@ stats:
         player_stats.arp_rate = (uint32_t)vsynth_get(VP_ARP_RATE);
         player_stats.jam = player_stats.drum_on = (uint32_t)synth_drums_on();
         player_stats.drum_pattern = synth_drum_pattern_of();
-        player_stats.drum_hits = player_stats.jam_notes = s->drum_hits;
+        player_stats.drum_hits = player_stats.jam_notes = synth_drum_hits();
         player_stats.drum_voices_max = s->drum_voices_max;
         player_stats.fx_active = s->fx;
         player_stats.synth_page = sy.scr == SY_PAGE ? sy.page + 1u : sy.scr == SY_MAIN ? 0 : 0xF0u + sy.scr;

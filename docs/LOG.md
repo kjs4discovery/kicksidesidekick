@@ -423,3 +423,29 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 4 (drums).
+
+2026-11-11 — Step M7 Part 4 (drums) —
+Status: done (emulator); committed
+Did:
+- docs/drum-patterns.txt (25 patterns, ours, from genre conventions; x accent, o normal, g ghost, . rest; 8 instruments)
+  -> tools/jam_patterns.py -> firmware/app/jam_patterns.h (4 + 12 + up to 64 B a pattern; 1 or 2 bars; 12 or 16 steps).
+  ROCK1 first and default at every SYNTH start.
+- synth.c: the step sequencer in the audio interrupt, before anything renders: steps counted in 1/256 control ticks at
+  the shared tempo; ACOUSTIC sends GM notes on channel 10 to EAS (CC7 = drum volume; note-offs at the next step) and
+  EAS is mixed under the synth only then (and 2 s after, for the tails); 808 / CHIP hits go to vsynth's own drum voices
+  at their control tick. A pattern chosen while playing starts at the next bar.
+- vsynth.c: 6 drum voices of their own. 808: our sine-sweep kick and toms (150->48 Hz, 140->95, 220->150), NOISE for
+  snare (+ a 200 Hz body), hats (band-pass high; closed chokes open), clap (3 bursts 12 ms apart), rim (sine click +
+  noise). CHIP: LOFI (triangle with its pitch sweep for kick and toms, its noise wave, a pulse rim). After the
+  preset's LEVEL, not through the synth's effects.
+- Vendored eng_noise.c and eng_lofi.c (MIT, unchanged, the same commit d026007); VENDORED.md updated (eng_phase.c is
+  listed already: Part 5).
+Learned / measured:
+- m7p4 8 PASS: each kit 26 hits in 4 s of ROCK1 at 120 BPM (13 a bar); at 200 BPM 44 (43 wanted); a mid-bar change
+  plays to the bar's end; PLAY off silent; volume 0 silent, 10 louder than 7; 8 synth voices + 4 drum voices.
+  Loudness (ROCK1, volume 7, rms): ACOUSTIC 1,238, 808 1,538, CHIP 1,277 (CHIP got x3.5, NOISE x2: they sat
+  4x / 15 dB low). vsynth_test: every 808 and CHIP sound alone and all eight together sound and end (ALL PASS).
+- Image 474,800 B (+7.8 KB: NOISE, LOFI, the kits, the sequencer).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 5 (PHASE, the 30 presets).

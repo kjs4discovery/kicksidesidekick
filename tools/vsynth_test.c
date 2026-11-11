@@ -227,6 +227,28 @@ int main(void)
             check((fx_seen & 0x7Fu) == 0, "an effect at 0 still ran");
         }
     }
+    {                                     /* M7: the drum kits' voices: every sound of 808 and CHIP, alone, then all */
+        static const char *const IN[DR_N] = {"kick", "snare", "closed hat", "open hat", "clap", "tom low", "tom high",
+                                             "rim"};
+        uint32_t kit, i, pk, pk2;
+        double r, rt;
+        vsynth_load(vsynth_stock(0));
+        for (kit = KIT_808; kit < KITS; kit++)
+            for (i = 0; i < DR_N + 1u; i++) {
+                uint32_t k;
+                for (k = 0; k < DR_N; k++)
+                    if (k == i || i == DR_N)
+                        vsynth_drum(k % 8u, kit, k, 3, 127);
+                run(0.3, &r, &pk, 0);
+                run(2.0, &rt, &pk2, 0);
+                run(0.5, &rt, &pk2, 0);               /* (2.3 .. 2.8 s after the hit: silent) */
+                printf("drum %-4s %-10s rms %8.0f peak %8u  voices %u  then peak %u\n", kit == KIT_808 ? "808" : "CHIP",
+                       i == DR_N ? "all eight" : IN[i], r, pk, vsynth_stats()->drum_voices_max, pk2);
+                check(r > 20000 && pk < 8388607, "a drum sound");
+                check(pk2 <= 2000 && vsynth_stats()->drum_voices == 0, "a drum sound that does not end");
+            }
+        check(vsynth_stats()->drum_voices_max <= VS_DRUM_VOICES, "more drum voices than its own");
+    }
     printf("voices at most %u, notes %u: %s\n", vsynth_stats()->voices_max, vsynth_stats()->notes,
            fails ? "FAILURES" : "ALL PASS");
     return fails != 0;

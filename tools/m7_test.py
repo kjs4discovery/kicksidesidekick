@@ -26,7 +26,7 @@ import m6_test as m6                     # noqa: E402
 
 V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH, V_WIPE = range(9)
 M7_FIELDS = ("popups popup_open popup_btn synth_page drum_on drum_pattern drum_kit drum_hits drum_voices_max drum_bar "
-             "fx_active synth_engine synth_bpm synth_level levels").split()
+             "fx_active synth_engine synth_bpm synth_level levels drum_playing").split()
 B = {n: i for i, n in enumerate("FX SCL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCTDN OCTUP".split())}
 O = m5.OPEN_MS
 SYNTH = m6.SYNTH
@@ -243,7 +243,61 @@ def test_m7p3(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m7p1": test_m7p1, "m7p2": test_m7p2, "m7p3": test_m7p3}
+# --------------------------------------------------------------------------------------------- part 4
+def kit_set(t, kit, vol=None):
+    """SYNTH's settings: the drum kit (0 ACOUSTIC, 1 808, 2 CHIP), the drum volume (0..10); back at t + 1500"""
+    sc = presses(t, ["GLO", "GLO"])
+    if vol is not None:
+        sc.append(f"{t + 450}:e1:{vol - 7}")
+    if kit:
+        sc += [f"{t + 700}:e0:1", f"{t + 900}:e1:{kit}"]
+    return sc + m5.press_raw(t + 1300, "GLO")
+
+
+def test_m7p4(all_songs, rep):
+    lines, st, check = m5.checker("M7 part 4: the drums")
+    seg = lambda r, a, b: r["left"][int(a * m5.RATE):int(b * m5.RATE)]
+    res = {}
+    for kit, name in enumerate(("ACOUSTIC", "808", "CHIP")):
+        r = syrun(f"m7p4-{name.lower()}", 10200, kit_set(4600, kit) + m5.press_raw(6200, "PLAY"))
+        s = r["stats"]
+        res[name] = (s["drum_hits"], m5.rms(seg(r, 6.4, 10.2)), s["drum_voices_max"], s["drum_kit"])
+        check(s["drum_on"] == 1 and s["drum_kit"] == kit and 25 <= s["drum_hits"] <= 28 and res[name][1] > 100 and
+              not r["halt"] and (kit == 0 or 1 <= s["drum_voices_max"] <= 6),
+              f"kit {name}: PLAY, ROCK1 at 120 BPM, 4 s: {s['drum_hits']} hits (13 a bar, 2 s a bar: 26), rms "
+              f"{res[name][1]:.0f}, its own voices at most {s['drum_voices_max']} (m7p4-{name.lower()}.png)")
+    r = syrun("m7p4-tempo", 10200, ["4600:e0:30"] + m5.press_raw(6200, "PLAY"))
+    bpm = r["stats"]["synth_bpm"]
+    want = 13 * 4 * bpm / 240
+    check(bpm > 150 and abs(r["stats"]["drum_hits"] - want) <= 4,
+          f"at {bpm} BPM: {r['stats']['drum_hits']} hits in 4 s ({want:.0f} wanted): the drums follow the tempo")
+    # a pattern chosen while playing: from the next bar. ROCK1 bars are 2 s at 120 BPM; PLAY at 6.2 s; POP1 (index 3)
+    # chosen at 7.0 s: still ROCK1 at 7.9 s, POP1 after 8.2 s
+    ch = m5.press_raw(6200, "PLAY") + m5.press_raw(6800, "SEQ") + ["6900:e0:3"] + m5.press_raw(7000, "SEQ")
+    a = syrun("m7p4-next-bar-a", 7900, ch)
+    b = syrun("m7p4-next-bar-b", 8500, ch)
+    check(a["stats"]["drum_pattern"] == 3 and a["stats"]["drum_playing"] == 0 and b["stats"]["drum_playing"] == 3,
+          f"a pattern chosen mid-bar (POP1): ROCK1 plays to the bar's end ({a['stats']['drum_playing']}), then POP1 "
+          f"({b['stats']['drum_playing']})")
+    off = syrun("m7p4-off", 9000, m5.press_raw(6200, "PLAY") + m5.press_raw(7000, "PLAY"))
+    q = m5.rms(seg(off, 8.5, 9.0))
+    check(off["stats"]["drum_on"] == 0 and q < 30, f"PLAY again: the drums stop (rms after {q:.0f})")
+    lo = syrun("m7p4-vol0", 10200, kit_set(4600, 1, vol=0) + m5.press_raw(6200, "PLAY"))
+    hi = syrun("m7p4-vol10", 10200, kit_set(4600, 1, vol=10) + m5.press_raw(6200, "PLAY"))
+    l0, l1 = m5.rms(seg(lo, 6.4, 10.2)), m5.rms(seg(hi, 6.4, 10.2))
+    check(l0 < 30 and l1 > 1.2 * res["808"][1], f"drum volume 0: silent (rms {l0:.0f}); 10: louder than 7 ({l1:.0f} vs "
+                                                f"{res['808'][1]:.0f})")
+    ks = syrun("m7p4-keys", 10200, kit_set(4600, 1) + m5.press_raw(6200, "PLAY") + [f"7000:{k}" for k in KEYS8]
+               + [f"9500:{k}^" for k in KEYS8])
+    check(ks["stats"]["synth_voices_max"] == 8 and 1 <= ks["stats"]["drum_voices_max"] <= 6,
+          f"8 keys over the 808 drums: 8 synth voices and {ks['stats']['drum_voices_max']} drum voices (never the "
+          f"synth's)")
+    lines.append(f"  - loudness, ROCK1, drum volume 7: " + ", ".join(f"{k} rms {v[1]:.0f}" for k, v in res.items()))
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m7p1": test_m7p1, "m7p2": test_m7p2, "m7p3": test_m7p3, "m7p4": test_m7p4}
 
 
 def main():

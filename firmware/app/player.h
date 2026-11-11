@@ -131,7 +131,7 @@ struct player_stats {
     uint32_t synth_bpm;                   /* SYNTH: the tempo */
     uint32_t synth_level;                 /* SYNTH: the preset level parameter */
     uint32_t levels;                      /* LEARN: the level of each layer, 4 bits each (drums low) */
-    uint32_t m7_pad;
+    uint32_t drum_playing;                /* SYNTH: the pattern playing now (drum_pattern: the one chosen) */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;
