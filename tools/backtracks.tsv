@@ -1,0 +1,33 @@
+# The 30 backtracks (M8, D046; the user's list, 2026-11-12). tools/backtracks.py writes songs/backtracks/ from it.
+# number	name (<= 15, drafts)	verse	chorus (- none)	mode (major: C, minor: A minor, blues)
+# one chord a bar; b = flat; lower case = minor; 7, maj7 as written. The numerals shown are "verse | chorus".
+1	POP 1	I V vi IV	vi IV I V	major
+2	POP 2	vi IV I V	I V vi IV	major
+3	50S	I vi IV V	IV V I I	major
+4	POP 3	IV I V vi	-	major
+5	POP 4	I IV vi V	vi IV I V	major
+6	LA BAMBA	I IV V IV	-	major
+7	FOLK	I IV I V	IV I V I	major
+8	ROYAL ROAD	IV V iii vi	IV V I I	major
+9	CANON	I V vi iii IV I IV V	-	major
+10	FOLK ROCK	I V I IV	IV V I I	major
+11	MIXO	I bVII IV I	-	major
+12	CLASSIC ROCK	I bVII IV IV	-	major
+13	MARIO	I bVI bVII I	-	major
+14	CREEP	I III IV iv	-	major
+15	MINOR POP	i bVI bIII bVII	bVI bVII i i	minor
+16	MINOR ROCK	i bVII bVI bVII	-	minor
+17	ANDALUSIAN	i bVII bVI V	-	minor
+18	MINOR SOUL	i iv bVII bIII	bVI bVII i i	minor
+19	DORIAN	i IV	-	minor
+20	12-BAR BLUES	I I I I IV IV I I V IV I V	-	blues
+21	12-BAR QUICK	I IV I I IV IV I I V IV I V	-	blues
+22	MINOR BLUES	i i i i iv iv i i bVI V i V	-	minorblues
+23	ii-V-I	ii7 V7 Imaj7 Imaj7	-	major
+24	TURNAROUND	Imaj7 vi7 ii7 V7	-	major
+25	CIRCLE	I IV iii vi ii V I I	-	major
+26	FUNK	I7 I7 IV7 IV7	-	major
+27	TWO CHORD	I IV	-	major
+28	COUNTRY 8	I I IV I V V I I	-	major
+29	BOSSA	ii7 V7 Imaj7 VI7	-	major
+30	PLAGAL	IV iv I I	-	major

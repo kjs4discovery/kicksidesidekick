@@ -591,3 +591,21 @@ Hardware touched: none
 Questions for the planning chat:
 - Energy applies only to layers with no stored level (a hand-made / imported level is a different part): OK?
 Next: Part 3.
+
+2026-11-12 — Step M8 Part 3 (the 30 backtracks; D046, D047) —
+Status: done; committed
+Did:
+- tools/backtracks.tsv (the user's 30, one table) -> tools/backtracks.py -> songs/backtracks/btNN-<name>/song.yaml +
+  song.mid (a conductor track only). C major / A minor, kind backtrack, POP, category Backtracks; the full form with
+  repeats stored once (a chart part per progression): INTRO (verse's last 4), VERSE 1 (x2), CHORUS 1 (x2, +1),
+  VERSE 2, CHORUS 2 (+1), BRIDGE (the rule; last bar V), CHORUS 3 (+1), ENDING (I / i). Blues: INTRO, 3 rounds
+  (0, +1, +1; roles verse, chorus, chorus), ENDING. A progression under 4 bars is doubled first (DORIAN, TWO CHORD).
+- Names for the unnamed: 10 FOLK ROCK, 12 CLASSIC ROCK, 16 MINOR ROCK, 18 MINOR SOUL (drafts, <= 15 chars).
+Learned / measured:
+- 30 backtracks: 39,036 B, 92 blocks; 37 bars (4-bar progressions), 65 (8-bar), 41 (blues); 1,084..1,904 B each.
+- The song store: the user's 13 songs 172 blocks + 92 = 264 of 552 (288 free).
+- Every backtrack in every style (WALTZ in 3/4) needs at most 54,032 B (bt28 COUNTRY 8 in FUNK) of BACKTRACK's 112,896.
+- Golden test: all 30 C = Python.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Parts 4-6 (BACKTRACK mode).
