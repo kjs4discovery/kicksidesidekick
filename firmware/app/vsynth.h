@@ -16,6 +16,8 @@
 #define VS_REVERB_LEN 7040u               /* the reverb's lines (int16): 4 combs, 2 x 2 all-passes */
 #define VS_MEM_BYTES (2u * 32768u * 2u + 2048u * 2u + VS_REVERB_LEN * 2u)   /* the delay's two lines, the chorus's,
                                                                            * the reverb's (int16) */
+#define VS_MEM_BT (2u * 16384u * 2u + 2048u * 2u + VS_REVERB_LEN * 2u)   /* M8: BACKTRACK's: the delay's maximum
+                                                                          * halved (0.37 s; a longer time halved) */
 enum { VS_ANALOG, VS_PHASE, VS_ENGINES };   /* a preset's engine */
 
 /* the parameters, in the record's order (vsynth.c VS_PARAMS has each one's name, range, page and display) */
@@ -74,7 +76,9 @@ const char *vsynth_engine_name(uint32_t e);
 void vsynth_value_text(char *d, uint32_t p, int32_t v);   /* v as the page shows it (d: >= 12 bytes) */
 
 /* main loop */
-void vsynth_start(void *mem, uint32_t bytes);   /* bytes >= VS_MEM_BYTES, 4-aligned; from then on synth.c renders this */
+void vsynth_start(void *mem, uint32_t bytes);   /* bytes >= VS_MEM_BYTES, 4-aligned; from then on synth.c renders this
+                                                 * (M8: VS_MEM_BT..: the delay's maximum halved); 8 voices */
+void vsynth_voices(uint32_t n);           /* M8: the voices the keys may take, 1..VS_VOICES (BACKTRACK: 4) */
 int vsynth_active(void);
 void vsynth_stop(void);                   /* EAS renders again; the memory is free once a render running now ends */
 void vsynth_load(const struct vs_preset *p);   /* the sound now: a copy into RAM */

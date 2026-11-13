@@ -53,6 +53,8 @@ static uint32_t region[SONG_LAYERS];     /* 2.0: each layer's level in dec, from
 struct lib_item {
     const char *title, *key, *category;  /* in the file, in the flash */
     uint32_t bpm, beats_per_bar;
+    const char *numerals;                /* M8 (2.2 FORM): a backtrack's numerals ("" a song) */
+    uint8_t kind, number, scale, key_mode;   /* M8: SONG_KIND_*, a backtrack's number and scale; the key's mode */
 };
 static struct lib_item peeked[STORE_MAX_SONGS] PLAT_POOL;
 static int8_t peek_err[STORE_MAX_SONGS];
@@ -62,6 +64,7 @@ static uint32_t nsongs;
 static int lib_state;                    /* 0 not scanned, 1 scanned, < 0 STORE_E_NO_FLASH */
 static struct song current;              /* the song open for playing (its events in dec) */
 static int32_t current_i = -1;
+static uint32_t lib_room = sizeof dec;    /* M8: the part of dec a song may use (BACKTRACK: the rest is the synth's) */
 static uint32_t lib_changes;             /* counts sends and deletes: the UI goes back to the list */
 
 /* the store's flash: fm1-base's data area (store.c checks the song area's bounds before each erase and write) */
@@ -124,6 +127,11 @@ static void lib_scan(void)
         peeked[i].category = peek_err[i] ? "" : s.category;
         peeked[i].bpm = peek_err[i] ? 0 : player_song_bpm(&s);
         peeked[i].beats_per_bar = s.beats_per_bar;
+        peeked[i].numerals = peek_err[i] ? "" : s.numerals;
+        peeked[i].kind = peek_err[i] ? SONG_KIND_SONG : s.kind;
+        peeked[i].number = s.bt_number;
+        peeked[i].scale = s.scale;
+        peeked[i].key_mode = s.key_mode;
         open_err[i] = 0;
         order[i] = (uint8_t)i;
     }
@@ -185,6 +193,11 @@ static int lib_open(uint32_t i, const struct song **out)
     if (r == SONG_OK && current.fmt2) {   /* 2.0: each layer's region, and level 1 built in it (M7, 2.1: its start
                                            * level) */
         uint32_t l, at = 0;
+        for (l = 0; l < SONG_LAYERS; l++)
+            at += current.layer[l].need * 8u;
+        if (at > lib_room)                /* (M8: BACKTRACK's part of the buffer) */
+            r = SONG_E_ROOM;
+        at = 0;
         for (l = 0; l < SONG_LAYERS && r == SONG_OK; l++) {
             region[l] = at;
             at += current.layer[l].need * 8u;   /* (song_open: the sum is at most SONG_BUILD_BYTES) */
@@ -200,6 +213,30 @@ static int lib_open(uint32_t i, const struct song **out)
     current_i = (int32_t)order[i];
     *out = &current;
     return SONG_OK;
+}
+
+/* M8 (BACKTRACK): the open song in another style and metre (song_restyle), each layer's region again and its level 1
+ * built; the player must not hold it (lib_open's song, before player_load) -> SONG_OK or SONG_E_*; on an error the song
+ * is closed (opened again next time) */
+static int lib_restyle(uint32_t style, uint32_t beats_per_bar)
+{
+    uint32_t l, at = 0;
+    int r;
+    if (current_i < 0)
+        return SONG_E_LAYR;
+    r = song_restyle(&current, style, beats_per_bar);
+    for (l = 0; l < SONG_LAYERS && r == SONG_OK; l++) {
+        region[l] = at;
+        at += current.layer[l].need * 8u;
+    }
+    if (r == SONG_OK && at > lib_room)
+        r = SONG_E_ROOM;
+    for (l = 0; l < SONG_LAYERS && r == SONG_OK; l++)
+        if (current.layer[l].variants)
+            r = song_build(&current, l, 1u, dec + region[l], current.layer[l].need * 8u);
+    if (r)
+        current_i = -1;
+    return r;
 }
 
 /* layer's level chosen (ui: a knob, a song opened): 2.0 builds it first, the player holding that layer meanwhile

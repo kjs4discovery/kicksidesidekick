@@ -23,6 +23,7 @@ static EAS_DATA_HANDLE eas;
 static EAS_HANDLE stream;
 static volatile uint8_t ready;
 static volatile uint8_t panic_req;
+static volatile uint8_t band;             /* M8: BACKTRACK: EAS and the player render under the synth every block */
 
 static volatile uint32_t q[QLEN];
 static volatile uint32_t q_head, q_tail;  /* head: written by the main loop; tail: by the interrupt */
@@ -55,6 +56,8 @@ int synth_init(void)
 }
 
 int synth_ready(void) { return ready; }
+
+void synth_band(int on) { band = (uint8_t)(on != 0); }
 uint32_t synth_pool_used(void) { return fw_eas_pool_used(); }
 uint32_t synth_pool_size(void) { return fw_eas_pool_size(); }
 
@@ -123,7 +126,7 @@ void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     if (vsynth_active()) {                /* M5: SYNTH mode: our synth instead of EAS and the song player; M7: the
                                            * drums' steps first, and with the ACOUSTIC kit EAS under the synth */
         static int32_t vs[2u * SYNTH_BLOCK];
-        int mix_eas = seq_block(n);
+        int mix_eas = seq_block(n) | band;
         if (mix_eas)
             eas_block(lr, n, master_q12);
         t0 = plat_ticks24();

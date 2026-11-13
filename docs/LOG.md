@@ -609,3 +609,32 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Parts 4-6 (BACKTRACK mode).
+
+2026-11-13 — Step M8 Parts 4-6 (BACKTRACK: setup and play, the scale views, the melody sound; D046, D048, D049) —
+Status: done (emulator); committed together (one module, bt.c / btview.c, and the same ui.c hooks; tested part by part)
+Did:
+- Part 4: bt.c. SETUP (K1 progression + numerals, K2 style (11), K3 structure, K4 key (+ the verse's chords in it),
+  SELECT tempo (the style's own until turned), PLAY starts, GLO help, HOME held: modes); defaults 1 POP 1 / POP /
+  LOOP / C / 100; kept until power-off. PLAY: lib_open + lib_restyle (WALTZ 3/4) + SONG LEARN's play screen
+  (open_song split into open_play), the key by player_transpose, LOOP = verse 1, VERSE/CHORUS = verse 1 + chorus 1 (as
+  an A-B loop: SEQ works as in SONG LEARN), FULL = no loop. HOME stopped -> SETUP. SONG LEARN's list skips
+  backtracks; sends refused in BACKTRACK (the synth holds part of the buffer). Help screens for SETUP and its play.
+- Part 6 (Part 0's choice): the song buffer split (lib_room 112,896 B; vsynth_start on the rest, VS_MEM_BT: the
+  delay's maximum halved), vsynth_voices(4), synth_band(1): EAS + the player under the synth every block. K4 on the
+  play screen: the melody sound (30 presets, arp off), its name shown; the keys play it.
+- Part 5: btview.c. Melody (nothing else your part; LFO held brings it back): SCALE KEYBOARD (27 keys) and SCALE
+  FRETBOARD (guitar / ukulele, frets 0-12), EDIT between them; scale notes dark amber, chord tones bright, the next
+  chord's a ring in its last beat; key lights the same (bright / mid / dim). Settings > Scale guide (row 13; Wipe
+  stays last): PENTATONIC / FULL SCALE / CHORD TONES.
+- player_stats: 18 M8 words (tools/m8_test.py); tools/m8_test.py m8p1, m8p4, m8p5, m8p6, m8census, m8cpu, m8sweep.
+Learned / measured:
+- A first build crashed on SETUP (names() read ui.s before any song was open): names_of(); found in the emulator.
+- (The emulator boots the app already in the flash image: a test flash must be made with the build under test.)
+- On the dev build: m8p1, m8p4, m8p5, m8p6, m8census ALL PASS; m8cpu: worst 37 % of a block (INDIE POP, FULL, every
+  layer at its top, MIAMI PAD x 4; EAS 15 %).
+- Image 493,152 B (+13 KB); RAM .data+.bss 81,416; pool 291,464 (+1,600: the list's backtrack fields).
+Hardware touched: none
+Questions for the planning chat:
+- Mode screen cursor after leaving a mode: always SONG LEARN (decided). The melody sound's arp is switched off
+  (EDS, OCT BOUNCE... play notes, not arpeggios): OK?
+Next: Part 7 (release build, the full suite once, step-M8-install.md).

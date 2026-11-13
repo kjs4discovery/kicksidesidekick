@@ -132,6 +132,18 @@ struct player_stats {
     uint32_t synth_level;                 /* SYNTH: the preset level parameter */
     uint32_t levels;                      /* LEARN: the level of each layer, 4 bits each (drums low) */
     uint32_t drum_playing;                /* SYNTH: the pattern playing now (drum_pattern: the one chosen) */
+    /* M8 (16 words: tools/m8_test.py reads them by these names) */
+    uint32_t bt_n, bt_prog, bt_style, bt_structure, bt_key, bt_bpm, bt_sound;   /* BACKTRACK: backtracks found, the
+                                           * choices (bt.c: the setup's order; prog: the number) */
+    uint32_t bt_metre;                    /* the backtrack open: its beats a bar (WALTZ 3) */
+    uint32_t scale_mask, tone_mask, next_mask;   /* the scale views: bit pc of the scale, the chord's tones, the next
+                                           * chord's (its last beat only) */
+    uint32_t scale_kind;                  /* the setting: 0 PENTATONIC, 1 FULL SCALE, 2 CHORD TONES (+ 4: blues, + 8 minor) */
+    uint32_t bt_energy;                   /* the energy of the section playing */
+    uint32_t bt_style_now;                /* the open backtrack's STYL index (song.h), 0xFF none */
+    uint32_t mode_sel;                    /* the mode screen's cursor: 0 SONG LEARN, 1 BACKTRACK, 2 SYNTH */
+    uint32_t list_n;                      /* SONG LEARN: the songs the list's folder shows (backtracks never) */
+    uint32_t bt_loop_from, bt_loop_to;    /* the loop set now (player_loop_of; 0 0: none) */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

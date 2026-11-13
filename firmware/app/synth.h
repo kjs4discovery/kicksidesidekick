@@ -10,6 +10,7 @@
 
 int synth_init(void);                     /* at boot, before audio runs: 0 = ready */
 int synth_ready(void);
+void synth_band(int on);                  /* M8: BACKTRACK: the song (EAS) under the synth (vsynth) in every block */
 /* M7 (D041): SYNTH mode's drums: a step sequencer (jam_patterns.h) at the synth's tempo, its hits to a kit (vsynth.h
  * KIT_*): ACOUSTIC = EAS's GM kit on channel 10, 808 / CHIP = vsynth's own drum voices. Main loop */
 void synth_drums(int on);                 /* on: from the bar's start; off: the hits stop */

@@ -217,6 +217,8 @@ static int16_t *dl_l, *dl_r, *ch_buf;    /* the delay's lines, the chorus's (in 
 static int16_t *rv_buf;                  /* the reverb's (after them) */
 #define DMAX 32768u
 #define CMAX 2048u
+static uint32_t dmax = DMAX;              /* M8: the delay lines' length now (BACKTRACK: half, VS_MEM_BT) */
+static volatile uint32_t n_voices = NVOICE;   /* M8: the voices a key may take (BACKTRACK: 4) */
 
 /* the page's view of parameter p: SOUND slots from the engine of the record now */
 const struct vs_param *vsynth_param(uint32_t p)
@@ -274,20 +276,24 @@ void vsynth_value_text(char *d, uint32_t p, int32_t v)
 void vsynth_start(void *mem, uint32_t bytes)
 {
     uint32_t i;
-    if (bytes < VS_MEM_BYTES)
+    if (bytes < VS_MEM_BT)
         return;
+    dmax = bytes >= VS_MEM_BYTES ? DMAX : DMAX / 2u;   /* (M8: BACKTRACK's room: the delay's maximum halved) */
     dl_l = (int16_t *)mem;
-    dl_r = dl_l + DMAX;
-    ch_buf = dl_r + DMAX;
+    dl_r = dl_l + dmax;
+    ch_buf = dl_r + dmax;
     rv_buf = ch_buf + CMAX;
-    for (i = 0; i < 2u * DMAX + CMAX + VS_REVERB_LEN; i++)
+    for (i = 0; i < 2u * dmax + CMAX + VS_REVERB_LEN; i++)
         dl_l[i] = 0;
+    n_voices = NVOICE;
     vsynth_load(&PRESETS[0]);
     __asm__ volatile("" ::: "memory");
     active = 1;
 }
 
 int vsynth_active(void) { return active; }
+
+void vsynth_voices(uint32_t n) { n_voices = n < 1u ? 1u : n > NVOICE ? NVOICE : n; }
 
 void vsynth_stop(void)
 {
@@ -396,8 +402,8 @@ static void sound_update(void)
 /* voices: start (the free one, else the oldest releasing, else the oldest) and stop */
 static void voice_start(uint32_t note)
 {
-    uint32_t i, best = 0, best_score = 0;
-    for (i = 0; i < NVOICE; i++) {
+    uint32_t i, best = 0, best_score = 0, nv = n_voices < NVOICE ? n_voices : NVOICE;
+    for (i = 0; i < nv; i++) {
         voice_t *v = &trk[0].v[i];
         uint32_t score = !v->active ? 0xFFFFFFFFu : v->stage == 3u ? 0x80000000u + (vage - v->age)
                                                                    : (vage - v->age);
@@ -696,7 +702,7 @@ static int32_t delay_len(void)
 {
     static const uint8_t TWELFTHS[8] = {3, 4, 6, 9, 8, 12, 18, 24};   /* of a beat: 1/16 1/8T 1/8 1/8D 1/4T 1/4 .. */
     int32_t n = (int32_t)(44100u * 60u / c_bpm * TWELFTHS[cv[VP_DLY_TIME] & 7u] / 12u);
-    while (n > (int32_t)DMAX - 1)
+    while (n > (int32_t)dmax - 1)
         n /= 2;
     return n;
 }
@@ -1071,12 +1077,12 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
             cw++;
             if (fx >> FXB_DELAY & 1u) {   /* the delay: two lines, each feeding the other (ping-pong), a low-pass in
                                            * the loop; FEEDBACK 64: a round trip of 1/4 (M6's) */
-                uint32_t rd = (dw - (uint32_t)dlen) & (DMAX - 1u);
+                uint32_t rd = (dw - (uint32_t)dlen) & (dmax - 1u);
                 int32_t dl = dl_l[rd], dr = dl_r[rd];
                 fb_lp_l += (dr - fb_lp_l) / 4;   /* (/ rounds toward 0: the loop reaches silence, M7) */
                 fb_lp_r += (dl - fb_lp_r) / 4;
-                dl_l[dw & (DMAX - 1u)] = (int16_t)clamp((l + r) / 2 * send / 128 + fb_lp_l * dfb / 128, -32767, 32767);
-                dl_r[dw & (DMAX - 1u)] = (int16_t)(fb_lp_r * dfb / 128);   /* (|lp| <= 32767, dfb <= 104: within
+                dl_l[dw & (dmax - 1u)] = (int16_t)clamp((l + r) / 2 * send / 128 + fb_lp_l * dfb / 128, -32767, 32767);
+                dl_r[dw & (dmax - 1u)] = (int16_t)(fb_lp_r * dfb / 128);   /* (|lp| <= 32767, dfb <= 104: within
                                                               * 26,622, no clamp; a clamp here compiles to a constant
                                                               * the build's ROM check refuses) */
                 dw++;

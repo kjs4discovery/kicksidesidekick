@@ -63,13 +63,15 @@ static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 18
 #define SET_ROW_H 22                     /* the settings' rows (8 above the legend) */
 
 enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH,   /* (M5: the mode screen, SYNTH) */
-       V_WIPE };                         /* M5.1: WIPE SONG STORE, asked first */
+       V_WIPE,                           /* M5.1: WIPE SONG STORE, asked first */
+       V_SETUP };                        /* M8: BACKTRACK's setup (bt.c) */
 #define WIPE_HOLD_MS 2000u               /* PLAY held this long on the WIPE screen: the songs are erased */
 static void wipe_open(int back);
 /* the play screen's views (EDIT); PV_CHORD: the part's main view (the chord, or your part's note or hit) */
 enum { PV_CHORD, PV_KEYS, PV_CHART, PV_GUITAR, PV_TAB, PV_ROLL, PV_NOTATION, PV_GRID, PV_DNOTE,
        PV_MTAB,                          /* M6: the melody's tab (guitar, or ukulele: the setting) */
        PV_BARS,                          /* M6: the harmony's bar view (the roll: chords as stacked bars) */
+       PV_SCALE_KB, PV_SCALE_FB,         /* M8: BACKTRACK's melody: the scale on the keys, on the fretboard (bt.c) */
        PV_N };
 static const uint8_t VIEWS[SONG_LAYERS][8] = {   /* each part's views in EDIT's order (PV_N ends a list) */
     {PV_GRID, PV_DNOTE, PV_N},                                    /* drums (M4: only these two, the user's note) */
@@ -79,7 +81,8 @@ static const uint8_t VIEWS[SONG_LAYERS][8] = {   /* each part's views in EDIT's 
     {PV_CHORD, PV_KEYS, PV_CHART, PV_ROLL, PV_NOTATION, PV_MTAB, PV_N},     /* melody (M6: + its tab) */
 };
 static const char *const VIEW_NAME[PV_N] = {"MAIN", "KEYBOARD", "CHART", "GUITAR", "BASS TAB", "MELODY ROLL",
-                                            "NOTATION", "DRUM GRID", "DRUM NOTATION", "GUITAR TAB", "BAR VIEW"};
+                                            "NOTATION", "DRUM GRID", "DRUM NOTATION", "GUITAR TAB", "BAR VIEW",
+                                            "SCALE KEYBOARD", "SCALE FRETBOARD"};
 static const char *view_name(uint32_t v);   /* (M6: the ukulele setting renames two)
                                               * the scrolling and staff views: SELECT zooms there (M6) */
 #define ZOOMS 7u
@@ -107,6 +110,7 @@ static const char *const LAYER_SHORT[SONG_LAYERS] = {"DRUMS", "BASS", "HARM", "M
 enum { S_BLINK, S_COUNT_BARS, S_COUNT_VOL, S_NOTE_NAMES, S_ZOOM, S_QUIET, S_LIGHTS, S_VIEWS, S_BASS_OCT, S_HINT,
        S_MODE,                           /* M6: back to the mode screen (LEARN / SYNTH), no value */
        S_UKE,                            /* M6: chord boxes and the melody's tab: GUITAR / UKULELE */
+       S_SCALE,                          /* M8: BACKTRACK's scale guide: PENTATONIC / FULL SCALE / CHORD TONES */
        S_WIPE,                           /* M5.1: a screen (WIPE SONG STORE), no value; the last row */
        S_N };
 struct settings {
@@ -126,16 +130,17 @@ struct settings {
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
                                           "Note names (notation)", "Zoom at start", "Quiet level",
                                           "Key lights", "Views (hide some)", "Bass sound", "Controls hint",
-                                          "Switch mode", "Chord boxes, tab", "Wipe song store"};
-static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2, 1, 2, 1};   /* how many values each has (Views: a screen) */
+                                          "Switch mode", "Chord boxes, tab", "Scale guide", "Wipe song store"};
+static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2, 1, 2, 3, 1};   /* how many values each has (Views: a
+                                                                                  * screen) */
 static const char *const SET_VAL[S_N][3] = {{"OFF", "ON", ""}, {"1 BAR", "2 BARS", ""}, {"LOW", "MEDIUM", "HIGH"},
                                             {"OFF", "ON", ""}, {"1.5 BARS", "3 BARS", ""}, {"25 %", "50 %", ""},
                                             {"OFF", "ON", ""}, {">", "", ""}, {"REAL", "+1 OCTAVE", ""},
                                             {"OFF", "ON", ""}, {">", "", ""}, {"GUITAR", "UKULELE", ""},
-                                            {">", "", ""}};
+                                            {"PENTATONIC", "FULL SCALE", "CHORD TONES"}, {">", "", ""}};
 /* (M4: count-in volume MEDIUM, the user's note; the quiet level 50 %, "half volume") */
 /* (M5: the bass +1 octave on the small speaker; the controls hint on) */
-static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0};
+static const uint8_t SET_DEFAULT[S_N] = {1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0};
 static const uint8_t QUIET_PCT[2] = {25, 50};   /* a layer set to QUIET (D027: M3's guide volume became this) */
 #define HOME_HOLD_MS 2000u               /* M6: HOME held this long, from any screen: the mode screen */
 #define HOLD_MS 900u                     /* a layer button held this long: your part (D027); shorter: its volume */
@@ -194,6 +199,26 @@ static struct {
     int sh_state;
     uint32_t sh_top_key, sh_stats_ms, sh_list, sh_status, sh_legend, sh_cue, sh_view, sh_part;
 } ui;
+
+/* M8: BACKTRACK's state (bt.c) */
+#define BT_MAX 64u
+static struct {
+    uint8_t on;                          /* BACKTRACK is the mode */
+    uint8_t entered;                     /* entered since power-on (the defaults set) */
+    uint8_t bpm_turned;                  /* SELECT turned: the tempo stays when the style changes */
+    uint32_t prog, style, structure, key, bpm, sound;   /* the choices (prog: an index into list[]) */
+    uint32_t n;                          /* backtracks found */
+    uint8_t list[BT_MAX];                /* their lib indices, by number */
+    uint32_t shown;                      /* the setup screen drawn (a hash) */
+    uint32_t sound_until;                /* the melody sound's name shown on the play screen until */
+} bt;
+
+/* a part's views in EDIT's order (M8: BACKTRACK's melody, the player's: the scale views) */
+static const uint8_t VIEWS_BT_MELODY[3] = {PV_SCALE_KB, PV_SCALE_FB, PV_N};
+static const uint8_t *views_of(uint32_t l)
+{
+    return bt.on && l == L_MELODY ? VIEWS_BT_MELODY : VIEWS[l];
+}
 
 /* ------------------------------------------------------------------------ settings --- */
 static void settings_apply(void)
@@ -254,14 +279,15 @@ static void view_toggle(uint32_t l, uint32_t v)
 static uint32_t view_ok(uint32_t l, uint32_t v)
 {
     uint32_t i, ok = 0;
-    for (i = 0; VIEWS[l][i] != PV_N; i++)
-        ok |= VIEWS[l][i] == v;
+    const uint8_t *vw = views_of(l);
+    for (i = 0; vw[i] != PV_N; i++)
+        ok |= vw[i] == v;
     if (ok && !view_hidden(l, v))
         return v;
-    for (i = 0; VIEWS[l][i] != PV_N; i++)
-        if (!view_hidden(l, VIEWS[l][i]))
-            return VIEWS[l][i];
-    return VIEWS[l][0];
+    for (i = 0; vw[i] != PV_N; i++)
+        if (!view_hidden(l, vw[i]))
+            return vw[i];
+    return vw[0];
 }
 
 static const char *view_name(uint32_t v)
@@ -449,13 +475,15 @@ static const char *const FLAT[12] = {"C", "Db", "D", "Eb", "E", "F", "Gb", "G", 
 static const char *const MIXED[12] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
 static const uint8_t MODE_PARENT[7] = {0, 3, 10, 5, 7, 8, 1};   /* major minor dorian mixolydian lydian phrygian locrian */
 
-static const char *const *names(void)
+static const char *const *names_of(uint32_t root, uint32_t mode, int32_t key)   /* (M8: BACKTRACK's setup too) */
 {
-    uint32_t parent = (ui.s->key_root + MODE_PARENT[ui.s->key_mode % 7u] + 12u + (uint32_t)ui.key) % 12u;
+    uint32_t parent = (root + MODE_PARENT[mode % 7u] + 12u + (uint32_t)(key + 12)) % 12u;
     if (parent == 0)
         return MIXED;
     return parent == 5 || parent == 10 || parent == 3 || parent == 8 || parent == 1 ? FLAT : SHARP;
 }
+
+static const char *const *names(void) { return names_of(ui.s->key_root, ui.s->key_mode, ui.key); }
 
 /* a note name at p (C, C#, Db, ...): its pitch class, *n its length; -1 if none */
 static int pc_at(const char *p, uint32_t *n)
@@ -777,6 +805,8 @@ static int loop_shown(uint32_t *a, uint32_t *b)
 }
 
 /* ------------------------------------------------------------------------ input --- */
+static void open_play(const struct song *s);
+
 static void open_song(uint32_t i)
 {
     const struct song *s;
@@ -786,6 +816,21 @@ static void open_song(uint32_t i)
         ui.sh_list = 0xFFFFFFFFu;
         return;
     }
+    open_play(s);
+    if (SV(S_HINT) && ui.set.hint_count < HINT_TIMES) {   /* M5: the controls hint first, up to 10 times */
+        ui.view = V_HINT;
+        if (++ui.set.hint_count >= HINT_TIMES)
+            SV(S_HINT) = 0;              /* (then off by itself; the setting turns it on again) */
+        ui.set_dirty = 1;
+        settings_save();
+        player_stats.hints++;
+    }
+}
+
+/* a song opened (lib_open): fresh, its play screen (M8: BACKTRACK's too, bt.c bt_open) */
+static void open_play(const struct song *s)
+{
+    int r;
     ui.s = s;
     ui.muted = 0;
     ui.mine = L_HARM;
@@ -811,14 +856,6 @@ static void open_song(uint32_t i)
     set_loop(LOOP_OFF);
     ui.loop_step = 0;
     ui.view = V_PLAY;
-    if (SV(S_HINT) && ui.set.hint_count < HINT_TIMES) {   /* M5: the controls hint first, up to 10 times */
-        ui.view = V_HINT;
-        if (++ui.set.hint_count >= HINT_TIMES)
-            SV(S_HINT) = 0;              /* (then off by itself; the setting turns it on again) */
-        ui.set_dirty = 1;
-        settings_save();
-        player_stats.hints++;
-    }
     ui.redraw = 1;
 }
 
@@ -891,12 +928,16 @@ static const char *song_folder(uint32_t i)
 }
 
 /* the categories (sorted, at most 16; more: in "All songs" only) and the songs of the folder shown */
+static int lib_is_backtrack(uint32_t i);
+
 static void folders_build(void)
 {
     uint32_t i, k, n = lib_count();
     ui.nfold = 0;
     for (i = 0; i < n; i++) {
         const char *c = song_folder(i);
+        if (lib_is_backtrack(i))         /* M8: SONG LEARN lists only songs */
+            continue;
         for (k = 0; k < ui.nfold && !same_text(ui.fname[k], c); k++)
             ;
         if (k == ui.nfold && ui.nfold < 16u) {
@@ -910,10 +951,11 @@ static void folders_build(void)
         ui.folder = 0;
     ui.nfl = 0;
     for (i = 0; i < n; i++)
-        if (ui.folder <= 0 || same_text(song_folder(i), ui.fname[ui.folder - 1]))
+        if (!lib_is_backtrack(i) && (ui.folder <= 0 || same_text(song_folder(i), ui.fname[ui.folder - 1])))
             ui.fl[ui.nfl++] = (uint8_t)i;
     ui.fl_seen = lib_changes + 1u;
     player_stats.folder = (uint32_t)(ui.folder + 1);
+    player_stats.list_n = ui.nfl;
 }
 
 static void input_list(uint32_t down)
@@ -985,18 +1027,21 @@ static void input_play(uint32_t down, uint32_t now)
     }
     if (down >> B_HOME & 1u) {
         if (st == PL_STOPPED) {
-            ui.view = V_LIST;
+            ui.view = bt.on ? V_SETUP : V_LIST;   /* (M8: BACKTRACK: back to SETUP) */
+            if (bt.on)
+                lib_release();
             ui.redraw = 1;
             return;
         }
         player_play(0);                  /* stopped: back to the start point */
     }
     for (l = 0; l < SONG_LAYERS; l++) {
-        if ((down >> LAYER_BUTTON[l] & 1u) && ui.s->layer[l].variants) {   /* pressed: wait to see how long */
+        int has = ui.s->layer[l].variants || (bt.on && l == L_MELODY);   /* (M8: BACKTRACK's melody: yours) */
+        if ((down >> LAYER_BUTTON[l] & 1u) && has) {   /* pressed: wait to see how long */
             ui.hold_t[l] = now;
             ui.hold_done &= ~(1u << l);
         }
-        if ((ui.buttons >> LAYER_BUTTON[l] & 1u) && !(ui.hold_done >> l & 1u) && ui.s->layer[l].variants &&
+        if ((ui.buttons >> LAYER_BUTTON[l] & 1u) && !(ui.hold_done >> l & 1u) && has &&
             now - ui.hold_t[l] >= HOLD_MS) {   /* held: your part (the view follows: the last one used for it) */
             ui.hold_done |= 1u << l;
             if (ui.mine != l) {
@@ -1058,7 +1103,7 @@ static void input_play(uint32_t down, uint32_t now)
         }
     }
     if (down >> B_EDIT & 1u) {           /* the next of your part's views (VIEWS), the hidden ones skipped (M4) */
-        const uint8_t *v = VIEWS[yours()];
+        const uint8_t *v = views_of(yours());
         uint32_t i = 0, n = 0, k;
         while (v[n] != PV_N)
             n++;
@@ -1113,6 +1158,11 @@ static void input_play(uint32_t down, uint32_t now)
         ui.tempo_ms = now;
         player_tempo((uint32_t)clamp((int32_t)player_tempo_of() + step * d, PL_BPM_MIN, PL_BPM_MAX));
         ui.sh_top_key = 0xFFFFFFFFu;
+        if (bt.on) {                     /* M8: the synth's arp and delay follow; SETUP keeps it */
+            bt.bpm = player_tempo_of();
+            bt.bpm_turned = 1;
+            vsynth_tempo(bt.bpm < 60u ? 60u : bt.bpm > 200u ? 200u : bt.bpm);
+        }
     }
     d = plat_enc(EN_PRESET);
     if (d && ui.loop_step) {             /* setting the loop: A to a section's first bar, B to a section's last */
@@ -1221,9 +1271,11 @@ static uint32_t learn_jobs(void)
     case V_PLAY:                         /* every button, but the layer buttons of layers the song does not have */
         j = ALL_BUTTONS;
         for (l = 0; l < SONG_LAYERS; l++)
-            if (!ui.s->layer[l].variants)
+            if (!ui.s->layer[l].variants && !(bt.on && l == L_MELODY))   /* (M8: BACKTRACK's melody: yours) */
                 j &= ~(1u << LAYER_BUTTON[l]);
         return j;
+    case V_SETUP:                        /* M8: PLAY starts (with backtracks); HOME: held only */
+        return j | (bt.n ? 1u << B_PLAY : 0u);
     case V_SETTINGS:
     case V_VIEWSET:                      /* PLAY / EDIT change, GLO / HOME back */
         return j | 1u << B_PLAY | 1u << B_EDIT | 1u << B_HOME;
@@ -1293,6 +1345,7 @@ static void draw_popup(void)
 }
 
 #include "synthui.c"
+#include "bt.c"
 
 /* how long since a hold began at t (t = now | 1u, so 0 means "not held"; t can be 1 ms ahead of now: 0, not a wrap) */
 static uint32_t held_ms(uint32_t t, uint32_t now)
@@ -1335,10 +1388,16 @@ static void input(void)
         if ((keys & bit) && !(ui.keys & bit)) {
             uint8_t note = (uint8_t)(KEY_LOW + (int32_t)k + 12 * ui.oct);
             ui.key_note[k] = note;
-            synth_midi(0x90u | SYNTH_KEYS_CH, note, (uint8_t)VELOCITY);
+            if (bt.on)                   /* M8: BACKTRACK: the melody sound (the synth, 4 voices) */
+                vsynth_key(note, 1);
+            else
+                synth_midi(0x90u | SYNTH_KEYS_CH, note, (uint8_t)VELOCITY);
             player_stats.key_note_last = note;
         } else if (!(keys & bit) && (ui.keys & bit)) {
-            synth_midi(0x80u | SYNTH_KEYS_CH, ui.key_note[k], 0);
+            if (bt.on)
+                vsynth_key(ui.key_note[k], 0);
+            else
+                synth_midi(0x80u | SYNTH_KEYS_CH, ui.key_note[k], 0);
         }
     }
     ui.keys = keys;
@@ -1487,8 +1546,13 @@ static void input(void)
     }
     if (ui.view == V_LIST)
         input_list(down);
-    else
+    else if (ui.view == V_SETUP)         /* M8 */
+        bt_setup_input(down);
+    else {
+        if (bt.on)
+            bt_play_input(down);
         input_play(down, now);
+    }
     lights();
 }
 
@@ -1686,8 +1750,16 @@ static void draw_help(void)
                                                {"HOME", "folders"}, {"keys", "play along"}, {"", ""},
                                                {"HOME", "held: mode"},
                                                {"", ""}, {"", ""}, {"", ""}};
-    const char *const (*e)[2] = ui.back == V_PLAY ? ENC : ENC_LIST;
-    const char *const (*b)[2] = ui.back == V_PLAY ? BTN : BTN_LIST;
+    static const char *const ENC_SETUP[5][2] = {{"K1 / K2", "progression / style"}, {"K3 / K4", "structure / key"},
+                                                {"SELECT", "tempo"}, {"MASTER", "volume"},
+                                                {"OCT- OCT+", "keys' octave"}};   /* M8: BACKTRACK */
+    static const char *const BTN_SETUP[9][2] = {{"PLAY", "start"}, {"keys", "melody sound"}, {"HOME", "held: mode"},
+                                                {"", ""}, {"", ""}, {"", ""}, {"", ""}, {"", ""}, {"", ""}};
+    static const char *const BTN_BT[9][2] = {{"K1-K3", "levels"}, {"K4", "melody sound"}, {"PLAY", "play / pause"},
+                                             {"HOME", "stop, setup"}, {"SEQ", "loop: A, B, off"}, {"ARP", "count-in"},
+                                             {"EDIT", "view"}, {"SAVE", "key (SELECT)"}, {"LFO held", "melody views"}};
+    const char *const (*e)[2] = ui.back == V_PLAY ? ENC : ui.back == V_SETUP ? ENC_SETUP : ENC_LIST;
+    const char *const (*b)[2] = ui.back == V_PLAY ? (bt.on ? BTN_BT : BTN) : ui.back == V_SETUP ? BTN_SETUP : BTN_LIST;
     uint32_t r, band;
     char t[48] = "CPU ";
     for (band = 0; band < 2u; band++) {  /* rows 0..119, 120..239 */
@@ -3413,9 +3485,10 @@ static void draw_layers(void)
         int on = !(ui.muted >> l & 1u);
         char t[8] = "L";
         if (!ly->variants) {
-            frame_rect(x, 1, 55, H_LAYERS - 2, C_LINE);
-            text_in(x, 55, 2, &FONT_XS, LAYER_SHORT[l], LB_NONE_FG);
-            text_in(x, 55, 16, &FONT_XS, "-", LB_NONE_FG);
+            int you = bt.on && l == L_MELODY;   /* (M8: BACKTRACK: the melody is the player's) */
+            frame_rect(x, 1, 55, H_LAYERS - 2, you && l == mine ? C_HI : C_LINE);
+            text_in(x, 55, 2, &FONT_XS, LAYER_SHORT[l], you ? (l == mine ? C_HI : C_WHITE) : LB_NONE_FG);
+            text_in(x, 55, 16, &FONT_XS, you ? "YOU" : "-", you ? C_AMB : LB_NONE_FG);
             continue;
         }
         if (on)
@@ -3536,6 +3609,13 @@ static void part_info(struct pinfo *pi, int st, int32_t tb, int32_t k, int32_t n
     pi->big[0] = pi->next[0] = pi->small[0] = 0;
     pi->nnow = pi->nnx = pi->nctx = 0;
     pi->cue = 0;
+    if (bt.on && l == L_MELODY) {        /* M8: BACKTRACK's melody (the player's): the chords, for the scale views */
+        if (k >= 0)
+            text_cat(pi->big, chord_name((uint32_t)k));
+        if (next >= 0)
+            text_cat(pi->next, chord_name((uint32_t)next));
+        return;
+    }
     if (l == L_HARM) {
         uint32_t kc = st == PL_STOPPED || k < 0 ? (uint32_t)(next >= 0 ? next : 0) : (uint32_t)k;
         if (k >= 0)
@@ -3602,6 +3682,8 @@ static void part_info(struct pinfo *pi, int st, int32_t tb, int32_t k, int32_t n
         pi->cue = cue_at(l, tb, &bright) | (uint32_t)bright << 4;
 }
 
+#include "btview.c"
+
 static void frame_play(uint32_t now)
 {
     const struct song *s = ui.s;
@@ -3657,13 +3739,34 @@ static void frame_play(uint32_t now)
               (int32_t)(ui.b_bar > ui.a_bar + 3u ? ui.b_bar - 3u : ui.a_bar) : start_point() / (int32_t)s->bar_ticks;
     section = (int32_t)section_at(st == PL_STOPPED ? start_point() : tb);
     part_info(&pi, st, tb, k, next, left);
+    {                                    /* M8: the scale views' marking (BACKTRACK's melody) */
+        uint32_t sc = 0, tn = 0, nx = 0;
+        if (bt.on && pi.part == L_MELODY) {
+            sc = bt_scale_mask();
+            tn = chord_pcs(st == PL_STOPPED ? next : k);
+            nx = left == 1 && next >= 0 && next != k ? chord_pcs(next) : 0;   /* (its last beat) */
+        }
+        player_stats.scale_mask = sc;
+        player_stats.tone_mask = tn;
+        player_stats.next_mask = nx;
+        if (bt.on)
+            player_stats.bt_energy = ui.s->energy[song_bar_section(ui.s, (uint32_t)(bar < 0 ? 0 : bar) <
+                                                  s->bar_count ? (uint32_t)bar : s->bar_count - 1u)];
+    }
     if (pi.part != L_HARM)
         left = 0;                        /* (the countdown is the chord's) */
     bright = (pi.cue >> 4) & 1u;
     /* the key lights: your part's keys, bright at each attack, darker between (M3: blinking in its rhythm); the next
      * chord dim in the last bar before it. The drums: none (the beat light is enough) */
     ui.lit_keys = ui.mid_keys = ui.dim_keys = 0;
-    if (SV(S_LIGHTS) && pi.part != L_DRUMS && st != PL_STOPPED) {   /* (M4: muted or not; the setting) */
+    if (bt.on && pi.part == L_MELODY) {  /* M8: the chord's tones bright, the scale's notes at the middle level, the next
+                                          * chord's dim in its last beat */
+        if (SV(S_LIGHTS) && st != PL_STOPPED) {
+            ui.lit_keys = keys_of(player_stats.tone_mask);
+            ui.mid_keys = keys_of(player_stats.scale_mask & ~player_stats.tone_mask);
+            ui.dim_keys = keys_of(player_stats.next_mask) & ~ui.lit_keys;
+        }
+    } else if (SV(S_LIGHTS) && pi.part != L_DRUMS && st != PL_STOPPED) {   /* (M4: muted or not; the setting) */
         uint32_t keys = 0;
         for (i = 0; i < pi.nnow; i++)
             keys |= key_bit(pi.now[i]);
@@ -3700,11 +3803,18 @@ static void frame_play(uint32_t now)
             scroll_setup(ui.pview);
         view_key = big_key ^ (uint32_t)left << 22 ^ (uint32_t)(ui.pview == PV_CHART ? bar : 0) << 3 ^
                    (uint32_t)bright << 30 ^ (uint32_t)ui.pview << 26 ^ (uint32_t)(next + 1) << 18;
+        if (ui.pview == PV_SCALE_KB || ui.pview == PV_SCALE_FB)   /* (M8: the marking) */
+            view_key ^= (player_stats.scale_mask ^ player_stats.tone_mask << 12 ^ player_stats.next_mask << 20) *
+                        2654435761u ^ SV(S_UKE) << 31;
         if (scroll)                      /* the scrolling views: a redraw for each pixel the song moves */
             view_key ^= (uint32_t)(tb * (240 - ui.sc_x0) / scroll_span()) * 2654435761u;
         if (ui.redraw || view_key != ui.sh_view) {
             if (st == PL_COUNT_IN && count > 0)
                 draw_count_view(count, &pi);
+            else if (ui.pview == PV_SCALE_KB)   /* M8 */
+                draw_scale_kb(&pi, player_stats.scale_mask, player_stats.tone_mask, player_stats.next_mask);
+            else if (ui.pview == PV_SCALE_FB)
+                draw_scale_fb(&pi, player_stats.scale_mask, player_stats.tone_mask, player_stats.next_mask);
             else if (ui.pview == PV_KEYS)
                 draw_keys_view(st, &pi, left, bright || st != PL_PLAYING || !ui.blink, st == PL_STOPPED ? next : k);
             else if (ui.pview == PV_GUITAR)
@@ -3866,7 +3976,9 @@ void app_frame(void)
     if (ui.lib_seen != lib_changes && ui.view != V_MODE && ui.view != V_SYNTH && ui.view != V_WIPE) {   /* songs sent or deleted: back to
                                                                                   * the list, from the top */
         ui.lib_seen = lib_changes;
-        ui.view = V_LIST;
+        ui.view = bt.on ? V_SETUP : V_LIST;   /* (M8: BACKTRACK: its setup, the list again) */
+        if (bt.on)
+            bt_list_build();
         ui.sel = ui.top = 0;
         ui.redraw = 1;
     }
@@ -3918,6 +4030,17 @@ void app_frame(void)
         if (ui.redraw || now - ui.sh_stats_ms >= 500u) {
             draw_help();
             ui.sh_stats_ms = now;
+        }
+        ui.redraw = 0;
+        return;
+    }
+    if (ui.view == V_SETUP) {            /* M8 */
+        uint32_t key = bt_hash();
+        if (ui.redraw || key != bt.shown) {
+            if (ui.redraw)
+                lcd_fill(0, 0, 240, 240, C_BLACK);
+            draw_setup();
+            bt.shown = key;
         }
         ui.redraw = 0;
         return;

@@ -41,6 +41,8 @@ static struct {
 } sy = {.bpm = 120};
 
 static void synth_load(uint32_t i);
+static void bt_enter(void);              /* (bt.c, M8) */
+static void bt_leave(void);
 static void draw_legend(int32_t y, const char *t);   /* (ui.c, below) */
 
 /* the synth settings, in the settings record (ui.c struct settings: synth[]) */
@@ -83,8 +85,8 @@ static void mode_choose(uint32_t m)
         ui.view = V_LIST;
         return;
     }
-    if (m == M_BACKTRACK) {              /* M8: BACKTRACK (Part 4) */
-        app_say("BACKTRACK", "not yet");
+    if (m == M_BACKTRACK) {              /* M8: BACKTRACK (bt.c): its setup */
+        bt_enter();
         return;
     }
     player_stats.mode = 2;
@@ -104,7 +106,9 @@ static void mode_choose(uint32_t m)
 /* back to the mode screen, from either mode */
 static void mode_leave(void)
 {
-    if (vsynth_active()) {
+    if (bt.on) {                         /* M8: BACKTRACK: the song and the synth */
+        bt_leave();
+    } else if (vsynth_active()) {
         uint32_t t = plat_ms();
         synth_drums(0);
         vsynth_stop();                   /* (the song buffer is free again once a render running now has ended: a
@@ -132,6 +136,7 @@ static void mode_input(uint32_t keys, uint32_t btn, uint32_t down)
         sy.mode_sel = (uint32_t)clamp((int32_t)sy.mode_sel + d, 0, (int32_t)MODES - 1);
         ui.redraw = 1;
     }
+    player_stats.mode_sel = sy.mode_sel;
     if (down & (1u << B_PLAY | 1u << B_EDIT))
         mode_choose(sy.mode_sel);
     plat_leds(1u << B_PLAY, 0);

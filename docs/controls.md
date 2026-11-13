@@ -846,3 +846,86 @@ OHH   ................|x...............
 22 E-SITAR (PHASE), 23 POTATO, 24 PARKER, 25 EDS (arp), 26 OUTRUN BASS, 27 MIAMI PAD (PHASE), 28 CHROME ARP (PHASE,
 arp), 29 NEON BELLS (PHASE), 30 VHS STRINGS. All ANALOG unless marked. Level-matched by LEVEL (FX 4: 100 as made,
 half a dB a step).
+
+## M8 (docs/plan-M8.md), part by part
+
+### Part 1: renames (D050)
+
+- **The mode screen**: three choices under the mascot, in this order: **SONG LEARN** (play along a song),
+  **BACKTRACK** (jam over a band), **SYNTH**. The cursor is on SONG LEARN at every power-on and whenever the screen
+  opens again (HOME held 2 s from any mode, or Settings > Switch mode). SELECT moves it (it stops at the ends), PLAY or
+  EDIT chooses.
+- **The splash**: "Notami - SongSidekick", under it only the milestone, "m8" (the version, 0.8.0-m8, stays in the
+  help and `--info`). fm1-base's crash and safe-mode screens and the screen reader use the same name. The USB / MIDI
+  names, the identity (FM-1_4600xxxx) and the package name are unchanged.
+- **Presets**: E-PIANO, E-GUITAR, E-SITAR are presets 1-3; SYNTH starts on preset 1 (E-PIANO). The rest in M7's order:
+  4 NEON PAD, 5 DUSK STRINGS, 6 OCT BOUNCE, 7 SUNSET LEAD, 8 SYNC SCREAM, 9 CHROME BRASS, 10 GLASS PLUCK,
+  11 VAPOR KEYS, 12 RISER, 13 CHIP BLIP, 14 DRIVE BASS, 15 HAZE PAD, 16 LASER ARP, 17 NIGHT DRIVE, 18 SAW STRINGS,
+  19 HORIZON PWM, 20 TAPE CHOIR, 21 STAB 84, 22 GRID PULSE, 23 POTATO, 24 PARKER, 25 EDS, 26 OUTRUN BASS,
+  27 MIAMI PAD, 28 CHROME ARP, 29 NEON BELLS, 30 VHS STRINGS.
+- **Song titles**: twelve-bar-blues is "12-Bar Blues", four-chords "Four Chord Tune" (slugs unchanged; resend both).
+
+![the splash](step-M8/m8p1-splash.png) ![the mode screen](step-M8/m8p1-mode.png)
+
+### Part 2: format 2.2, energy, five new styles (D047, D048)
+
+No new controls. docs/song-format.md 2.7. A section's **energy** (0..2) adds to every generated layer's level in its
+bars (the chorus of a backtrack: +1). Five new styles for the generators (and song.yaml): ROCK, INDIE POP, BOSSA NOVA,
+FUNK, REGGAE (harmony L2/L3 rhythm, bass L4 line, drums L2 groove from M7's ROCK1, POP3, BOSSA, FUNK1, REGGAE).
+
+### Part 3: the 30 backtracks (D046)
+
+songs/backtracks/ (tools/backtracks.py from tools/backtracks.tsv), C major or A minor, a full form: INTRO, VERSE 1
+(x2), CHORUS 1 (x2, +1), VERSE 2, CHORUS 2 (+1), BRIDGE, CHORUS 3 (+1), ENDING; blues: INTRO, 3 rounds (0, +1, +1),
+ENDING. Sent like songs (in SONG LEARN); SONG LEARN never lists them.
+
+### Part 4: BACKTRACK (D046, D048)
+
+**SETUP** (instead of a song list):
+
+| Control | Does |
+|---|---|
+| K1 | the progression (1-30: its number and name; its numerals under it) |
+| K2 | the style: POP, ROCK, INDIE POP, BALLAD, SHUFFLE, STRIDE, WALTZ (3/4), COUNTRY, BOSSA NOVA, FUNK, REGGAE |
+| K3 | the structure: LOOP (the first verse, looped), VERSE/CHORUS (the first verse and chorus, looped), FULL (intro to ending) |
+| K4 | the key (12; major or minor by the progression); the progression's chords in it under it |
+| SELECT | the tempo (each style's own until turned: POP 100, ROCK 120, INDIE POP 110, BALLAD 70, SHUFFLE 96, STRIDE 110, WALTZ 96, COUNTRY 140, BOSSA NOVA 130, FUNK 100, REGGAE 80) |
+| PLAY | starts (the count-in as set) |
+| GLO | help (GLO again: the settings) |
+| HOME held 2 s | the mode screen |
+| keys | the melody sound |
+
+At entry: 1 POP 1, POP, LOOP, C, 100 BPM. The choices are kept until power-off.
+
+**PLAY screen**: SONG LEARN's play screen and controls (the same legend): PLAY play / pause, HOME stop then SETUP, the
+layer buttons (a press: FULL / QUIET / MUTED; held: your part), EDIT the views, SAVE the KEY mode, SELECT the tempo,
+SEQ the loop (A, B, off), ARP the count-in, OCT- / OCT+, GLO help. **K1-K3**: the drums', bass's, harmony's level
+("busier / simpler"; the energy adds on top in a chorus); **K4**: the melody sound (shown for a moment). **LFO** (no
+melody layer: the melody is yours): held, the melody's views again. Every view of drums, bass and harmony works as in
+SONG LEARN.
+
+### Part 5: what can I play now (D049)
+
+- Nothing (or the melody) your part: **SCALE KEYBOARD** (the FM-1's 27 keys, F3-G5) and **SCALE FRETBOARD** (guitar,
+  or ukulele by the "Chord boxes, tab" setting; frets 0-12); EDIT between them. The key and scale on top, the chord now
+  (big) and the next.
+- Marking: the scale's notes (dark amber), the current chord's tones (bright, changing at each chord), the next
+  chord's tones (a ring) in the chord's last beat.
+- The FM-1's key lights: the chord's tones bright, the scale's other notes at the middle level, the next chord's dim
+  in the last beat (Settings > Key lights OFF: none).
+- Settings > **Scale guide**: PENTATONIC (default: major pentatonic for a major progression, minor pentatonic for a
+  minor one, the blues scale for 20-22) / FULL SCALE (major, natural minor; a major-key blues: mixolydian) / CHORD
+  TONES (only the chord).
+
+### Part 6: the melody sound (D049)
+
+The 30 SYNTH presets (as made, arpeggio off) on 4 voices, mixed over the band; the delay's longest time is halved in
+BACKTRACK (0.37 s; a longer note value is halved until it fits). K4 on the play screen chooses; kept until power-off.
+
+The census (D044, tools/m8_test.py m8census):
+
+| Screen | Free buttons (the pop-up) | Every other button's job |
+|---|---|---|
+| BACKTRACK SETUP | FX SCL ENV LFO EDIT SAVE ARP SEQ REC, **HOME** (a short press) | PLAY start, GLO help, OCT +- |
+| BACKTRACK play screen | none | as SONG LEARN's; LFO: the melody yours (held) |
+| Mode screen (no pop-up, D044) | the others do nothing | PLAY / EDIT choose |
