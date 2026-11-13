@@ -332,7 +332,117 @@ def test_m9p4(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m9p1": test_m9p1, "m9p2": test_m9p2, "m9p4": test_m9p4}
+# --------------------------------------------------------------------------------------------- part 7
+SAMPLE_PROGS = (1, 9, 20, 35)                  # POP 1 (37 bars), CANON (65), 12-BAR BLUES (41), MINOR 2-5-1 (37)
+KEYS4 = m8.KEYS4
+
+
+def test_m9census(all_songs, rep):
+    """the button census (D044), BACKTRACK's SETUP and play screen with the M9 map: every button has its job or the pop-up"""
+    lines, st, check = m5.checker("M9: the button census (D044) of SETUP and BACKTRACK's play screen; HOME taps; rescues")
+    names = list(m7.B)
+    jobs = {"SETUP": ({"PLAY", "GLO", "OCTDN", "OCTUP"}, []),
+            "BACKTRACK play": (set(names) - {"SEQ", "SAVE"}, m5.press_raw(4500, "PLAY") + m5.press_raw(4900, "PLAY"))}
+    bad = []
+    for scr, (has, pre) in jobs.items():
+        for b in names:
+            if b in ("GLO", "HOME"):
+                continue
+            t0 = 5600 if pre else 4700
+            r = btrun(f"m9c-{scr[:5]}-{b}", t0 + 600, pre + m5.press_raw(t0, b))
+            pop = r["stats"]["popup_open"] == 1 and r["stats"]["popup_btn"] == m7.B[b]
+            if pop == (b in has):
+                bad.append((scr, b, pop))
+    hm = btrun("m9c-setup-home", 5500, m5.press_raw(4700, "HOME"))
+    check(not bad and hm["stats"]["popup_btn"] == m7.B["HOME"] and hm["stats"]["popup_open"] == 1,
+          f"SETUP: PLAY, GLO, OCT-/OCT+ have jobs, every other button (HOME a tap) the pop-up; BACKTRACK's play screen: "
+          f"every button a job, but SEQ and SAVE (the pop-up; the knobs and PRESETS do their jobs) {bad or ''}")
+    taps = []
+    for k in range(24):
+        t = 4800 + 137 * k
+        taps += [f"{t}:HOME!", f"{t + 40 + k % 3}:HOME^!"]
+    tp = btrun("m9c-home-taps", 9000, m5.press_raw(4500, "PLAY") + taps)
+    check(tp["stats"]["mode_switches"] == 0 and tp["stats"]["ui_view"] in (V_SETUP, V_PLAY),
+          "24 quick HOME taps in BACKTRACK: never the mode screen")
+    md = m5.run("m9c-mode", 4700, [], mode=None)
+    sw = m5.run("m9c-switch", 7000, m5.press_raw(4500, "GLO") + m5.press_raw(4700, "GLO") + ["4900:e0:10"] +
+                m5.press_raw(5300, "PLAY"))
+    hl = btrun("m9c-home-long", 9000, m5.press_raw(4500, "PLAY") + m6.hold_home(6000))
+    check(md["stats"]["ui_view"] == V_MODE and sw["stats"]["ui_view"] == V_MODE and hl["stats"]["ui_view"] == V_MODE,
+          "the mode screen (three choices) after the splash, from Settings > Switch mode, and HOME held 2 s in BACKTRACK; "
+          "the rescues (OCT-+OCT+, REC, GLO+HOME at power-on) are the M8 ones (m8 / m6 suites)")
+    gl = btrun("m9c-help", 5600, m5.press_raw(4600, "GLO"))
+    gp = btrun("m9c-help-play", 6600, m5.press_raw(4500, "PLAY") + m5.press_raw(5600, "GLO"))
+    check(gl["stats"]["ui_view"] == V_HELP and gp["stats"]["ui_view"] == V_HELP,
+          "GLO: the controls of SETUP (m9c-help.png) and of the play screen (m9c-help-play.png)")
+    rep += lines
+    return st["ok"]
+
+
+def test_m9cpu(all_songs, rep):
+    """the budget: every style, FULL, complexity 3 (a chorus plays tier 4), every layer on, the heaviest preset (as made) on
+    4 voices with its effects held in the chorus, at 250 BPM, with a seamless switch (a style change) made in the run: EAS +
+    synth render of a block over the block's time"""
+    lines, st, check = m5.checker("M9 budget: BACKTRACK's CPU worst case (tier 4, a chorus, FULL, a live switch)")
+    from concurrent.futures import ThreadPoolExecutor
+    heavy = PRESETS.index("MIAMI PAD")
+
+    def one(sty):
+        sc = ["4300:e4:1"] + ([f"4350:e3:{sty}"] if sty else []) + ["4400:e1:2", "4450:e0:150"] + \
+            m5.press_raw(4600, "PLAY") + [f"5300:e5:{heavy}", "17000:e3:1"] + [f"17600:{k}" for k in KEYS4] + \
+            [f"24500:{k}^" for k in KEYS4]
+        r = btrun(f"m9cpu-{sty}", 25000, sc)
+        s = r["stats"]
+        return sty, (s["render_max"] + s["synth_render_max"]) / s["budget"], s["render_max"] / s["budget"], \
+            s["synth_voices_max"], s["bt_cplx"], s["swaps"], r["halt"], s["bt_tier_now"]
+    with ThreadPoolExecutor(3) as ex:
+        res = list(ex.map(one, range(11)))
+    worst = max(res, key=lambda x: x[1])
+    lines.append("  - per style (POP ROCK INDIE BALLAD SHUFFLE STRIDE WALTZ COUNTRY BOSSA FUNK REGGAE): " +
+                 ", ".join(f"{v * 100:.0f} % ({nv} v, tier {t}, {sw} sw{', HALT' if h else ''})" for _, v, _, nv, _, sw, h, t in res))
+    check(worst[1] <= 0.60 and all(nv == 4 and sw >= 1 and not h and c == 3 for _, _, _, nv, c, sw, h, _ in res),
+          f"the worst: style {worst[0] + 1}, complexity 3, {PRESETS[heavy]} x 4 voices, a switch in the run: EAS + synth "
+          f"{worst[1] * 100:.0f} % of a block (EAS {worst[2] * 100:.0f} %; limit 60 %)")
+    rep += lines
+    st["worst"] = worst
+    return st["ok"]
+
+
+def test_m9sweep(all_songs, rep):
+    """every style x 3 structures x complexity 1-3 x progressions 1, 9, 20, 35, at 250 BPM, with a live style change and a live
+    progression change in each run: to its end (FULL) or a loop round, no crash, no block over its time, no count-in"""
+    lines, st, check = m5.checker("M9: every style x structure x complexity x 4 progressions, with live changes")
+    from concurrent.futures import ThreadPoolExecutor
+    jobs = [(p, sty, stc, cx) for p in SAMPLE_PROGS for sty in range(11) for stc in range(3) for cx in (1, 2, 3)]
+    bars_of = {p: compiled_bt(p)["bar_count"] for p in SAMPLE_PROGS + tuple(p + 1 for p in SAMPLE_PROGS)}
+
+    def one(j):
+        p, sty, stc, cx = j
+        bpb = 3 if sty == 6 else 4
+        bars = max(bars_of[p], bars_of[p + 1])
+        ms = int(5600 + (bars + 2) * bpb * 60000 / 250 + 3000) if stc == 2 else 17500
+        sc = ([f"4300:e2:{p - 1}"] if p > 1 else []) + ([f"4350:e3:{sty}"] if sty else []) + \
+            ([f"4400:e1:{stc}"] if stc else []) + ([f"4420:e4:{cx - 2}"] if cx != 2 else [])
+        sc += ["4450:e0:150"] + m5.press_raw(4700, "PLAY") + ["6500:e3:1", "10500:e2:1"]   # (two switches: bar 4 / 8, then 8 / 12)
+        r = btrun(f"m9sw-{p}-{sty}-{stc}-{cx}", ms, sc)
+        s = r["stats"]
+        load = (s["render_max"] + s["synth_render_max"]) / s["budget"] if s["budget"] else 9
+        ok = not r["halt"] and load < 1.0 and s["countins"] == 1 and s["swaps"] >= 2 and s["bt_cplx"] == cx and \
+            (s["ends"] >= 1 if stc == 2 else True)
+        return j, ok, load, s["ends"], s["loops"], s["swaps"]
+    with ThreadPoolExecutor(3) as ex:
+        res = list(ex.map(one, jobs))
+    bad = [(j, round(l, 2), e, lp, sw) for j, ok, l, e, lp, sw in res if not ok]
+    worst = max(l for _, _, l, _, _, _ in res)
+    check(not bad, f"{len(res)} runs (11 styles x LOOP, VERSE/CHORUS, FULL x complexity 1-3 x progressions {SAMPLE_PROGS}, 250 "
+                   f"BPM, a style and a progression change in each): each reached its end or looped, switched, no crash, no "
+                   f"count-in, no block over its time (worst {worst * 100:.0f} %) {bad[:5] or ''}")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m9p1": test_m9p1, "m9p2": test_m9p2, "m9p4": test_m9p4, "m9census": test_m9census, "m9cpu": test_m9cpu,
+         "m9sweep": test_m9sweep}
 
 
 def main():

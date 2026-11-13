@@ -219,7 +219,7 @@ static struct {
     uint32_t w_ms;                       /* the last knob turn */
     uint32_t cur;                        /* the half of the song room the version playing is in (bt_song[cur]) */
     uint32_t swaps_seen;                 /* player_swaps() as the UI has taken it */
-    uint8_t sw_pending;                  /* a swap asked of the player, not made yet */
+    uint8_t sw_pending;                  /* a swap asked of the player, not made yet (1); asked to be withdrawn (2) */
     uint32_t sw_prog, sw_style, sw_structure, sw_cplx, sw_key;   /* what it brings */
     uint32_t sw_ms, sw_bar;              /* the knob time it was made for; the bar line (index) it is asked for */
     uint32_t no_ms;                      /* the knob time for which no boundary was left (the song ends first) */

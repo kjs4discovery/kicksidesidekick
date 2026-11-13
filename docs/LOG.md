@@ -814,3 +814,18 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: M9-15 .. M9-20 (decisions-M9.md)
 Next: Part 6 (version, docs), Part 7.
+
+2026-11-13 — Step M9 Part 6 (version, docs) —
+Status: done
+Did:
+- FW_VERSION 0.9.0-m9 (identity FM-1_46000900), the splash's second line "m9"; USB / MIDI names unchanged.
+- docs/controls.md "M9" (the mode screen, SETUP, the play screen, the help screens, the progressions, the census); docs/song-format.md
+  (energy for backtracks only; the tiers of a backtrack, no format change).
+- bt.c: a swap withdrawn after the player has made it is adopted (sw_pending 2: the withdrawal reaches the player first); m9p4 ALL PASS
+  again.
+- tools/m8_test.py: the M8 expectations that the M9 map changed are updated (the structure is ALGO, the key PRESETS, the harmony
+  level 2 at open, 36 backtracks); m8census, m8cpu, m8sweep test M8's map and levels and are superseded by m9census, m9cpu,
+  m9sweep: not in its default set any more (on request still).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 7 (the release build, the full suite once, the install checklist).

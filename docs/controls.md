@@ -851,7 +851,7 @@ half a dB a step).
 
 ### Part 1: renames (D050)
 
-- **The mode screen**: three choices under the mascot, in this order: **SONG LEARN** (play along a song),
+- **The mode screen**: three choices under the mascot, in this order: **SONG LEARN** ("play along a song"; M9: "Play with a song"),
   **BACKTRACK** (jam over a band), **SYNTH**. The cursor is on SONG LEARN at every power-on and whenever the screen
   opens again (HOME held 2 s from any mode, or Settings > Switch mode). SELECT moves it (it stops at the ends), PLAY or
   EDIT chooses.
@@ -939,3 +939,78 @@ The census (D044, tools/m8_test.py m8census):
 | BACKTRACK SETUP | FX SCL ENV LFO EDIT SAVE ARP SEQ REC, **HOME** (a short press) | PLAY start, GLO help, OCT +- |
 | BACKTRACK play screen | none | as SONG LEARN's; LFO: the melody yours (held) |
 | Mode screen (no pop-up, D044) | the others do nothing | PLAY / EDIT choose |
+
+## M9 (docs/plan-M9.md), part by part
+
+Version 0.9.0-m9 (FM-1_46000900), the splash's second line "m9". Screenshots: docs/step-M9/ (the emulator, the final package).
+
+### Part 1: the count-in
+A count-in happens only right after **PLAY from stopped** or **PLAY to go on from a pause**, with the count-in on (ARP lit).
+Once the music has started the player never counts in again, whatever the loop does: a loop that jumps back to before the
+resume point (a pause, a later start point) no longer clicks. Count-in off never clicks.
+
+### Part 2: small fixes
+- **SONG LEARN's folders**: "All songs" and every category count songs only, never the backtracks; a store with only
+  backtracks behaves as an empty store.
+- **The mode screen**: a small title line "modes:" above the three choices, and SONG LEARN's subtitle is "Play with a song".
+- **BACKTRACK's play screen**: the LFO light is on steadily (the melody has no layer; holding LFO makes it your part).
+
+![the mode screen](step-M9/m9p2-mode.png)
+
+### Part 3: the band's tiers (D052)
+A backtrack's drums, bass and harmony each have **4 tiers** of their style (tools/band_styles.txt: the user edits it by ear),
+so the style sets the rhythm of all three layers together at every complexity. Complexity **C** (1 SIMPLE, 2 MEDIUM, 3 BUSY)
+plays tier C in intros, verses and bridges and **tier C + 1 in choruses** (so tier 4 is heard in choruses at BUSY). Tiers 2-4
+put a crash with the kick on a section's first bar (not an intro); tiers 3-4 a snare fill in the last bar of a section that is
+followed by another (tier 4 adds a tom); the last bar holds the chord and the root with a kick and a crash at every tier.
+
+### Part 4: one knob map (D053)
+The same on **SETUP** and on the **play screen**; on SETUP they are the choices (kept until power-off), on the play screen they
+take effect at the next boundary:
+
+| Control | Does | On the play screen, takes effect |
+|---|---|---|
+| K1 | progression (1-36) | at the next phrase boundary |
+| K2 | style (11) | at the next phrase boundary |
+| K3 | complexity: 1 SIMPLE, 2 MEDIUM, 3 BUSY (default 2) | at the next bar line |
+| K4 | melody sound (the 30 presets) | at once |
+| PRESETS | key, a semitone a click, all 12 (the nearest way) | at the next bar line |
+| ALGO | structure: LOOP, VERSE/CHORUS, FULL | at the next phrase boundary |
+| SELECT | tempo | at once |
+
+- **Phrase boundary**: the next bar line where the bar in its section is a multiple of 4, or the loop's wrap, whichever comes first.
+  While a change waits, the top line says **NEXT: <what>** (e.g. NEXT: REGGAE, 15 MINOR POP, FULL); turning the knob again
+  updates the waiting value; turning it back to what plays cancels it; changes due at the same line are made together.
+- **The switch is seamless**: the next version is built while the band plays and the music goes on at the bar line, in the same
+  place of the form (the same section and bar of the new file, else the start of the structure's loop, or the first verse in
+  FULL); there is no count-in. Changing a style to or from WALTZ changes the metre (3/4). Stopped or paused, a change is made at
+  once (the band is loaded again; PLAY starts from the loop's start or the start).
+- **Structure**: playing on inside the new loop, else the new loop's start at the boundary; FULL removes the loop and ends at the
+  ending.
+- **SETUP rows**: K1 PROGRESSION (number, name, a **MAJOR** or **MINOR** badge, the numerals), K2 STYLE, K3 COMPLEXITY, K4
+  SOUND, PRESETS KEY ("C major" / "A minor", the chords in it), ALGO STRUCTURE, SELECT TEMPO.
+- **Play screen top line**: the progression's number and name with its badge, then the style, structure and C1 / C2 / C3;
+  the layers row shows each layer's tier now playing (L1-L4: a chorus shows one more) and FULL / QUIET / MUTED.
+- **Removed from BACKTRACK**: the per-layer level knobs (K1-K3), SONG LEARN's start point and loops (PRESETS by section, ALGO by
+  bar, SEQ), and SAVE's KEY mode (PRESETS does the key): **SEQ and SAVE give the "not implemented" pop-up** on the play screen.
+  Kept: PLAY play / pause, HOME stop then SETUP, the layer buttons (press: FULL / QUIET / MUTED; hold: your part), EDIT views, ARP
+  count-in, OCT-/OCT+, GLO help, LFO held: the melody yours.
+
+![SETUP](step-M9/m9p4-setup.png) ![SETUP, a minor progression](step-M9/m9p4-setup-35.png)
+![the play screen](step-M9/m9p4-play.png) ![a change waiting](step-M9/m9p4-style-next.png)
+![complexity 1 in a chorus](step-M9/m9p4-cplx-chorus.png) ![SETUP help](step-M9/m9p4-help-setup.png)
+![play help](step-M9/m9p4-help-play.png)
+
+### Part 5: progressions (D054)
+Renamed: 6 FIESTA (was LA BAMBA), 13 HEROIC (MARIO), 14 BITTERSWEET (CREEP). New minor progressions: 31 MINOR FOLK
+(i iv v i | bVI bVII i i), 32 EPIC (i bIII bVII iv), 33 AEOLIAN (i bVI bVII i), 34 HARMONIC (i bVI iv V), 35 MINOR 2-5-1
+(ii7b5 V7 i i), 36 MINOR FUNK (i7 i7 iv7 iv7). A progression is major or minor by design (no switch): the badge says which.
+
+### The census (D044, tools/m9_test.py m9census)
+
+| Screen | Free buttons (the pop-up) | Every other button's job |
+|---|---|---|
+| BACKTRACK SETUP | FX SCL ENV LFO EDIT SAVE ARP SEQ REC, **HOME** (a short press) | PLAY start, GLO help, OCT +- |
+| BACKTRACK play screen | **SEQ, SAVE** | as SONG LEARN's, FX SCL ENV LFO volume / your part, EDIT views, ARP count-in, REC tempo mode, HOME stop; LFO: the melody yours (held) |
+| Mode screen (no pop-up, D044) | the others do nothing | PLAY / EDIT choose |
+| SONG LEARN, SYNTH | unchanged (M7, M8) | |

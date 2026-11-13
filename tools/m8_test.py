@@ -191,14 +191,16 @@ def test_m8p4(all_songs, rep):
     lines, st, check = m5.checker("M8 part 4: BACKTRACK, setup and play")
     s0 = btrun("m8p4-setup", 5000, [])
     s = s0["stats"]
-    check(s["ui_view"] == V_SETUP and s["mode"] == 3 and s["bt_n"] == 30 and s["bt_prog"] == 1 and s["bt_style"] == 0
+    check(s["ui_view"] == V_SETUP and s["mode"] == 3 and s["bt_n"] == len(BTS) and s["bt_prog"] == 1 and s["bt_style"] == 0
           and s["bt_structure"] == 0 and s["bt_key"] == 0 and s["bt_bpm"] == 100,
-          f"SETUP at entry: 30 backtracks, 1 POP 1, POP, LOOP, C, 100 BPM (m8p4-setup.png) "
+          f"SETUP at entry: {len(BTS)} backtracks, 1 POP 1, POP, LOOP, C, 100 BPM (m8p4-setup.png) "
           f"[{s['bt_n']}, {s['bt_prog']}, {s['bt_style']}, {s['bt_structure']}, {s['bt_key']}, {s['bt_bpm']}]")
-    t = btrun("m8p4-turn", 5600, ["4500:e2:14", "4700:e3:6", "4900:e4:1", "5100:e5:3"])
+    # (M9, D053: the one knob map: K3 the complexity, K4 the melody sound, PRESETS the key, ALGO the structure; m9p4 checks
+    # every row; here the choices the M8 checks go on from)
+    t = btrun("m8p4-turn", 5600, ["4500:e2:14", "4700:e3:6", "4900:e1:1", "5100:e6:3"])
     s = t["stats"]
     check(s["bt_prog"] == 15 and s["bt_style"] == 6 and s["bt_structure"] == 1 and s["bt_key"] == 3 and s["bt_bpm"] == 96,
-          f"K1 +14: 15 MINOR POP; K2 +6: WALTZ (its tempo 96); K3: VERSE/CHORUS; K4 +3: the key 3 up "
+          f"K1 +14: 15 MINOR POP; K2 +6: WALTZ (its tempo 96); ALGO: VERSE/CHORUS; PRESETS +3: the key 3 up "
           f"(m8p4-turn.png) [{s['bt_prog']}, {s['bt_style']}, {s['bt_structure']}, {s['bt_key']}, {s['bt_bpm']}]")
     tp = btrun("m8p4-tempo", 5600, ["4500:e0:7", "4700:e3:1"])
     check(tp["stats"]["bt_bpm"] == 107, f"SELECT: the tempo (+7: 107); a style turned after it keeps it "
@@ -209,10 +211,10 @@ def test_m8p4(all_songs, rep):
           "the choices kept: BACKTRACK left (HOME held) and chosen again: the same progression and style")
     # PLAY: LOOP = the first verse (bars 5-12 of a 37-bar backtrack); VERSE/CHORUS = verse 1 and chorus 1 (5-20)
     lp = btrun("m8p4-loop", 9000, m5.press_raw(4500, "PLAY"))
-    vc = btrun("m8p4-vc", 9000, ["4400:e4:1"] + m5.press_raw(4500, "PLAY"))
-    fu = btrun("m8p4-full", 9000, ["4400:e4:2"] + m5.press_raw(4500, "PLAY"))
+    vc = btrun("m8p4-vc", 9000, ["4400:e1:1"] + m5.press_raw(4500, "PLAY"))
+    fu = btrun("m8p4-full", 9000, ["4400:e1:2"] + m5.press_raw(4500, "PLAY"))
     a, b, f = lp["stats"], vc["stats"], fu["stats"]
-    check(a["ui_view"] == V_PLAY and a["starts"] == 1 and m7.level(a, 2) == 1 and
+    check(a["ui_view"] == V_PLAY and a["starts"] == 1 and m7.level(a, 2) == 2 and
           (m5_loop(a) == (4 * 1920, 12 * 1920)), f"PLAY: plays; LOOP loops the first verse, bars 5-12 "
           f"({m5_loop(a)}; m8p4-loop.png)")
     check(m5_loop(b) == (4 * 1920, 20 * 1920), f"VERSE/CHORUS: verse 1 and chorus 1, bars 5-20 ({m5_loop(b)})")
@@ -230,10 +232,10 @@ def test_m8p4(all_songs, rep):
     check(wz["stats"]["bt_metre"] == 3 and wz["stats"]["bt_style_now"] == 0 and m5_loop(wz["stats"]) ==
           (4 * 1440, 12 * 1440), f"WALTZ: the backtrack in 3/4 (loop bars 5-12 at 1,440 ticks a bar; m8p4-waltz.png)")
     # the key: K4 +3 (Eb): the harmony sounds 3 up; the chords spelled in Eb
-    ky = btrun("m8p4-key", 9000, ["4400:e5:3"] + m5.press_raw(4600, "PLAY"))
+    ky = btrun("m8p4-key", 9000, ["4400:e6:3"] + m5.press_raw(4600, "PLAY"))
     kk = ky["stats"]
     check(kk["transpose"] == 3 and kk["note_on_last"][2] % 12 in (3, 7, 10, 2, 5),
-          f"K4 +3: the key Eb (transposed {kk['transpose']}); the play screen spells its chords in Eb (m8p4-key.png)")
+          f"PRESETS +3: the key Eb (transposed {kk['transpose']}); the play screen spells its chords in Eb (m8p4-key.png)")
     # the keys: the melody sound (the synth), 4 voices at most
     six = ["C4", "D4", "E4", "F4", "G4", "A4"]
     kz = btrun("m8p4-keys", 9000, m5.press_raw(4500, "PLAY") + [f"7000:{k}" for k in six] +
@@ -292,9 +294,9 @@ def test_m8p5(all_songs, rep):
     bl = btrun("m8p5-blues", 7800, ["4300:e2:19"] + m5.press_raw(4900, "PLAY"))
     check(bl["stats"]["scale_mask"] == pc(0, 3, 5, 6, 7, 10) and bl["stats"]["bt_prog"] == 20,
           f"20 12-BAR BLUES: the blues scale (C Eb F Gb G Bb) [{bl['stats']['scale_mask']:#x}] (m8p5-blues.png)")
-    mi = btrun("m8p5-minor", 7800, ["4300:e2:14", "4350:e5:2"] + m5.press_raw(4900, "PLAY"))
+    mi = btrun("m8p5-minor", 7800, ["4300:e2:14", "4350:e6:2"] + m5.press_raw(4900, "PLAY"))
     check(mi["stats"]["scale_mask"] == pc(11, 2, 4, 6, 9) and mi["stats"]["bt_prog"] == 15,
-          f"15 MINOR POP in Bm (K4 +2): B minor pentatonic B D E F# A [{mi['stats']['scale_mask']:#x}]")
+          f"15 MINOR POP in Bm (PRESETS +2): B minor pentatonic B D E F# A [{mi['stats']['scale_mask']:#x}]")
     # the setting: FULL SCALE, CHORD TONES (Settings row 13 from the top: SELECT 12)
     full = btrun("m8p5-full", 9000, m5.press_raw(4400, "GLO") + m5.press_raw(4600, "GLO") + ["4800:e0:12",
                  "5100:e1:1"] + m5.press_raw(5400, "GLO") + m5.press_raw(5800, "PLAY"))
@@ -428,8 +430,11 @@ def test_m8cpu(all_songs, rep):
     return st["ok"]
 
 
+# (M9: m8census, m8cpu and m8sweep test M8's knob map and levels: superseded by tools/m9_test.py m9census, m9cpu, m9sweep;
+# they stay here, on request, for the M8 package)
 PARTS = {"m8p0": test_m8p0, "m8p1": test_m8p1, "m8p4": test_m8p4, "m8p5": test_m8p5, "m8p6": test_m8p6,
          "m8census": test_m8census, "m8cpu": test_m8cpu, "m8sweep": test_m8sweep}
+M9_SUPERSEDED = {"m8census", "m8cpu", "m8sweep"}
 
 
 def main():
@@ -443,7 +448,7 @@ def main():
     if a.pkg:
         m5.PKG = Path(a.pkg).resolve()
     m5.OUT.mkdir(parents=True, exist_ok=True)
-    only = set(a.only.split(",")) if a.only else set(PARTS) - {"m8p0"}   # (m8p0: Part 0's measure, on request)
+    only = set(a.only.split(",")) if a.only else set(PARTS) - {"m8p0"} - M9_SUPERSEDED   # (m8p0: Part 0's measure, on request)
     all_songs = m5.songs()
     m5.prepare_flash()
     if only - {"m8p0"}:

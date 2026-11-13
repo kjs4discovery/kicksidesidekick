@@ -638,24 +638,26 @@ static void bt_live(void)
     uint32_t now = plat_ms();
     int st = player_state();
     static uint32_t late_seen;
-    if (player_swaps() != bt.swaps_seen)
-        bt_adopt();
-    player_stats.bt_want = bt_pending();
-    if (bt.sw_pending && player_swaps_late() != late_seen) {   /* the position had passed it: plan again */
-        player_swap_cancel();
+    if (player_swaps() != bt.swaps_seen)                       /* (a swap the player made: also one asked to be withdrawn */
+        bt_adopt();                                            /* too late: sw_pending 1 or 2 says what it brought) */
+    if (bt.sw_pending == 2u && !player_swap_waiting())         /* the withdrawal has reached the player: nothing is coming */
         bt.sw_pending = 0;
+    player_stats.bt_want = bt_pending();
+    if (bt.sw_pending == 1u && player_swaps_late() != late_seen) {   /* the position had passed it: plan again */
+        player_swap_cancel();
+        bt.sw_pending = 2;
     }
     late_seen = player_swaps_late();
     if (!bt_pending()) {
-        if (bt.sw_pending) {
+        if (bt.sw_pending == 1u) {
             player_swap_cancel();
-            bt.sw_pending = 0;
+            bt.sw_pending = 2;
         }
         return;
     }
-    if (bt.sw_pending && bt.w_ms != bt.sw_ms) {                /* turned again: what was prepared is withdrawn */
+    if (bt.sw_pending == 1u && bt.w_ms != bt.sw_ms) {          /* turned again: what was prepared is withdrawn */
         player_swap_cancel();
-        bt.sw_pending = 0;
+        bt.sw_pending = 2;
     }
     if (bt.sw_pending || player_swap_waiting())                /* (a request the player still holds: wait for it) */
         return;
@@ -688,7 +690,7 @@ static void bt_stats(void)
     player_stats.bt_bpm = bt.bpm;
     player_stats.bt_sound = bt.sound;
     player_stats.bt_cplx = bt.cplx;
-    player_stats.bt_pending_bar = bt.sw_pending ? bt.sw_bar : BT_NONE;
+    player_stats.bt_pending_bar = bt.sw_pending == 1u ? bt.sw_bar : BT_NONE;
     player_stats.synth_preset = bt.sound;
     player_stats.synth_notes = v->notes;
     player_stats.synth_voices_max = v->voices_max;
