@@ -166,3 +166,13 @@ Format (docs/plan-M9.md, "Read this first"): one entry per judgment call the pla
   shows L = the level + the section's energy (a chorus one more) and redraws when the energy changes. The play legend has no SEQ;
   help screens: ENC_SETUP, BTN_SETUP, ENC_BT, BTN_BT.
 - Undo: bt.c draw_setup / bt_top, ui.c draw_layers, legend_play, draw_help.
+
+## M9-21 — Test scope: only the new milestone's tests (Part 7; the user's instruction, for this and future milestones)
+- Situation: the plan says "full suite"; I started m5, m6, m7, m8, m51 and the fuzz as M8 did, then the user said: test only the
+  new milestone.
+- Options: A run every older suite on each milestone's final package (M8's habit); B run only the new milestone's tests
+  (here: m9, plus pytest, which holds the new golden tests, and the short song fuzz that covers the new generators).
+- Chosen: B, as the user told me. The m9 suite already covers the changed behaviour (count-in, SONG LEARN's folders, BACKTRACK).
+  Older suites (m5-m8, m51) are NOT run for M9; the install checklist says so and does not claim they passed on this package.
+  Rule for the future: unless the user asks, run only the current milestone's tests.
+- Undo: run tools/m5_test.py .. m8_test.py, m51_test.py with --pkg on the package.
