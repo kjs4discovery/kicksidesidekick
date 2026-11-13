@@ -45,6 +45,11 @@ static volatile int8_t transpose_want, bass_oct_want;
 static volatile uint8_t hold_want, pub_held;   /* M5: layers held (their streams being rebuilt) */   /* bass_oct: M5, the bass layer this far up (sound only) */
 static volatile int loop_mode_want;
 static volatile uint32_t loop_from_want, loop_to_want;
+/* M9: a swap asked for (player_swap) */
+static const struct song *volatile swap_want_song;
+static volatile int32_t swap_want_at, swap_want_to, swap_want_transpose;
+static volatile int swap_want_loop;
+static volatile uint32_t swap_want_lf, swap_want_lt, swap_want_levels, swap_req, swap_done;
 
 /* ------------------------------------------------------- the interrupt's own state --- */
 static const struct song *song;
@@ -53,17 +58,21 @@ static uint64_t q;                        /* (tick + bias) * DEN */
 static uint32_t bias, inc;                /* inc = ppq * bpm: a frame's worth */
 static uint32_t bpm_cur = 120;
 static int32_t music_from;                /* the count-in ends here: clicks below it, the song's events from it */
+static uint8_t counting;                  /* M9: a count-in is under way: set by a start that schedules one, cleared when the
+                                           * position reaches music_from; clicks and PL_COUNT_IN need it, so a loop jump
+                                           * back below music_from never counts in again */
 static uint32_t idx[SONG_LAYERS];
 static uint8_t var_cur[SONG_LAYERS] = {1, 1, 1, 1};
 static uint8_t hold_cur;
 static uint32_t mute_cur;
 static int32_t transpose_cur, bass_oct_cur;
-static uint8_t counting;                  /* M9: a count-in is under way: set by a start that schedules one, cleared when the
-                                           * position reaches music_from; clicks and PL_COUNT_IN need it, so a loop jump
-                                           * back below music_from never counts in again */
 static uint32_t active[SONG_LAYERS][4];   /* notes sounding, per layer */
 static int loop_mode;
 static int32_t loop_from, loop_to;
+static const struct song *sw_song;        /* M9: a swap waiting for its bar line (the interrupt's copy of the request) */
+static int32_t sw_at, sw_to, sw_transpose;
+static int sw_loop;
+static uint32_t sw_lf, sw_lt, sw_levels;
 static uint8_t click_on;                  /* the count-in note sounding (0: none), on click_ch */
 static uint8_t click_ch = CLICK_CH, click_left;   /* its channel (the beep's: a free one); blocks until it ends */
 static uint32_t budget_left;
@@ -78,6 +87,7 @@ static volatile int32_t pub_from;
 static volatile int pub_loop;
 static volatile int32_t pub_loop_from, pub_loop_to;
 static volatile uint32_t voices_now, voices_max;
+static volatile uint32_t pub_swaps, pub_swaps_late, pub_sw_waiting;
 
 /* ------------------------------------------------------------------------ main loop --- */
 void player_load(const struct song *s)
@@ -162,6 +172,32 @@ void player_loop(int mode, uint32_t from, uint32_t to)
     __asm__ volatile("" ::: "memory");
     loop_req++;
 }
+
+void player_swap(const struct song *next, int32_t at, int32_t to, int loop_mode_, uint32_t loop_from_, uint32_t loop_to_,
+                 int32_t transpose, uint32_t levels)
+{
+    swap_want_song = next;
+    swap_want_at = at;
+    swap_want_to = to;
+    swap_want_loop = loop_mode_;
+    swap_want_lf = loop_from_;
+    swap_want_lt = loop_to_;
+    swap_want_transpose = transpose < -11 ? -11 : transpose > 11 ? 11 : transpose;
+    swap_want_levels = levels;
+    __asm__ volatile("" ::: "memory");
+    swap_req++;
+}
+
+void player_swap_cancel(void)
+{
+    swap_want_song = 0;
+    __asm__ volatile("" ::: "memory");
+    swap_req++;
+}
+
+uint32_t player_swaps(void) { return pub_swaps; }
+uint32_t player_swaps_late(void) { return pub_swaps_late; }
+uint32_t player_swap_waiting(void) { return pub_sw_waiting; }
 
 int player_state(void) { return pub_state; }
 int player_idle(void) { return song_done == song_req && play_done == play_req; }
@@ -503,6 +539,8 @@ static void requests(uint32_t f0)
     if (song_req != song_done) {
         song_done = song_req;
         stop();
+        sw_song = 0;                      /* (M9: a swap waiting is dropped) */
+        pub_sw_waiting = 0;
         song = want_song;
         loop_mode = LOOP_OFF;
         if (song) {
@@ -535,6 +573,18 @@ static void requests(uint32_t f0)
         loop_to = (int32_t)loop_to_want;
         if (loop_to <= loop_from || loop_to > (int32_t)song->end_tick)
             loop_mode = LOOP_OFF;
+    }
+    if (swap_req != swap_done) {          /* M9: a swap asked for (or withdrawn) */
+        swap_done = swap_req;
+        sw_song = swap_want_song;
+        sw_at = swap_want_at;
+        sw_to = swap_want_to;
+        sw_loop = swap_want_loop;
+        sw_lf = swap_want_lf;
+        sw_lt = swap_want_lt;
+        sw_transpose = swap_want_transpose;
+        sw_levels = swap_want_levels;
+        pub_sw_waiting = sw_song != 0;
     }
     if (tempo_want != bpm_cur) {
         set_tempo(tempo_want);
@@ -610,6 +660,56 @@ void player_block(uint32_t n)
     from = tick_of(q);
     q += mul64(n, inc);
     to = tick_of(q);
+    if (sw_song) {                        /* M9: a swap asked for at a bar line (BACKTRACK) */
+        if (state != PL_PLAYING || from >= sw_at) {   /* too late: the main loop plans again */
+            sw_song = 0;
+            player_stats.swaps_late++;
+            pub_swaps_late++;
+            pub_sw_waiting = 0;
+        } else if (to >= sw_at) {
+            uint64_t over = q - q_of(sw_at);          /* the part of this block beyond the line */
+            uint32_t l;
+            run_events(sw_at);
+            log_chords(from, sw_at, f0);
+            release_all();
+            song = sw_song;
+            want_song = sw_song;
+            sw_song = 0;
+            bias = song->bar_ticks * BIAS_BARS;
+            transpose_want = (int8_t)sw_transpose;
+            transpose_cur = sw_transpose;
+            player_stats.transpose = transpose_cur;
+            for (l = 0; l < SONG_LAYERS; l++) {
+                uint32_t v = sw_levels >> 4u * l & 15u;
+                if (song->layer[l].variants && v >= 1u && v <= song->layer[l].variants) {
+                    var_want[l] = (uint8_t)v;
+                    var_cur[l] = (uint8_t)v;
+                }
+            }
+            hold_cur = 0;
+            loop_mode = sw_loop;
+            loop_from = (int32_t)sw_lf;
+            loop_to = (int32_t)sw_lt;
+            if (loop_to <= loop_from || loop_to > (int32_t)song->end_tick)
+                loop_mode = LOOP_OFF;
+            loop_mode_want = loop_mode;
+            loop_from_want = (uint32_t)loop_from;
+            loop_to_want = (uint32_t)loop_to;
+            q = q_of(sw_to) + over;
+            music_from = sw_to;
+            pub_from = sw_to;
+            counting = 0;
+            seek_all(sw_to);
+            from = sw_to;
+            to = tick_of(q);
+            player_stats.swaps++;
+            player_stats.swap_at = (uint32_t)sw_at;
+            player_stats.swap_to = (uint32_t)sw_to;
+            __asm__ volatile("" ::: "memory");
+            pub_swaps++;
+            pub_sw_waiting = 0;
+        }
+    }
     clicks(from, to);
     end = (int32_t)song->end_tick;
     if (loop_mode != LOOP_OFF) {          /* the loop's end; or, playing outside the loop (it was moved), the next bar

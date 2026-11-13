@@ -788,3 +788,29 @@ Did:
 Hardware touched: none
 Questions for the planning chat: M9-13 (names)
 Next: Part 4's commit (the knob map, live switch), then Part 6, 7.
+
+2026-11-13 — Step M9 Part 4 (BACKTRACK: one knob map, changes on the phrase; D053) —
+Status: done
+Did:
+- Switch method (M9-01) A, SEAMLESS: the song room's BACKTRACK part is two halves (BT_HALF 56,448 B); bt_prepare builds a version
+  (song_open + song_restyle + the three layers' level) in the other half while one plays; the player swaps to it at a bar line
+  (player_swap / player_swaps; player.c, in the audio interrupt: events up to the line, notes released, new song, position
+  carried, loop and transposition from the request, levels set; a request the position has passed is dropped).
+- The map on SETUP and on the play screen: K1 progression, K2 style, K3 complexity (1-3, default 2), K4 melody sound, PRESETS key,
+  ALGO structure, SELECT tempo. On PLAY: K4 and SELECT at once; key and complexity at the next bar line; progression, style and
+  structure at the next phrase boundary (the bar in its section a multiple of 4, or the loop's wrap); the top line shows
+  "NEXT: ...", waiting changes together; turning back cancels. SETUP: the 7 rows (MAJOR / MINOR badge); play: top line, layers row
+  with the tier (a chorus one more). SEQ / SAVE: the pop-up; K1-K3 are no longer level knobs, no start point, loops or KEY mode;
+  input_play does not read the knobs (M9-19: found by m9p4: a turn between bt.c's read and input_play's was lost).
+- m9p4 (build/emu/m9/m9p4-*.png): ALL PASS: every row of the map on SETUP; style, progression, structure (LOOP -> FULL; FULL ->
+  LOOP from outside the loop: to the loop's start), complexity (verse tier = C, chorus C+1), key, WALTZ (3/4 from the same bar, the
+  loop in 3/4 ticks), K4 at once, turn-back and cancel, K1+K2 together, K1 (phrase) + K3 (bar) as two switches, SEQ / SAVE pop-ups,
+  stopped changes, progressions 31-36; each with 1 count-in only and no block over its time (worst 27 % of a block).
+- M8's m8p4 / m8p5 / m8p6 / m8census / m8cpu / m8sweep expect M8's map (K3 structure, K4 key, per-layer levels, levels L543): they
+  are superseded by m9p4 / m9census / m9cpu / m9sweep (Part 7); the SONG LEARN parts of m8p4 stay in the m8 suite.
+Learned / measured:
+- bt_prepare of the largest version about 47 ms in the emulator; no xrun while it runs. Image 507,392 B (+14 KB); app space left
+  78,336 B (>= 32 KB). RAM .data+.bss 82,456.
+Hardware touched: none
+Questions for the planning chat: M9-15 .. M9-20 (decisions-M9.md)
+Next: Part 6 (version, docs), Part 7.

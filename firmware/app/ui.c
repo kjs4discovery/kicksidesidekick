@@ -206,11 +206,23 @@ static struct {
     uint8_t on;                          /* BACKTRACK is the mode */
     uint8_t entered;                     /* entered since power-on (the defaults set) */
     uint8_t bpm_turned;                  /* SELECT turned: the tempo stays when the style changes */
-    uint32_t prog, style, structure, key, bpm, sound;   /* the choices (prog: an index into list[]) */
+    uint32_t prog, style, structure, key, bpm, sound;   /* the choices (prog: an index into list[]); on the play screen
+                                          * what is playing now */
+    uint32_t cplx;                       /* M9 (D053): the complexity, 1 SIMPLE .. 3 BUSY (the tier of verses, intros and
+                                          * bridges; choruses one more) */
     uint32_t n;                          /* backtracks found */
     uint8_t list[BT_MAX];                /* their lib indices, by number */
     uint32_t shown;                      /* the setup screen drawn (a hash) */
     uint32_t sound_until;                /* the melody sound's name shown on the play screen until */
+    /* M9: the play screen's live changes (bt.c): what the knobs ask for, and the swap prepared for it */
+    uint32_t w_prog, w_style, w_structure, w_cplx, w_key;
+    uint32_t w_ms;                       /* the last knob turn */
+    uint32_t cur;                        /* the half of the song room the version playing is in (bt_song[cur]) */
+    uint32_t swaps_seen;                 /* player_swaps() as the UI has taken it */
+    uint8_t sw_pending;                  /* a swap asked of the player, not made yet */
+    uint32_t sw_prog, sw_style, sw_structure, sw_cplx, sw_key;   /* what it brings */
+    uint32_t sw_ms, sw_bar;              /* the knob time it was made for; the bar line (index) it is asked for */
+    uint32_t no_ms;                      /* the knob time for which no boundary was left (the song ends first) */
 } bt;
 
 /* a part's views in EDIT's order (M8: BACKTRACK's melody, the player's: the scale views) */
@@ -871,6 +883,10 @@ static void lights(void)
             if (!(ui.muted >> l & 1u))
                 lit |= 1u << LAYER_BUTTON[l];
         }
+        if (bt.on) {                     /* M9: the melody has no layer, but LFO held makes it your part: its light is on */
+            dim |= 1u << LAYER_BUTTON[L_MELODY];
+            lit |= 1u << LAYER_BUTTON[L_MELODY];
+        }
         dim |= 1u << B_ARP | 1u << B_SEQ | 1u << B_HOME;
         if (player_count_in_of())
             lit |= 1u << B_ARP;
@@ -883,10 +899,6 @@ static void lights(void)
             uint32_t ms = in_beat * 60000u / (s->ppq * player_tempo_of());
             if (ms < (beat1 ? FLASH_BAR_MS : FLASH_MS))   /* (M2's mid level for beats 2.. was not visible on the
                                                              * unit: the user saw one flash a bar) */
-        if (bt.on) {                     /* M9: the melody has no layer, but LFO held makes it your part: its light is on */
-            dim |= 1u << LAYER_BUTTON[L_MELODY];
-            lit |= 1u << LAYER_BUTTON[L_MELODY];
-        }
                 lit |= LED_PLAY_GREEN;
             if (((lit | mid) & LED_PLAY_GREEN) && !ui.flashing) {   /* (counted for the tests) */
                 if (beat1)
@@ -907,6 +919,8 @@ static void lights(void)
     player_stats.lit_keys = ui.lit_keys;
     player_stats.dim_keys = ui.dim_keys;
     player_stats.mid_keys = ui.mid_keys;
+    player_stats.btn_lit = lit;
+    player_stats.btn_dim = dim;
     player_stats.loop_step = (uint32_t)ui.loop_step;
     plat_lights(lit, ui.keys | ui.lit_keys, dim, ui.dim_keys & ~(ui.lit_keys | ui.mid_keys), 1);   /* keys pressed:
                                                                                                  * lit as ever */
@@ -919,8 +933,6 @@ static int text_before(const char *p, const char *q)
     while (*p && lower(*p) == lower(*q))
         p++, q++;
     return lower(*p) < lower(*q);
-    player_stats.btn_lit = lit;
-    player_stats.btn_dim = dim;
 }
 
 /* a song's folder name: its category, or "Other"; a song that does not peek: "Other" */
@@ -936,6 +948,15 @@ static const char *song_folder(uint32_t i)
 /* the categories (sorted, at most 16; more: in "All songs" only) and the songs of the folder shown */
 static int lib_is_backtrack(uint32_t i);
 
+/* M9: the songs in the store, the backtracks not counted (SONG LEARN with only backtracks stored is as an empty store) */
+static uint32_t lib_song_count(void)
+{
+    uint32_t i, n = lib_count(), c = 0;
+    for (i = 0; i < n; i++)
+        c += !lib_is_backtrack(i);
+    return c;
+}
+
 static void folders_build(void)
 {
     uint32_t i, k, n = lib_count();
@@ -948,15 +969,6 @@ static void folders_build(void)
             ;
         if (k == ui.nfold && ui.nfold < 16u) {
             for (k = ui.nfold++; k > 0 && text_before(c, ui.fname[k - 1u]); k--)   /* insertion, sorted */
-/* M9: the songs in the store, the backtracks not counted (SONG LEARN with only backtracks stored is as an empty store) */
-static uint32_t lib_song_count(void)
-{
-    uint32_t i, n = lib_count(), c = 0;
-    for (i = 0; i < n; i++)
-        c += !lib_is_backtrack(i);
-    return c;
-}
-
                 text_cat(ui.fname[k], ""), ui.fname[k][0] = 0, text_cat(ui.fname[k], ui.fname[k - 1u]);
             ui.fname[k][0] = 0;
             text_cat(ui.fname[k], c);
@@ -1080,7 +1092,7 @@ static void input_play(uint32_t down, uint32_t now)
             }
             ui.hold_done &= ~(1u << l);
         }
-        d = plat_enc(LAYER_ENC[l]);
+        d = bt.on ? 0 : plat_enc(LAYER_ENC[l]);   /* (M9: BACKTRACK's knobs are bt.c's alone) */
         if (d && ui.s->layer[l].variants) {
             int32_t v = clamp((int32_t)player_variant_of(l) + (d > 0 ? 1 : -1), 1, ui.s->layer[l].variants);
             char t[8] = "LEVEL ";
@@ -1179,7 +1191,7 @@ static void input_play(uint32_t down, uint32_t now)
             vsynth_tempo(bt.bpm < 60u ? 60u : bt.bpm > 200u ? 200u : bt.bpm);
         }
     }
-    d = plat_enc(EN_PRESET);
+    d = bt.on ? 0 : plat_enc(EN_PRESET);   /* (M9: PRESETS is the key, bt.c's) */
     if (d && ui.loop_step) {             /* setting the loop: A to a section's first bar, B to a section's last */
         uint32_t *m = ui.loop_step == 1 ? &ui.a_bar : &ui.b_bar, i = song_bar_section(ui.s, *m), lo, hi;
         if (ui.loop_step == 1) {
@@ -1209,7 +1221,7 @@ static void input_play(uint32_t down, uint32_t now)
     } else if (d) {
         app_say("LOOP ON", "SEQ: OFF FIRST");
     }
-    d = plat_enc(EN_ALGO);
+    d = bt.on ? 0 : plat_enc(EN_ALGO);     /* (M9: ALGO is the structure, bt.c's) */
     if (d && ui.loop_step) {             /* setting the loop: A or B, by bar (B at or after A) */
         if (ui.loop_step == 1)
             ui.a_bar = (uint32_t)clamp((int32_t)ui.a_bar + d, (int32_t)first_bar(), (int32_t)last_bar());
@@ -1285,6 +1297,8 @@ static uint32_t learn_jobs(void)
         return j;
     case V_PLAY:                         /* every button, but the layer buttons of layers the song does not have */
         j = ALL_BUTTONS;
+        if (bt.on)                       /* M9: BACKTRACK: no loops, no key mode (the knobs and PRESETS do them) */
+            j &= ~(1u << B_SEQ | 1u << B_SAVE);
         for (l = 0; l < SONG_LAYERS; l++)
             if (!ui.s->layer[l].variants && !(bt.on && l == L_MELODY))   /* (M8: BACKTRACK's melody: yours) */
                 j &= ~(1u << LAYER_BUTTON[l]);
@@ -1564,8 +1578,10 @@ static void input(void)
     else if (ui.view == V_SETUP)         /* M8 */
         bt_setup_input(down);
     else {
-        if (bt.on)
+        if (bt.on) {                     /* M9: BACKTRACK's own knobs (K1-K4, PRESETS, ALGO); SEQ and SAVE: the pop-up */
             bt_play_input(down);
+            down &= ~(1u << B_SEQ | 1u << B_SAVE);
+        }
         input_play(down, now);
     }
     lights();
@@ -1767,15 +1783,20 @@ static void draw_help(void)
                                                {"HOME", "folders"}, {"keys", "play along"}, {"", ""},
                                                {"HOME", "held: mode"},
                                                {"", ""}, {"", ""}, {"", ""}};
-    static const char *const ENC_SETUP[5][2] = {{"K1 / K2", "progression / style"}, {"K3 / K4", "structure / key"},
-                                                {"SELECT", "tempo"}, {"MASTER", "volume"},
-                                                {"OCT- OCT+", "keys' octave"}};   /* M8: BACKTRACK */
-    static const char *const BTN_SETUP[9][2] = {{"PLAY", "start"}, {"keys", "melody sound"}, {"HOME", "held: mode"},
-                                                {"", ""}, {"", ""}, {"", ""}, {"", ""}, {"", ""}, {"", ""}};
-    static const char *const BTN_BT[9][2] = {{"K1-K3", "levels"}, {"K4", "melody sound"}, {"PLAY", "play / pause"},
-                                             {"HOME", "stop, setup"}, {"SEQ", "loop: A, B, off"}, {"ARP", "count-in"},
-                                             {"EDIT", "view"}, {"SAVE", "key (SELECT)"}, {"LFO held", "melody views"}};
-    const char *const (*e)[2] = ui.back == V_PLAY ? ENC : ui.back == V_SETUP ? ENC_SETUP : ENC_LIST;
+    static const char *const ENC_SETUP[5][2] = {{"SELECT", "tempo"}, {"PRESETS", "key"},
+                                                {"ALGORITHM", "structure"}, {"MASTER", "volume"},
+                                                {"OCT- OCT+", "keys' octave"}};   /* M9: BACKTRACK, the one knob map */
+    static const char *const BTN_SETUP[9][2] = {{"K1", "progression"}, {"K2", "style"}, {"K3", "complexity"},
+                                                {"K4", "melody sound"}, {"PLAY", "start"}, {"HOME", "held: mode"},
+                                                {"keys", "melody sound"}, {"", ""}, {"", ""}};
+    static const char *const ENC_BT[5][2] = {{"SELECT", "tempo"}, {"PRESETS", "key (bar)"},
+                                             {"ALGORITHM", "structure*"}, {"MASTER", "volume"},
+                                             {"OCT- OCT+", "keys' octave"}};
+    static const char *const BTN_BT[9][2] = {{"K1", "progression*"}, {"K2", "style*"}, {"K3", "complexity"},
+                                             {"K4", "melody sound"}, {"PLAY", "play / pause"},
+                                             {"HOME", "stop, setup"}, {"ARP", "count-in"},
+                                             {"EDIT", "view"}, {"LFO", "held: melody"}};
+    const char *const (*e)[2] = ui.back == V_PLAY ? (bt.on ? ENC_BT : ENC) : ui.back == V_SETUP ? ENC_SETUP : ENC_LIST;
     const char *const (*b)[2] = ui.back == V_PLAY ? (bt.on ? BTN_BT : BTN) : ui.back == V_SETUP ? BTN_SETUP : BTN_LIST;
     uint32_t r, band;
     char t[48] = "CPU ";
@@ -1801,6 +1822,8 @@ static void draw_help(void)
         }
         cv_text(116, 184 - y0, &FONT_XS, "GLO", C_GRAY);
         cv_text(152, 184 - y0, &FONT_XS, "again: settings", C_HI);
+        if (bt.on && ui.back == V_PLAY)  /* M9: when the changes take effect */
+            cv_text(6, 184 - y0, &FONT_XS, "* next phrase", C_DIM);
 
         if (band) {
             cv_rect(0, 200 - y0, 240, 1, C_LINE);
@@ -1946,6 +1969,13 @@ static void draw_top(int32_t bar, int32_t beat, int st)
     }
     lab_x = 234 - text_w(&FONT_M, lab);
     cv_begin(240, H_TOP, C_BLACK);
+    if (bt.on) {                         /* M9: BACKTRACK: the progression, its badge, the style, structure, complexity */
+        bt_top(lab_x - 12, st);
+        cv_rect(lab_x - 6, 0, 240 - lab_x + 6, H_TOP - 1, C_BLACK);
+        cv_text(lab_x, 4, &FONT_M, lab, st == PL_PLAYING ? C_WHITE : C_GRAY);
+        cv_blit(0, Y_TOP);
+        return;
+    }
     cv_text(6, 1, &FONT_XS, s->title, C_GRAY);
     if (plat_ms() < ui.msg_until) {
         text_cat(t, ui.msg[0]);
@@ -3517,6 +3547,13 @@ static void draw_layers(void)
             frame_rect(x + 1, 4, 53, H_LAYERS - 6, C_HI);
         }
         num_cat(t, player_variant_of(l) > ly->variants ? ly->variants : player_variant_of(l));
+        if (bt.on) {                     /* M9: the tier now playing: the level and the section's energy (a chorus: one more) */
+            uint32_t tier = player_variant_of(l) + ui.s->energy[song_bar_section(ui.s, bar_at(player_tick(0)))];
+            t[1] = (char)('0' + (tier > ly->variants ? ly->variants : tier));
+            t[2] = 0;
+            if (l == 0)
+                player_stats.bt_tier_now = tier > ly->variants ? ly->variants : tier;
+        }
         text_in(x, 55, 3, &FONT_XS, LAYER_SHORT[l], l == mine ? C_HI : on ? C_WHITE : C_AMB);
         if (!on) {
             text_in(x, 55, 16, &FONT_XS, "MUTE", C_AMB);
@@ -3583,6 +3620,13 @@ static void draw_inv(const struct pinfo *pi, int32_t k)
 
 static const char *legend_play(int st)
 {
+    if (bt.on) {                         /* M9: BACKTRACK: no loops, no key mode */
+        if (st == PL_STOPPED)
+            return (plat_ms() / 3000u) & 1u ? "FX-LFO press volume|hold your part" : "PLAY start|HOME setup|GLO help";
+        if (st == PL_PAUSED)
+            return "PLAY go on|HOME stop|GLO help";
+        return "PLAY pause|HOME stop|EDIT view|GLO help";
+    }
     if (ui.keymode_until)
         return "SELECT key|SAVE done";
     if (ui.tempomode_until)              /* M6 */
@@ -3903,6 +3947,8 @@ static void frame_play(uint32_t now)
                                player_variant_of(2) << 10 | player_variant_of(3) << 13 | yours() << 16 |
                                (uint32_t)ui.vol[0] << 18 | (uint32_t)ui.vol[1] << 20 | (uint32_t)ui.vol[2] << 22 |
                                (uint32_t)ui.vol[3] << 24);
+        if (bt.on)                       /* M9: the tier shown moves with the section's energy (a chorus: one more) */
+            lk ^= (int32_t)(ui.s->energy[song_bar_section(ui.s, bar_at(player_tick(0)))] << 27);
         if (ui.redraw || lk != ui.sh_layers) {
             draw_layers();
             ui.sh_layers = lk;

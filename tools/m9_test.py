@@ -27,7 +27,8 @@ btrun, bt_flash, compiled_bt, BTS = m8.btrun, m8.bt_flash, m8.compiled_bt, m8.BT
 # --------------------------------------------------------------------------------------------- stats
 # Part 0's measuring build (tools/patches/m9-part0-measure.patch) is not run from here any more; its numbers are in
 # docs/step-M9-part0-measure.md.
-M9_FIELDS = "countins fold_shown btn_lit btn_dim".split()
+M9_FIELDS = ("countins fold_shown btn_lit btn_dim swaps swaps_late swap_at swap_to bt_cplx bt_want bt_tier_now "
+             "bt_prepares bt_prepare_ms bt_pending_bar").split()
 _stats8 = m5.stats
 
 
@@ -190,7 +191,148 @@ def test_m9p2(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m9p1": test_m9p1, "m9p2": test_m9p2}
+# --------------------------------------------------------------------------------------------- part 4
+B = m7.B
+BAR = 1920                                   # a 4/4 bar's ticks
+STYL = {"POP": 4, "ROCK": 6, "WALTZ": 0}
+LOOP_FROM = 4                                # the first verse of a backtrack starts at bar 4 (an intro of 4 bars)
+
+
+def bt_play(extra, ms, setup=(), fast=True):
+    """BACKTRACK at 250 BPM (a bar 0.96 s; the count-in's bar ends at 5.66 s): SETUP's choices, PLAY at 4.7 s, then extra"""
+    sc = list(setup) + (["4450:e0:150"] if fast else []) + m5.press_raw(4700, "PLAY") + list(extra)
+    return btrun(f"m9p4-{abs(hash(tuple(sc))) % 10**8}", ms, sc)
+
+
+def named(name, extra, ms, setup=(), fast=True):
+    sc = list(setup) + (["4450:e0:150"] if fast else []) + m5.press_raw(4700, "PLAY") + list(extra)
+    return btrun(f"m9p4-{name}", ms, sc)
+
+
+def test_m9p4(all_songs, rep):
+    lines, st, check = m5.checker("M9 part 4: one knob map; changes on the phrase (D053)")
+    from concurrent.futures import ThreadPoolExecutor
+    P = m5.press_raw
+    jobs = {}
+    # ---- SETUP: every row of the map
+    jobs["setup"] = lambda: btrun("m9p4-setup", 5700, ["4500:e2:14", "4600:e3:6", "4700:e4:1", "4800:e5:3", "4900:e6:3",
+                                                     "5000:e1:1", "5100:e0:7"])
+    jobs["setup-clamp-lo"] = lambda: btrun("m9p4-setup-lo", 5000, ["4500:e4:-5"])
+    jobs["setup-clamp-hi"] = lambda: btrun("m9p4-setup-hi", 5000, ["4500:e4:5"])
+    jobs["setup-minor"] = lambda: btrun("m9p4-setup-minor", 5000, ["4500:e2:14"])
+    # ---- PLAY (LOOP: bars 4..11; the phrase boundary after the knob: bar 8, the line 15360)
+    jobs["style"] = lambda: named("style", ["8000:e3:1"], 14000)
+    jobs["style-next"] = lambda: named("style-next", ["8000:e3:1"], 8900)
+    jobs["prog"] = lambda: named("prog", ["8000:e2:3"], 14000)
+    jobs["to-full"] = lambda: named("to-full", ["8000:e1:2"], 15000)
+    jobs["to-loop"] = lambda: named("to-loop", ["17800:e1:-2"], 25000, setup=["4400:e1:2"])
+    jobs["cplx"] = lambda: named("cplx", ["7500:e4:-1"], 10300, setup=["4400:e1:2"])
+    jobs["cplx-chorus"] = lambda: named("cplx-chorus", ["7500:e4:-1"], 19500, setup=["4400:e1:2"])
+    jobs["cplx-chorus3"] = lambda: named("cplx-chorus3", ["7500:e4:1"], 19500, setup=["4400:e1:2"])
+    jobs["key"] = lambda: named("key", ["8000:e6:3"], 11000)
+    jobs["seq"] = lambda: named("seq", P(8000, "SEQ"), 9000)
+    jobs["save"] = lambda: named("save", P(8000, "SAVE"), 9000)
+    jobs["sound"] = lambda: named("sound", ["8000:e5:2"], 9000)
+    jobs["turn-back"] = lambda: named("turn-back", ["8000:e3:1", "8100:e3:-1"], 12000)
+    jobs["cancel"] = lambda: named("cancel", ["8000:e3:1", "8900:e3:-1"], 13000)
+    jobs["together"] = lambda: named("together", ["8000:e2:1", "8050:e3:1"], 14000)
+    jobs["two-classes"] = lambda: named("two-classes", ["9300:e2:1", "9350:e4:1"], 16500)
+    jobs["waltz"] = lambda: named("waltz", ["8000:e3:6"], 14000)
+    jobs["stopped"] = lambda: named("stopped", P(7000, "HOME") + ["8000:e4:1"], 9500)
+    jobs["play-screen"] = lambda: named("play", [], 7600)
+    for pr in range(31, 37):             # Part 5: the six new minor progressions play (and the setup shows them)
+        jobs[f"prog{pr}"] = (lambda pr: lambda: btrun(f"m9p4-prog{pr}", 9000, [f"4300:e2:{pr - 1}"] +
+                                                      m5.press_raw(4700, "PLAY")))(pr)
+    jobs["setup-35"] = lambda: btrun("m9p4-setup-35", 4900, ["4300:e2:34"])
+    jobs["help-setup"] = lambda: btrun("m9p4-help-setup", 5600, P(4600, "GLO"))
+    jobs["help-play"] = lambda: named("help-play", P(7000, "GLO"), 7800)
+    with ThreadPoolExecutor(3) as ex:
+        futs = {k: ex.submit(f) for k, f in jobs.items()}
+        R = {k: f.result()["stats"] for k, f in futs.items()}
+    full = {}
+    S = R["setup"]
+    check(S["ui_view"] == V_SETUP and S["bt_prog"] == 15 and S["bt_style"] == 6 and S["bt_cplx"] == 3 and
+          S["bt_sound"] == 3 and S["bt_key"] == 3 and S["bt_structure"] == 1 and S["bt_bpm"] == 103,
+          f"SETUP: K1 +14 15 MINOR POP, K2 +6 WALTZ, K3 +1 complexity 3, K4 +3 sound 4, PRESETS +3 key 3, ALGO +1 "
+          f"VERSE/CHORUS, SELECT +7 (96 -> 103 BPM) [{S['bt_prog']}, {S['bt_style']}, {S['bt_cplx']}, {S['bt_sound']}, "
+          f"{S['bt_key']}, {S['bt_structure']}, {S['bt_bpm']}] (m9p4-setup.png, m9p4-setup-minor.png)")
+    check(R["setup-clamp-lo"]["bt_cplx"] == 1 and R["setup-clamp-hi"]["bt_cplx"] == 3 and
+          R["setup-minor"]["bt_prog"] == 15, "K3 stops at 1 and at 3 (no wrap)")
+    n_ = lambda k: R[k]
+    check(n_("play-screen")["bt_cplx"] == 2 and n_("play-screen")["swaps"] == 0 and n_("play-screen")["ui_view"] == V_PLAY,
+          "PLAY: complexity 2 (MEDIUM) by default; the play screen (m9p4-play.png)")
+    a = n_("style")
+    check(a["swaps"] == 1 and a["bt_style"] == 1 and a["bt_style_now"] == STYL["ROCK"] and a["swap_at"] == 8 * BAR and
+          a["swap_to"] == 8 * BAR and a["countins"] == 1 and a["clicks"] <= 4 and a["swaps_late"] == 0,
+          f"K2 +1 while playing: ROCK at the phrase boundary, bar 8 (tick {a['swap_at']}), from the same bar "
+          f"({a['swap_to']}), no count-in (count-ins {a['countins']}, clicks {a['clicks']})")
+    nx = n_("style-next")
+    check(nx["bt_want"] == 2 and nx["swaps"] == 0 and nx["bt_style"] == 0 and nx["bt_pending_bar"] in (8, 0xFFFFFFFF),
+          f"before the boundary: the change waits (NEXT: ROCK shown; m9p4-style-next.png) [want {nx['bt_want']:#x}, "
+          f"pending bar {nx['bt_pending_bar']}]")
+    p = n_("prog")
+    check(p["swaps"] == 1 and p["bt_prog"] == 4 and p["swap_at"] == 8 * BAR and p["swap_to"] == 8 * BAR and
+          p["countins"] == 1, f"K1 +3: 4 POP 3 at the phrase boundary, the same section and bar [{p['bt_prog']}, "
+                              f"{p['swap_at']} -> {p['swap_to']}]")
+    f = n_("to-full")
+    check(f["swaps"] == 1 and f["bt_structure"] == 2 and f["bt_loop_from"] == 0 and f["bt_loop_to"] == 0 and
+          f["loops"] == 0, f"ALGO +2: FULL at the phrase boundary: the loop is gone, no wrap "
+                           f"(swap at {f['swap_at']}, loops {f['loops']})")
+    l = n_("to-loop")
+    check(l["swaps"] == 1 and l["bt_structure"] == 0 and l["swap_at"] == 16 * BAR and l["swap_to"] == LOOP_FROM * BAR and
+          l["bt_loop_from"] == LOOP_FROM * BAR, f"FULL in the first chorus, ALGO -2 (LOOP): at its 4th bar (bar 16, tick "
+          f"{l['swap_at']}) the music jumps to the loop's start ({l['swap_to']}; the position was outside the loop)")
+    c1, c2, c3 = n_("cplx"), n_("cplx-chorus"), n_("cplx-chorus3")
+    check(c1["swaps"] == 1 and c1["bt_cplx"] == 1 and c1["bt_tier_now"] == 1 and c1["swap_at"] == c1["swap_to"] and
+          c1["swap_at"] == 3 * BAR, f"K3 -1: complexity 1 at the next bar line (tick "
+          f"{c1['swap_at']}); a verse plays tier 1 (the layers row: L{c1['bt_tier_now']})")
+    check(c2["bt_cplx"] == 1 and c2["bt_tier_now"] == 2 and c3["bt_cplx"] == 3 and c3["bt_tier_now"] == 4,
+          f"a chorus plays one tier above: complexity 1 -> L{c2['bt_tier_now']}, complexity 3 -> L{c3['bt_tier_now']} "
+          f"(m9p4-cplx-chorus.png)")
+    k = n_("key")
+    check(k["swaps"] == 1 and k["bt_key"] == 3 and k["transpose"] == 3 and k["swap_at"] % BAR == 0,
+          f"PRESETS +3: the key Eb at the next bar line (transposed {k['transpose']}; m9p4-key.png)")
+    for nm, btn in (("seq", "SEQ"), ("save", "SAVE")):
+        q = n_(nm)
+        check(q["popup_open"] == 1 and q["popup_btn"] == B[btn] and q["swaps"] == 0,
+              f"{btn} on the play screen: the \"not implemented\" pop-up (m9p4-{nm}.png)")
+    so = n_("sound")
+    check(so["bt_sound"] == 2 and so["swaps"] == 0 and so["bt_want"] == 0, "K4: the melody sound at once, nothing waits")
+    tb, cn = n_("turn-back"), n_("cancel")
+    check(tb["swaps"] == 0 and tb["bt_want"] == 0 and tb["bt_style"] == 0,
+          "turning the knob back to the playing value cancels the waiting change")
+    check(cn["swaps"] == 0 and cn["bt_want"] == 0 and cn["bt_style"] == 0 and cn["swaps_late"] == 0,
+          "turned back after the new version was prepared and asked for: withdrawn, nothing switches")
+    tg = n_("together")
+    check(tg["swaps"] == 1 and tg["bt_prog"] == 2 and tg["bt_style"] == 1 and tg["swap_at"] == 8 * BAR,
+          f"K1 and K2 together: both at the same boundary, one switch [{tg['bt_prog']}, {tg['bt_style']}, swaps "
+          f"{tg['swaps']}]")
+    tw = n_("two-classes")
+    check(tw["swaps"] == 2 and tw["bt_prog"] == 2 and tw["bt_cplx"] == 3 and tw["countins"] == 1,
+          f"K1 (phrase) and K3 (bar) turned together late in the phrase: the complexity at the next bar, the progression "
+          f"at the phrase boundary: {tw['swaps']} switches [{tw['bt_prog']}, {tw['bt_cplx']}]")
+    wz = n_("waltz")
+    check(wz["swaps"] == 1 and wz["bt_metre"] == 3 and wz["bt_style_now"] == STYL["WALTZ"] and wz["swap_to"] == 8 * 1440 and
+          wz["bt_loop_from"] == LOOP_FROM * 1440, f"K2 +6 WALTZ: 3/4 from the same bar (tick {wz['swap_at']} -> "
+                                                  f"{wz['swap_to']}), the loop in 3/4 ticks")
+    sp = n_("stopped")
+    check(sp["swaps"] == 0 and sp["bt_cplx"] == 3 and sp["ui_view"] == V_PLAY,
+          "stopped (HOME): a change is made at once (the band loaded again), the play screen stays")
+    bad = [pr for pr in range(31, 37) if not (n_(f"prog{pr}")["bt_prog"] == pr and n_(f"prog{pr}")["ui_view"] == V_PLAY and
+           all(n_(f"prog{pr}")["notes_on"][l] > 0 for l in range(3)) and n_(f"prog{pr}")["scale_kind"] & 8)]
+    check(not bad and n_("setup-35")["bt_prog"] == 35,
+          f"the six new minor progressions 31-36 play (drums, bass, harmony sound) in A minor {bad or ''} "
+          f"(m9p4-setup-35.png: Bm7b5 E7 Am Am)")
+    rm = max((r["render_max"] + r["synth_render_max"]) / r["budget"] for r in R.values() if r["budget"])
+    check(rm < 1.0, f"no block over its time in any of these runs (worst {rm * 100:.0f} % of a block)")
+    ph = n_("help-play")
+    check(R["help-setup"]["ui_view"] == V_HELP and ph["ui_view"] == V_HELP,
+          "GLO: the help of SETUP and of the play screen, the new map (m9p4-help-setup.png, m9p4-help-play.png)")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m9p1": test_m9p1, "m9p2": test_m9p2, "m9p4": test_m9p4}
 
 
 def main():

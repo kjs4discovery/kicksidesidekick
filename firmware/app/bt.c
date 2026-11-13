@@ -1,32 +1,47 @@
 /* Licence: TBD (see D017) */
-/* M8 (D046, D048, D049): BACKTRACK mode. Included by ui.c (fm1-base's unity build) after synthui.c.
+/* M8 (D046, D048, D049), M9 (D052, D053): BACKTRACK mode. Included by ui.c (fm1-base's unity build) after synthui.c.
  *
  * The backtracks are songs of kind backtrack (format 2.2, FORM) in the song store, sent from the laptop
  * (songs/backtracks/, tools/backtracks.py); SONG LEARN lists only songs, BACKTRACK only these, by their number.
  *
- * SETUP (instead of a song list): K1 the progression (its name and numerals), K2 the style (11), K3 the structure
- * (LOOP, VERSE/CHORUS, FULL), K4 the key (12; the progression's chords in it), SELECT the tempo (the style's own until
- * turned), PLAY starts, GLO help, HOME held 2 s the mode screen. The choices are kept until power-off.
- * PLAY: the backtrack opened (lib_open), played in the style and metre chosen (lib_restyle: WALTZ in 3/4), in the key
- * (player_transpose), at the tempo, its structure as a loop (LOOP: the first verse; VERSE/CHORUS: the first verse and
- * chorus; FULL: the whole file to its ending). Then SONG LEARN's play screen and controls (ui.c input_play), but: HOME
- * (stopped) back to SETUP, K4 the melody sound, the keys play the melody sound.
+ * One knob map on SETUP and on the play screen (M9, D053):
+ *   K1 progression (1-36)   K2 style (11)   K3 complexity (1 SIMPLE, 2 MEDIUM, 3 BUSY)   K4 melody sound (30 presets)
+ *   PRESETS the key (a semitone a click)   ALGO the structure (LOOP, VERSE/CHORUS, FULL)   SELECT the tempo
+ * On SETUP they are the choices (kept until power-off); PLAY opens the backtrack. On the play screen K4 and SELECT act at
+ * once, the others WAIT for a boundary and the top line says "NEXT: ...": the key and the complexity at the next bar
+ * line, the progression, style and structure at the next phrase boundary (a bar where the bar in its section is a
+ * multiple of 4, or the loop's wrap). Waiting changes are made together when they can be.
  *
- * The melody sound (D049, Part 0's numbers): the 30 SYNTH presets on 4 voices, mixed over EAS (synth_band). The song
- * buffer is split: the backtrack's levels in its first BT_SONG_ROOM bytes (lib_room), the synth's effect lines after
- * them with the delay's maximum halved (VS_MEM_BT). */
+ * The switch is SEAMLESS (docs/decisions-M9.md M9-01): the song buffer's BACKTRACK part (BT_SONG_ROOM) is two halves; the
+ * version playing is in one (bt_song[bt.cur]), the next is built in the other while it plays (bt_prepare: song_open,
+ * song_restyle, the three layers' level built; about 60 ms for the largest), and the player swaps to it at the bar line,
+ * sample-exact (player_swap). Nothing counts in (the player's count-in rule). After the switch the music goes on from
+ * the same section and bar of the new file if it has it, else from the start of the structure's loop (or the first
+ * verse, FULL).
+ *
+ * The melody sound (D049): the 30 SYNTH presets on 4 voices, mixed over EAS (synth_band). The song buffer is split: the
+ * band's two halves in its first BT_SONG_ROOM bytes, the synth's effect lines after them with the delay's maximum
+ * halved (VS_MEM_BT). */
 
-#define BT_SONG_ROOM (LIB_DEC_BYTES - VS_MEM_BT)   /* 112,896: every backtrack in every style fits (backtracks.py) */
+#define BT_SONG_ROOM (LIB_DEC_BYTES - VS_MEM_BT)   /* 112,896: two copies of every backtrack in every style fit (backtracks.py) */
+#define BT_HALF (BT_SONG_ROOM / 2u)        /* a version of the band: 56,448 B (the largest need: 54,448) */
 #define BT_VOICES 4u
 enum { BS_LOOP, BS_VERSE_CHORUS, BS_FULL, BS_N };
 #define BT_STYLES 11u
+#define BT_NONE 0xFFFFFFFFu
 static const char *const BT_STYLE_NAME[BT_STYLES] = {"POP", "ROCK", "INDIE POP", "BALLAD", "SHUFFLE", "STRIDE",
                                                      "WALTZ", "COUNTRY", "BOSSA NOVA", "FUNK", "REGGAE"};
 static const uint8_t BT_STYLE_OF[BT_STYLES] = {4, 6, 7, 1, 2, 3, 0, 5, 8, 9, 10};   /* song.h STYL indices */
 static const uint8_t BT_STYLE_BPM[BT_STYLES] = {100, 120, 110, 70, 96, 110, 96, 140, 130, 100, 80};
 #define BT_WALTZ 6u
 static const char *const BT_STRUCT_NAME[BS_N] = {"LOOP", "VERSE/CHORUS", "FULL"};
+static const char *const BT_CPLX_NAME[4] = {"", "SIMPLE", "MEDIUM", "BUSY"};
+#define BT_IDLE_MS 300u                    /* the knobs still this long: the new version is built */
+#define BT_PLAN_MS 250u                    /* the boundary is chosen at least this far ahead (the build takes about 60 ms) */
+#define BT_GUARD_MS 100u                   /* ... and after the build the swap is asked for a line at least this far ahead */
+#define COL_MINOR RGB(96, 156, 240)        /* the MINOR badge (MAJOR: the amber highlight) */
 
+static struct song bt_song[2];             /* the band: the version playing and the one being built */
 
 static const struct lib_item *bt_item(uint32_t k)
 {
@@ -59,27 +74,32 @@ static void bt_list_build(void)
     bt.shown = 0xFFFFFFFFu;
 }
 
-/* the key's name: the progression's tonic moved by the key chosen ("C", "Ebm") */
-static const char *const *bt_names(const struct lib_item *it)
+/* the key the music moves to the nearest way (-5..+6) */
+static int32_t bt_nearest(uint32_t key) { return ((int32_t)key + 5) % 12 - 5; }
+
+/* the key's names: the progression's tonic moved by the key chosen ("C", "Ebm") */
+static const char *const *bt_names(const struct lib_item *it, uint32_t key)
 {
     uint32_t minor = it && it->key_mode == 1u;
-    return names_of(minor ? 9u : 0u, minor, ((int32_t)bt.key + 5) % 12 - 5);
+    return names_of(minor ? 9u : 0u, minor, bt_nearest(key));
 }
 
-static void bt_key_name(char *d, const struct lib_item *it)
+static void bt_key_name(char *d, const struct lib_item *it, uint32_t key, int word)
 {
-    uint32_t minor = it && it->key_mode == 1u, tonic = (minor ? 9u : 0u) + bt.key;
-    text_cat(d, bt_names(it)[tonic % 12u]);
-    if (minor)
+    uint32_t minor = it && it->key_mode == 1u, tonic = (minor ? 9u : 0u) + key;
+    text_cat(d, bt_names(it, key)[tonic % 12u]);
+    if (word)
+        text_cat(d, minor ? " minor" : " major");
+    else if (minor)
         text_cat(d, "m");
 }
 
 /* the numerals before " | " (the verse) as chords in the key chosen: "C G Am F" */
-static void bt_chords(char *d, const struct lib_item *it, uint32_t max)
+static void bt_chords(char *d, const struct lib_item *it, uint32_t max, uint32_t key)
 {
     static const uint8_t DEG[7] = {0, 2, 4, 5, 7, 9, 11};
     const char *p = it ? it->numerals : "";
-    uint32_t tonic = (it && it->key_mode == 1u ? 9u : 0u) + bt.key;
+    uint32_t tonic = (it && it->key_mode == 1u ? 9u : 0u) + key;
     while (*p && *p != '|' && text_len(d) + 8u < max) {
         int flat = 0, minor = 0, deg = -1;
         char q[8] = "";
@@ -109,11 +129,13 @@ static void bt_chords(char *d, const struct lib_item *it, uint32_t max)
             break;
         if (*d)
             text_cat(d, " ");
-        text_cat(d, bt_names(it)[(tonic + DEG[deg] + 12u - (uint32_t)flat) % 12u]);
+        text_cat(d, bt_names(it, key)[(tonic + DEG[deg] + 12u - (uint32_t)flat) % 12u]);
         if (minor)
             text_cat(d, "m");
         if (p[0] == 'm' && p[1] == 'a' && p[2] == 'j' && p[3] == '7')
             text_cat(d, "maj7"), p += 4;
+        else if (p[0] == '7' && p[1] == 'b' && p[2] == '5')   /* ii7b5: half-diminished (M9): Bm7b5 */
+            text_cat(d, "7b5"), p += 3;
         else if (*p == '7')
             text_cat(d, "7"), p++;
         while (*p && *p != ' ' && *p != '|')
@@ -121,21 +143,30 @@ static void bt_chords(char *d, const struct lib_item *it, uint32_t max)
     }
 }
 
+/* a small box with MAJOR or MINOR (text as well as colour), right edge at xr, top at y */
+static void bt_badge(int32_t xr, int32_t y, const struct lib_item *it)
+{
+    int minor = it && it->key_mode == 1u;
+    const char *t = minor ? "MINOR" : "MAJOR";
+    int32_t w = text_w(&FONT_XS, t) + 8;
+    cv_rect(xr - w, y, w, 14, minor ? COL_MINOR : C_HI);
+    cv_text(xr - w + 4, y + 1, &FONT_XS, t, C_BLACK);
+}
+
 /* ------------------------------------------------------------------- the setup screen --- */
-static void bt_row(int32_t y, const char *k, const char *label, const char *value, const felucca_font_t *f,
-                   const char *sub)
+static void bt_row(int32_t y, const char *k, const char *label, const char *value, const char *sub)
 {
     cv_text(6, y, &FONT_XS, k, C_AMB);
     cv_text(30, y, &FONT_XS, label, C_GRAY);
-    cv_text(234 - text_w(f, value), y - 2, f, value, C_WHITE);
+    cv_text(234 - text_w(&FONT_XS, value), y, &FONT_XS, value, C_WHITE);
     if (sub && sub[0])
-        cv_text(234 - text_w(&FONT_XS, sub), y + 18, &FONT_XS, sub, C_HI);
+        cv_text(234 - text_w(&FONT_XS, sub), y + 14, &FONT_XS, sub, C_HI);
 }
 
 static void draw_setup(void)
 {
     const struct lib_item *it = bt_item(bt.prog);
-    char t[48] = "", kn[16] = "", ch[48] = "";
+    char t[48] = "", kn[24] = "", ch[48] = "";
     uint32_t band;
     for (band = 0; band < 2u; band++) {
         int32_t y0 = (int32_t)band * 120;
@@ -151,22 +182,33 @@ static void draw_setup(void)
             text_in(0, 240, 86 - y0, &FONT_XS, "send songs/backtracks/ from", C_GRAY);
             text_in(0, 240, 102 - y0, &FONT_XS, "the laptop (in SONG LEARN)", C_GRAY);
         } else {
+            /* 7 rows in 240 px: the knob labels and values in the small font, the progression's name in the big one */
+            cv_text(6, 27 - y0, &FONT_XS, "K1", C_AMB);
+            cv_text(30, 27 - y0, &FONT_XS, "PROGRESSION", C_GRAY);
+            bt_badge(234, 26 - y0, it);
             t[0] = 0;
             num_cat(t, it ? it->number : 0);
             text_cat(t, "  ");
             text_cat(t, it ? it->title : "?");
-            bt_row(32 - y0, "K1", "PROGRESSION", t, &FONT_B, it ? it->numerals : "");
-            bt_row(76 - y0, "K2", "STYLE", BT_STYLE_NAME[bt.style], &FONT_B, bt.style == BT_WALTZ ? "in 3/4" : "");
-            bt_row(112 - y0, "K3", "STRUCTURE", BT_STRUCT_NAME[bt.structure], &FONT_B, "");
+            cv_text(6, 41 - y0, &FONT_B, t, C_WHITE);
+            cv_text(6, 62 - y0, &FONT_XS, it ? it->numerals : "", C_HI);
+            bt_row(80 - y0, "K2", "STYLE", bt.style == BT_WALTZ ? "WALTZ (3/4)" : BT_STYLE_NAME[bt.style], "");
+            t[0] = 0;
+            num_cat(t, bt.cplx);
+            text_cat(t, " ");
+            text_cat(t, BT_CPLX_NAME[bt.cplx]);
+            bt_row(100 - y0, "K3", "COMPLEXITY", t, "");
+            bt_row(120 - y0, "K4", "SOUND", vsynth_stock(bt.sound)->name, "");
             kn[0] = 0;
-            bt_key_name(kn, it);
+            bt_key_name(kn, it, bt.key, 1);
             ch[0] = 0;
-            bt_chords(ch, it, sizeof ch);
-            bt_row(144 - y0, "K4", "KEY", kn, &FONT_B, ch);
+            bt_chords(ch, it, sizeof ch, bt.key);
+            bt_row(140 - y0, "PRE", "KEY", kn, ch);
+            bt_row(172 - y0, "ALG", "STRUCTURE", BT_STRUCT_NAME[bt.structure], "");
             t[0] = 0;
             num_cat(t, bt.bpm);
             text_cat(t, " BPM");
-            bt_row(186 - y0, "SEL", "TEMPO", t, &FONT_B, "");
+            bt_row(192 - y0, "SEL", "TEMPO", t, "");
         }
         if (plat_ms() < ui.msg_until) {   /* a message (an error opening one) over the lower rows */
             cv_rect(10, 150 - y0, 220, 50, C_BLACK);
@@ -182,7 +224,7 @@ static void draw_setup(void)
 static uint32_t bt_hash(void)
 {
     return bt.prog | bt.style << 6 | bt.structure << 10 | bt.key << 12 | bt.bpm << 16 | bt.n << 24 |
-           (uint32_t)(plat_ms() < ui.msg_until) << 31;
+           (uint32_t)(plat_ms() < ui.msg_until) << 31 ^ bt.cplx << 28 ^ bt.sound << 20;
 }
 
 /* the style's tempo, unless SELECT was turned */
@@ -210,9 +252,10 @@ static void bt_enter(void)
     vsynth_start(dec + BT_SONG_ROOM, sizeof dec - BT_SONG_ROOM);
     vsynth_voices(BT_VOICES);
     synth_band(1);
-    if (!bt.entered) {                   /* the defaults, once a power-on: 1 POP 1, POP, LOOP, C, the style's tempo */
+    if (!bt.entered) {                   /* the defaults, once a power-on: 1 POP 1, POP, C2, LOOP, C, the style's tempo */
         bt.entered = 1;
         bt.prog = bt.style = bt.structure = bt.key = 0;
+        bt.cplx = 2;
         bt.bpm_turned = 0;
         bt.sound = 0;
         bt_style_bpm();
@@ -220,6 +263,7 @@ static void bt_enter(void)
     bt_sound(bt.sound);
     vsynth_tempo(bt.bpm < 60u ? 60u : bt.bpm > 200u ? 200u : bt.bpm);
     bt.on = 1;
+    bt.sw_pending = 0;
     bt_list_build();
     ui.view = V_SETUP;
     ui.redraw = 1;
@@ -238,59 +282,400 @@ static void bt_leave(void)
     bt.on = 0;
 }
 
+/* ------------------------------------------------------------------ the band's versions --- */
+/* a version of the band in half `half` of the song room: backtrack number `prog` in the style, each layer's level
+ * `cplx` built (the choruses' tier above it comes from the file's energy) -> SONG_OK or SONG_E_*. The song playing is in
+ * the other half and is not touched */
+static int bt_prepare(uint32_t half, uint32_t prog, uint32_t style, uint32_t cplx)
+{
+    const struct store_entry *e = store_get(order[bt.list[prog]]);
+    struct song *s = &bt_song[half];
+    uint8_t *base = dec + half * BT_HALF;
+    uint32_t l, at = 0, off[SONG_LAYERS], t0 = plat_ms();
+    int r = song_open(s, store_file(e), e->len, base, BT_HALF);
+    if (r == SONG_OK && song_crc32(store_file(e), e->len, 0) != e->crc)
+        r = SONG_E_CRC;
+    store_yield();
+    if (r == SONG_OK && s->kind != SONG_KIND_BACKTRACK)
+        r = SONG_E_LAYR;
+    if (r == SONG_OK)
+        r = song_restyle(s, BT_STYLE_OF[style], style == BT_WALTZ ? 3u : 4u);
+    store_yield();
+    for (l = 0; l < SONG_LAYERS && r == SONG_OK; l++) {
+        off[l] = at;
+        at += s->layer[l].need * 8u;
+    }
+    if (r == SONG_OK && at > BT_HALF)
+        r = SONG_E_ROOM;
+    for (l = 0; l < SONG_LAYERS && r == SONG_OK; l++)
+        if (s->layer[l].variants) {
+            r = song_build(s, l, cplx, base + off[l], s->layer[l].need * 8u);
+            store_yield();
+        }
+    player_stats.bt_prepares++;
+    player_stats.bt_prepare_ms = plat_ms() - t0;
+    return r;
+}
+
 /* the first section of a role (from section i on), or nsect */
-static uint32_t bt_section(uint32_t role, uint32_t from)
+static uint32_t bt_section_of(const struct song *s, uint32_t role, uint32_t from)
 {
     uint32_t i;
-    for (i = from; i < ui.s->nsect; i++)
-        if (ui.s->role[i] == role)
+    for (i = from; i < s->nsect; i++)
+        if (s->role[i] == role)
             return i;
-    return ui.s->nsect;
+    return s->nsect;
+}
+
+/* the structure's loop in song s: bars *a..*b (LOOP: the first verse; VERSE/CHORUS: it and the first chorus), 0: none
+ * (FULL, or no verse) */
+static int bt_loop_of(const struct song *s, uint32_t structure, uint32_t *a, uint32_t *b)
+{
+    uint32_t v = bt_section_of(s, ROLE_VERSE, 0), c = v < s->nsect ? bt_section_of(s, ROLE_CHORUS, v) : s->nsect;
+    if (structure == BS_FULL || v >= s->nsect)
+        return 0;
+    *a = song_section_first(s, v);
+    *b = structure == BS_VERSE_CHORUS && c < s->nsect ? song_section_first(s, c) + song_section_bars(s, c) - 1u :
+         song_section_first(s, v) + song_section_bars(s, v) - 1u;
+    return 1;
+}
+
+/* the bar of song ns that carries on from bar ob of song o: the same section and bar in it, if it has them; then the
+ * structure's rules: inside the loop play on, else the loop's start; FULL without such a bar: the first verse */
+static uint32_t bt_map_bar(const struct song *o, uint32_t ob, const struct song *ns, uint32_t structure, int *loop_on,
+                           uint32_t *la, uint32_t *lb)
+{
+    uint32_t sec = song_bar_section(o, ob), k = ob - song_section_first(o, sec), bar = BT_NONE;
+    if (sec < ns->nsect && k < song_section_bars(ns, sec))
+        bar = song_section_first(ns, sec) + k;
+    *loop_on = bt_loop_of(ns, structure, la, lb);
+    if (*loop_on) {
+        if (bar == BT_NONE || bar < *la || bar > *lb)
+            bar = *la;
+    } else if (bar == BT_NONE) {
+        uint32_t v = bt_section_of(ns, ROLE_VERSE, 0);
+        bar = v < ns->nsect ? song_section_first(ns, v) : 0;
+    }
+    return bar;
+}
+
+/* the structure's loop for the UI (ui.loop, a_bar, b_bar; the player has it from the swap or set_loop) */
+static void bt_ui_loop(const struct song *s)
+{
+    uint32_t a, b;
+    if (bt_loop_of(s, bt.structure, &a, &b)) {
+        ui.loop = LOOP_BARS;
+        ui.a_bar = a;
+        ui.b_bar = b;
+        set_from_bar(a);
+    } else {
+        ui.loop = LOOP_OFF;
+        set_from_bar(first_bar());
+        ui.from_tick = (int32_t)ui.s->start_tick;
+    }
+    ui.loop_step = 0;
+    ui.sh_strip = -1;
+    ui.sh_view = 0;
 }
 
 static void open_play(const struct song *s);   /* (ui.c) */
 
-/* PLAY on SETUP: the backtrack opened in the style, metre, key, tempo and structure chosen; the play screen */
-static void bt_open(void)
+/* the choices (bt.prog .. bt.key) opened in half `half`, the play screen up, the player stopped */
+static int bt_load(uint32_t half)
 {
     const struct song *s;
-    uint32_t v, c;
+    uint32_t l, a, b;
     int r;
-    if (!bt.n)
-        return;
     lib_release();
-    r = lib_open(bt.list[bt.prog], &s);
-    if (r == SONG_OK)
-        r = lib_restyle(BT_STYLE_OF[bt.style], bt.style == BT_WALTZ ? 3u : 4u);
+    r = bt_prepare(half, bt.prog, bt.style, bt.cplx);
     if (r) {
         app_say("BACKTRACK ERROR", song_error_name(r));
         ui.redraw = 1;
-        return;
+        return r;
     }
+    bt.cur = half;
+    s = &bt_song[half];
     open_play(s);
+    for (l = 0; l < 3u; l++)
+        player_variant(l, bt.cplx);
+    player_stats.levels = bt.cplx | bt.cplx << 4 | bt.cplx << 8;
     player_tempo(bt.bpm);
     vsynth_tempo(bt.bpm < 60u ? 60u : bt.bpm > 200u ? 200u : bt.bpm);
-    ui.key = ((int32_t)bt.key + 5) % 12 - 5;   /* (the nearest way: -5..+6, as the KEY mode) */
+    ui.key = bt_nearest(bt.key);                 /* (the nearest way: -5..+6, as the KEY mode) */
     player_transpose(ui.key);
-    v = bt_section(ROLE_VERSE, 0);
-    c = v < s->nsect ? bt_section(ROLE_CHORUS, v) : s->nsect;
-    if (bt.structure != BS_FULL && v < s->nsect) {   /* LOOP: the first verse; VERSE/CHORUS: it and the first chorus */
-        ui.a_bar = song_section_first(s, v);
-        ui.b_bar = bt.structure == BS_VERSE_CHORUS && c < s->nsect ? song_section_first(s, c) +
-                   song_section_bars(s, c) - 1u : song_section_first(s, v) + song_section_bars(s, v) - 1u;
-        set_from_bar(ui.a_bar);
+    if (bt_loop_of(s, bt.structure, &a, &b)) {   /* LOOP / VERSE/CHORUS: the loop; FULL: none, from the intro */
+        ui.a_bar = a;
+        ui.b_bar = b;
+        set_from_bar(a);
         set_loop(LOOP_BARS);
     }
-    ui.mine = L_MELODY;                  /* (Part 5: nothing is your part: the melody's scale views) */
+    ui.mine = L_MELODY;                  /* (nothing is your part: the melody's scale views) */
     ui.pview = (int)view_ok(L_MELODY, PV_SCALE_KB);
     player_stats.view = (uint32_t)ui.pview;
     ui.view = V_PLAY;
     ui.redraw = 1;
+    bt.w_prog = bt.prog;
+    bt.w_style = bt.style;
+    bt.w_structure = bt.structure;
+    bt.w_cplx = bt.cplx;
+    bt.w_key = bt.key;
+    bt.sw_pending = 0;
+    bt.swaps_seen = player_swaps();
+    return 0;
+}
+
+/* PLAY on SETUP: the backtrack opened in the style, metre, key, tempo, complexity and structure chosen; the play screen */
+static void bt_open(void)
+{
+    if (!bt.n || bt_load(0))
+        return;
     player_start(start_point(), player_count_in_of());   /* (PLAY starts: the count-in as set) */
     app_say(BT_STRUCT_NAME[bt.structure], BT_STYLE_NAME[bt.style]);
 }
 
-/* the tests' view (player.h, M8) */
+/* ------------------------------------------------------------------- changes while it plays --- */
+static uint32_t bt_pending(void)
+{
+    return (uint32_t)(bt.w_prog != bt.prog) | (uint32_t)(bt.w_style != bt.style) << 1 |
+           (uint32_t)(bt.w_structure != bt.structure) << 2 | (uint32_t)(bt.w_cplx != bt.cplx) << 3 |
+           (uint32_t)(bt.w_key != bt.key) << 4;
+}
+#define BT_PHRASE_CLASS 7u                 /* progression, style, structure: at the next phrase boundary */
+#define BT_BAR_CLASS 24u                   /* complexity, key: at the next bar line */
+
+/* what waits, for the top line: "REGGAE, 15 MINOR POP, FULL" (as many as fit in `room` pixels, then "+n") */
+static void bt_next_text(char *d, int32_t room)
+{
+    const struct lib_item *it = bt_item(bt.w_prog);
+    char item[5][28];
+    uint32_t pend = bt_pending(), n = 0, i, shown = 0;
+    for (i = 0; i < 5u; i++)
+        item[i][0] = 0;
+    if (pend & 1u) {
+        num_cat(item[n], it ? it->number : 0);
+        text_cat(item[n], " ");
+        text_cat(item[n++], it ? it->title : "?");
+    }
+    if (pend & 2u)
+        text_cat(item[n++], BT_STYLE_NAME[bt.w_style]);
+    if (pend & 4u)
+        text_cat(item[n++], BT_STRUCT_NAME[bt.w_structure]);
+    if (pend & 8u) {
+        text_cat(item[n], "C");
+        num_cat(item[n++], bt.w_cplx);
+    }
+    if (pend & 16u)
+        bt_key_name(item[n++], bt_item(bt.w_prog), bt.w_key, 0);
+    d[0] = 0;
+    text_cat(d, "NEXT: ");
+    for (i = 0; i < n; i++) {
+        char more[8] = "";
+        int32_t w;
+        text_cat(more, " +");
+        num_cat(more, n - i - 1u);
+        w = text_w(&FONT_XS, d) + text_w(&FONT_XS, item[i]) + (i ? text_w(&FONT_XS, ", ") : 0) +
+            (i + 1u < n ? text_w(&FONT_XS, more) : 0);
+        if (w > room && i)
+            break;
+        if (i)
+            text_cat(d, ", ");
+        text_cat(d, item[i]);
+        shown++;
+    }
+    if (shown < n) {
+        text_cat(d, " +");
+        num_cat(d, n - shown);
+    }
+}
+
+/* the play screen's top lines (ui.c draw_top): the progression's number, name and badge; then what waits (NEXT: ...), or
+ * the message, or the style, structure and complexity. avail: the pixels before the bar label */
+static void bt_top(int32_t avail, int st)
+{
+    const struct lib_item *it = bt_item(bt.prog);
+    char t[64] = "";
+    int32_t w;
+    (void)st;
+    num_cat(t, it ? it->number : 0);
+    text_cat(t, " ");
+    text_cat(t, it ? it->title : "?");
+    cv_text(6, 1, &FONT_XS, t, C_GRAY);
+    w = 6 + text_w(&FONT_XS, t) + 6;
+    bt_badge(w + text_w(&FONT_XS, it && it->key_mode == 1u ? "MINOR" : "MAJOR") + 8, 1, it);
+    t[0] = 0;
+    if (bt_pending()) {
+        bt_next_text(t, avail - 6);
+        cv_text(6, 16, &FONT_XS, t, C_HI);
+    } else if (plat_ms() < ui.msg_until) {
+        text_cat(t, ui.msg[0]);
+        text_cat(t, " ");
+        text_cat(t, ui.msg[1]);
+        cv_text(6, 16, &FONT_XS, t, C_WHITE);
+    } else {
+        text_cat(t, BT_STYLE_NAME[bt.style]);
+        text_cat(t, "  ");
+        text_cat(t, BT_STRUCT_NAME[bt.structure]);
+        text_cat(t, "  C");
+        num_cat(t, bt.cplx);
+        cv_text(6, 16, &FONT_XS, t, C_AMB);
+    }
+}
+
+/* the bar line b of the song (bar index) at or after bmin that a change of this class can use: a bar line (bar class), or
+ * a phrase boundary (the bar in its section a multiple of 4, or the loop's wrap); BT_NONE if the song has none left */
+static uint32_t bt_boundary(const struct song *s, uint32_t b, int phrase, int loop_on, uint32_t lb)
+{
+    uint32_t limit = loop_on ? lb + 1u : s->bar_count - 1u;
+    for (; b <= limit; b++) {
+        if (loop_on && b == lb + 1u)
+            return b;                     /* the loop's wrap */
+        if (!phrase || (b - song_section_first(s, song_bar_section(s, b))) % 4u == 0)
+            return b;
+    }
+    return BT_NONE;
+}
+
+/* the changes taken: what plays now is what was prepared; the UI follows the song the player has (ui.s) */
+static void bt_adopt(void)
+{
+    const struct song *s = player_song();
+    bt.swaps_seen = player_swaps();
+    if (bt.sw_pending) {
+        bt.prog = bt.sw_prog;
+        bt.style = bt.sw_style;
+        bt.structure = bt.sw_structure;
+        bt.cplx = bt.sw_cplx;
+        bt.key = bt.sw_key;
+        bt.sw_pending = 0;
+    }
+    bt.no_ms = bt.w_ms - 1u;                 /* (what waits may be due at the next boundary again) */
+    bt.cur = s == &bt_song[1] ? 1u : 0u;
+    ui.s = s;
+    ui.key = bt_nearest(bt.key);
+    bt_ui_loop(s);
+    player_stats.levels = bt.cplx | bt.cplx << 4 | bt.cplx << 8;
+    ui.sh_chord = ui.sh_next = ui.sh_section = -1;
+    ui.sh_layers = -1;
+    ui.sh_top_key = 0xFFFFFFFFu;
+    ui.sh_status = 0xFFFFFFFFu;
+    ui.redraw = 1;
+}
+
+/* a change asked for (the knobs still): the next version built in the other half and the swap asked of the player for
+ * the boundary; the changes of the class that is due, together (the bar class rides along with the phrase class) */
+static void bt_plan(void)
+{
+    const struct song *o = ui.s;
+    uint32_t pend = bt_pending(), phrase = pend & BT_PHRASE_CLASS, barc = pend & BT_BAR_CLASS, bar_t = o->bar_ticks;
+    uint32_t loop_on = ui.loop == LOOP_BARS, lb = ui.b_bar, la = ui.a_bar, bmin, bb, bp = BT_NONE, at_bar, use_phrase;
+    uint32_t prog, style, structure, cplx, key, rebuild, ob, nb, nla = 0, nlb = 0;
+    int32_t now_tick = player_tick(0), at, to;
+    int nloop = 0;
+    const struct song *ns;
+    uint32_t bpm = player_tempo_of();
+    bmin = ((uint32_t)now_tick + BT_PLAN_MS * o->ppq * bpm / 60000u + bar_t - 1u) / bar_t;
+    bb = bt_boundary(o, bmin, 0, (int)loop_on, lb);
+    if (phrase)
+        bp = bt_boundary(o, bmin, 1, (int)loop_on, lb);
+    use_phrase = phrase && bp != BT_NONE && (!barc || bp <= bb);
+    if (!use_phrase && !(barc && bb != BT_NONE)) {   /* nothing can be done before the song ends */
+        bt.no_ms = bt.w_ms;
+        return;
+    }
+    prog = use_phrase ? bt.w_prog : bt.prog;
+    style = use_phrase ? bt.w_style : bt.style;
+    structure = use_phrase ? bt.w_structure : bt.structure;
+    cplx = barc ? bt.w_cplx : bt.cplx;
+    key = barc ? bt.w_key : bt.key;
+    rebuild = prog != bt.prog || style != bt.style || cplx != bt.cplx;
+    ns = o;
+    if (rebuild) {
+        uint32_t h = 1u - bt.cur;
+        int r = bt_prepare(h, prog, style, cplx);
+        if (r) {                          /* (not expected) the changes are dropped */
+            app_say("BACKTRACK ERROR", song_error_name(r));
+            bt.w_prog = bt.prog;
+            bt.w_style = bt.style;
+            bt.w_structure = bt.structure;
+            bt.w_cplx = bt.cplx;
+            bt.w_key = bt.key;
+            return;
+        }
+        ns = &bt_song[h];
+    }
+    /* the line: at least BT_GUARD_MS from now, of the class due */
+    now_tick = player_tick(0);
+    bmin = ((uint32_t)now_tick + BT_GUARD_MS * o->ppq * bpm / 60000u + bar_t - 1u) / bar_t;
+    at_bar = bt_boundary(o, bmin, (int)use_phrase, (int)loop_on, lb);
+    if (at_bar == BT_NONE) {
+        bt.no_ms = bt.w_ms;
+        return;
+    }
+    if (loop_on && at_bar == lb + 1u) {   /* the wrap: the bar that carries on is the loop's first */
+        at = (int32_t)((lb + 1u) * bar_t);
+        ob = la;
+    } else {
+        at = (int32_t)(at_bar * bar_t);
+        ob = at_bar;
+    }
+    nb = bt_map_bar(o, ob, ns, structure, &nloop, &nla, &nlb);
+    to = (int32_t)(nb * ns->bar_ticks);
+    bt.sw_prog = prog;
+    bt.sw_style = style;
+    bt.sw_structure = structure;
+    bt.sw_cplx = cplx;
+    bt.sw_key = key;
+    bt.sw_ms = bt.w_ms;
+    bt.sw_bar = at_bar;
+    bt.sw_pending = 1;
+    player_swap(ns, at, to, nloop ? LOOP_BARS : LOOP_OFF, nla * ns->bar_ticks, (nlb + 1u) * ns->bar_ticks,
+                bt_nearest(key), cplx | cplx << 4 | cplx << 8);
+}
+
+/* the play screen's live changes, each pass of the main loop */
+static void bt_live(void)
+{
+    uint32_t now = plat_ms();
+    int st = player_state();
+    static uint32_t late_seen;
+    if (player_swaps() != bt.swaps_seen)
+        bt_adopt();
+    player_stats.bt_want = bt_pending();
+    if (bt.sw_pending && player_swaps_late() != late_seen) {   /* the position had passed it: plan again */
+        player_swap_cancel();
+        bt.sw_pending = 0;
+    }
+    late_seen = player_swaps_late();
+    if (!bt_pending()) {
+        if (bt.sw_pending) {
+            player_swap_cancel();
+            bt.sw_pending = 0;
+        }
+        return;
+    }
+    if (bt.sw_pending && bt.w_ms != bt.sw_ms) {                /* turned again: what was prepared is withdrawn */
+        player_swap_cancel();
+        bt.sw_pending = 0;
+    }
+    if (bt.sw_pending || player_swap_waiting())                /* (a request the player still holds: wait for it) */
+        return;
+    if (now - bt.w_ms < BT_IDLE_MS || bt.no_ms == bt.w_ms)
+        return;
+    if (st == PL_STOPPED || st == PL_PAUSED) {                 /* not playing: at once (the band stops, as a new open) */
+        bt.prog = bt.w_prog;
+        bt.style = bt.w_style;
+        bt.structure = bt.w_structure;
+        bt.cplx = bt.w_cplx;
+        bt.key = bt.w_key;
+        bt_style_bpm();
+        bt_load(1u - bt.cur);
+        return;
+    }
+    if (st == PL_PLAYING)
+        bt_plan();
+}
+
+/* the tests' view (player.h, M8, M9) */
 static void bt_stats(void)
 {
     const struct vs_stats *v = vsynth_stats();
@@ -302,6 +687,8 @@ static void bt_stats(void)
     player_stats.bt_key = bt.key;
     player_stats.bt_bpm = bt.bpm;
     player_stats.bt_sound = bt.sound;
+    player_stats.bt_cplx = bt.cplx;
+    player_stats.bt_pending_bar = bt.sw_pending ? bt.sw_bar : BT_NONE;
     player_stats.synth_preset = bt.sound;
     player_stats.synth_notes = v->notes;
     player_stats.synth_voices_max = v->voices_max;
@@ -321,23 +708,26 @@ static void bt_stats(void)
     }
 }
 
+static int32_t bt_wrap(int32_t v, int32_t n) { return (v % n + n) % n; }
+
 static void bt_setup_input(uint32_t down)
 {
-    static const uint8_t KE[4] = {EN_K1, EN_K2, EN_K3, EN_K4};
-    int32_t d[4], sel = plat_enc(EN_SELECT);
-    uint32_t k;
-    for (k = 0; k < 4u; k++)
-        d[k] = plat_enc(KE[k]);
-    if (bt.n && d[0])
-        bt.prog = (uint32_t)(((int32_t)bt.prog + d[0]) % (int32_t)bt.n + (int32_t)bt.n) % bt.n;
-    if (d[1]) {
-        bt.style = (uint32_t)(((int32_t)bt.style + d[1]) % (int32_t)BT_STYLES + (int32_t)BT_STYLES) % BT_STYLES;
+    int32_t d1 = plat_enc(EN_K1), d2 = plat_enc(EN_K2), d3 = plat_enc(EN_K3), d4 = plat_enc(EN_K4);
+    int32_t dp = plat_enc(EN_PRESET), da = plat_enc(EN_ALGO), sel = plat_enc(EN_SELECT);
+    if (bt.n && d1)
+        bt.prog = (uint32_t)bt_wrap((int32_t)bt.prog + d1, (int32_t)bt.n);
+    if (d2) {
+        bt.style = (uint32_t)bt_wrap((int32_t)bt.style + d2, (int32_t)BT_STYLES);
         bt_style_bpm();
     }
-    if (d[2])
-        bt.structure = (uint32_t)(((int32_t)bt.structure + d[2]) % (int32_t)BS_N + (int32_t)BS_N) % BS_N;
-    if (d[3])
-        bt.key = (uint32_t)(((int32_t)bt.key + d[3]) % 12 + 12) % 12u;
+    if (d3)
+        bt.cplx = (uint32_t)clamp((int32_t)bt.cplx + d3, 1, 3);
+    if (d4)
+        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)vsynth_presets()));
+    if (dp)
+        bt.key = (uint32_t)bt_wrap((int32_t)bt.key + dp, 12);
+    if (da)
+        bt.structure = (uint32_t)bt_wrap((int32_t)bt.structure + da, (int32_t)BS_N);
     if (sel) {
         bt.bpm = (uint32_t)clamp((int32_t)bt.bpm + sel, (int32_t)PL_BPM_MIN, (int32_t)PL_BPM_MAX);
         bt.bpm_turned = 1;
@@ -347,18 +737,34 @@ static void bt_setup_input(uint32_t down)
     bt_stats();
 }
 
-/* the play screen's own (before input_play): K4 the melody sound, LFO (no melody layer): the melody is yours */
+/* the play screen's own (before input_play, which does not see these): the same knobs as SETUP. K4 and (in input_play)
+ * SELECT act at once, the others wait for their boundary (bt_live). SEQ and SAVE have no job here: the pop-up */
 static void bt_play_input(uint32_t down)
 {
-    int32_t d = plat_enc(EN_K4);
-    if (d) {
-        int32_t n = (int32_t)vsynth_presets();
-        bt_sound((uint32_t)(((int32_t)bt.sound + d) % n + n));
+    int32_t d1 = plat_enc(EN_K1), d2 = plat_enc(EN_K2), d3 = plat_enc(EN_K3), d4 = plat_enc(EN_K4);
+    int32_t dp = plat_enc(EN_PRESET), da = plat_enc(EN_ALGO);
+    uint32_t now = plat_ms();
+    if (bt.n && d1)
+        bt.w_prog = (uint32_t)bt_wrap((int32_t)bt.w_prog + d1, (int32_t)bt.n);
+    if (d2)
+        bt.w_style = (uint32_t)bt_wrap((int32_t)bt.w_style + d2, (int32_t)BT_STYLES);
+    if (d3)
+        bt.w_cplx = (uint32_t)clamp((int32_t)bt.w_cplx + d3, 1, 3);
+    if (dp)
+        bt.w_key = (uint32_t)bt_wrap((int32_t)bt.w_key + dp, 12);
+    if (da)
+        bt.w_structure = (uint32_t)bt_wrap((int32_t)bt.w_structure + da, (int32_t)BS_N);
+    if (d1 || d2 || d3 || dp || da) {
+        bt.w_ms = now;
+        ui.sh_top_key = 0xFFFFFFFFu;
+    }
+    if (d4) {
+        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)vsynth_presets()));
         app_say("MELODY SOUND", vsynth_stock(bt.sound)->name);
-        bt.sound_until = plat_ms() + 1500u;
+        bt.sound_until = now + 1500u;
     }
     if (down >> B_LFO & 1u)
         app_say("MELODY", "you play it");
+    bt_live();
     bt_stats();
 }
-
