@@ -851,3 +851,26 @@ Questions for the planning chat:
   (CANON), M9-21 (test scope: only the new milestone, from now on).
 - Review docs/step-M9-install.md.
 Next: STOP. The user runs docs/step-M9-install.md; Claude Code runs only --info / fm1song list and records.
+
+2026-11-13 — Step M9, m51 on the package, and a correction (planning chat's request) —
+Status: done
+Did:
+- m51 (the timed-flash store test; run as tools/m51_test.py --pkg ... so as not to rebuild) on build/step-M9/fm1acc-0.9.0-m9.fwsc
+  (sha256 8a1c341d..., unchanged). First two runs FAILED 3 checks (the fragmented-store sends and the power-cut re-send): the test's own
+  fixture (make_frag) laid every song one sector apart, and the untracked songs/hallelujah/ (21,864 B, not mine) overwrote itself, leaving
+  a head with a broken body that the store lists UNREADABLE and never tidies. Fixed in tools/m51_test.py (the older live copies and the
+  stale fill take as many sectors as a song needs / skip big songs). Re-run: sends 6/6 and cuts 2/2 PASS, ALL PASS (build/step-M9/emu-m51c);
+  junk and WIPE passed in the earlier run (emu-m51b, 14 PASS). Longest stretch without a watchdog feed 79 ms (goal under 1000), 0 resets, 0
+  XIP reads with the flash command running. Firmware and package not touched.
+- docs/step-M9-install.md: P5 corrected (the flash-ID check was NOT run on this package; no flash / store code changed in M9), the
+  budget's watchdog line and the test results updated.
+- CORRECTION: my attempt to stop the full-suite script (the user said: test only M9) did not take effect, so m8, m7, m6, m5 and a fuzz stage ran
+  anyway: m8 37/0, m7 53/0, m6 21/1 (known Zombie), m5 298/3, fuzz did not start (songs/hallelujah compiles to more than 1.3's EZ limit). Those
+  runs overlapped with my other runs and the m5 / fuzz failures involve songs/hallelujah/ (untracked, the user's) and one m5 check (Happy
+  Birthday's expectation) I did not trace. Not claimed. If the unit shows a problem, run m5-m8 on a clean tree.
+- The 60 s song_fuzz I ran earlier (clean) was before songs/hallelujah/ existed; song_fuzz.sh now stops on that folder's 1.3 compile.
+Hardware touched: none
+Questions for the planning chat:
+- songs/hallelujah/ is an untracked import in the working tree (from the importer fix, 6/8 -> 2/4): do you want it in the repo, ignored, or
+  kept out of the tests? It breaks song_fuzz.sh and some m5 checks as it is.
+Next: STOP. The user installs M9 (step 1); Claude Code runs only --info / fm1song list.

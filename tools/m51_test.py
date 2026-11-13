@@ -106,14 +106,17 @@ def make_frag(empty, out):
     for b in blobs:                                 # the live (older) copies
         o = LO + sec * 4096
         img[o:o + 32 + len(b)] = head(seq, b) + b
-        sec, seq = sec + 1, seq + 1
+        sec, seq = sec + (32 + len(b) + 4095) // 4096, seq + 1   # (M9: a song of several sectors takes them all)
     for b in pblobs:
         o = LO + sec * 4096
         img[o:o + 32 + len(b)] = head(seq, b) + b
         sec, seq = sec + blocks(len(b)) // 8, seq + 1
     k = 0
+    small = [b for b in blobs if 32 + len(b) <= 4096] or blobs   # (M9: a stale copy takes one sector; a song of several sectors
+    # (the untracked songs/hallelujah, 21,864 B) laid at one-sector steps overwrote itself: a head with a broken body, listed
+    # UNREADABLE and never tidied, so the test failed on its own fixture)
     while sec < (HI - LO) // 4096:                  # stale copies: they only take room until tidied
-        b = blobs[k % len(blobs)]
+        b = small[k % len(small)]
         o = LO + sec * 4096
         img[o:o + 32 + len(b)] = head(k, b) + b
         sec, k = sec + 1, k + 1

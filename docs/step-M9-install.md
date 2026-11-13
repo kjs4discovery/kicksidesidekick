@@ -48,7 +48,7 @@ Prepared 2026-11-13 by Claude Code. Rules, pre-flight and restore paths as the a
 | P2 | USB port + cable | ✅ | Port **1-2**, the new cable. A `-110` beyond the usual one = stop and report. |
 | P3 | Restore per D015 | ✅ | `firmware/vendor/fm1-base` unchanged since 98fc08c. |
 | P4 | The package: commit + sha256 + emulator | ✅ | `build/step-M9/fm1acc-0.9.0-m9.fwsc`, sha256 `8a1c341d28eff7ba112463f8e633bc6828a4e703f7fa1e21313fdc8bcde3cf91`, identity FM-1_46000900, built from commit 03ffd12, the same sha256 in two builds. Tested as the user directed (decision M9-21: only the new milestone's tests): see **Test results** below. |
-| P5 | Flash IDs | ✅ | In the M5 suite on this package: 0x856014 and 0xB36014 the same; an unknown one: `NO SONG STORAGE`, a send refused, nothing written. |
+| P5 | Flash IDs | ❌→n/a | **Not run on this package** (the M5 suite, which checks 0x856014 / 0xB36014 / an unknown ID, was skipped by the user's choice, M9-21). No flash, store or flash-ID code changed in M9 (store.c, the settings store and fm1-base are untouched since M8), but this package has not been shown to accept both IDs. Run `tools/m5_test.py --only m5p3,store` if the unit shows a problem. |
 | P6 | Unit state before step 1 | (check) | `--info`: `FM-1_46000800  [running]`. In SAFE MODE: press PLAY ("try again") or power off/on first. |
 | P7 | Fallback package | ✅ | M8, known good on this unit: `build/step-M8/fm1acc-0.8.0-m8.fwsc`, sha256 `19e054002de21a3a204611b553fad6997a944db2f3fa83c08da651725e91665f` (the 36 M9 backtracks then show as errors in M8's BACKTRACK: nothing else is affected). Behind it M7: `build/step-M7/fm1acc-0.7.0-m7.fwsc`, sha256 `8478a955eb29c1de7474274a94ff6d96e4f7e2b0bfb8d98580012764bbfdb512`. |
 | P8 | The songs | ✅ | Ours unchanged. The backtracks: 36 x 2.2, compiled; every one in all 11 styles at all 4 tiers: the FM-1's generators = the laptop's (pytest, 36 x 11 x 3 layers x 4 tiers). |
@@ -64,19 +64,22 @@ Prepared 2026-11-13 by Claude Code. Rules, pre-flight and restore paths as the a
 | The song buffer in BACKTRACK | one version in 112,896 B (largest 54,032 B) | **two versions**, 56,448 B each (the largest 54,448 B: bt28 in COUNTRY), the synth's lines 83,712 B as before |
 | Making a version (the largest) | — | about 47 ms in the emulator (open + restyle + 3 levels), the audio keeps its blocks (m9p4: no block over its time) |
 | The song store (552 blocks) | 13 songs + 30 backtracks: 264 | 13 songs (172) + 36 backtracks (110): **282 blocks**, 270 free |
-| Longest stretch without a watchdog feed (timed emulator) | 92 ms | not re-measured (m51 not run for M9, M9-21); no flash code changed |
+| Longest stretch without a watchdog feed (timed emulator) | 92 ms | **79 ms** (m51 on this package; goal under 1000 ms; 0 watchdog resets, 0 XIP reads while a flash command had it off) |
 
 ## Test results (the full suite, once, on this package)
 
-Only M9's own tests were run (the user's instruction, decisions-M9.md M9-21). **The m5, m6, m7, m8 and m51 suites were NOT run
-on this package**: nothing here claims SONG LEARN, SYNTH or the store passed their older suites on it (earlier in M9 the Part 1
-fast checks m8p4/m8p6, m5p3 and m6p1 passed on a dev build; m6p1 only its known Zombie failure).
+M9's own tests, and (the planning chat's request) the M5.1 timed-flash store test **m51 on this package**. By my mistake the older
+suites m5-m8 also ran once (a stop I asked for did not take effect): m8 37/0, m7 53/0, m6 21/1 (the known Zombie drums 1.68x), m5 298/3. The m5
+failures and a crashed fuzz start come from `songs/hallelujah/` (an untracked import in the working tree, not part of M9: its
+format-1.3 export is too big for the old 1.3 checks) and from one m5 check I did not trace (Happy Birthday's expectation); those runs
+also overlapped with other test runs. Nothing here claims more than the table below.
 
 | Item | Result |
 |---|---|
 | store test (simulated flash, power cut at every operation) | rc 0 |
 | pytest (tools/fm1song) | **203 passed**: the 13 songs' golden tests unchanged; the 36 backtracks x 11 styles x 4 tiers C = Python; the table validator; the importer |
 | vsynth, guitar / ukulele | rc 0 |
+| m51 (timed flash, `make m51-test`'s test, run directly so as not to rebuild) | **ALL PASS**: sends 6/6, power cuts 2/2 at 20 points of 876 flash operations, junk and WIPE; longest stretch without a watchdog feed 79 ms, 0 resets, 0 XIP-off reads. Two runs failed first on the TEST's own fixture (see LOG: a multi-sector song, Hallelujah, laid one sector apart overwrote itself); fixed in tools/m51_test.py, firmware and package unchanged |
 | song_fuzz 60 s | clean (14,000 files in the final run, no sanitizer report) |
 | m9 (tools/m9_test.py, build/step-M9/emu-m9/report.md) | m9p1 count-in 6/6, m9p2 4/4, m9p4 25/25, m9census 4/4, m9cpu 2/2 (worst 44 % of a block), m9sweep: 384 of 396 runs passed in the first run; the 12 that failed (WALTZ, FULL) were a test timing mistake (a run timed for 3-beat bars after the live style change made it 4/4); fixed in the test and those 12 re-run on the same package: all pass (worst 28 %) |
 
