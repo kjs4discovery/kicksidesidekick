@@ -528,3 +528,22 @@ Learned / measured:
 Hardware touched: WRITE (install, delete, send; by the user)
 Questions for the planning chat: none
 Next: Milestone M8 (docs/plan-M8.md), Part 0.
+
+2026-11-12 — Step M8 Part 0 (measure first) —
+Status: done
+Did:
+- tools/m8_test.py m8p0 (on the M7 sources, package 00d850e3…, no behaviour change): the song buffer per song, LEARN
+  with every layer at its top level for 30 s (13 songs, the private ones too), SYNTH's MIAMI PAD x 4 voices.
+Learned / measured:
+- App 479,952 B: 105,776 B free in the slot (585,728). RAM .data+.bss 81,128 of 98,304; pool 289,864 of 344,064.
+- Song buffer (196,608 B) in LEARN: largest Zombie 141,616 B; then Creep 64,752; ours at most 28,128 (Oh! Susanna).
+- LEARN, EAS alone, every layer at its top: busiest Zombie / Creep 18 % of a block (17 / 13 voices); ours 12-15 %.
+- SYNTH, MIAMI PAD x 4 voices: as made 22 %, without delay/reverb 17 %, delay + reverb at their top 22 %, every effect
+  at its top 23 %. Sum with the busiest song: 42 % (limit 60 %).
+- Decision (D049): BACKTRACK's melody sound = the 30 SYNTH presets, 4 voices, mixed over EAS. The song buffer is split:
+  the backtrack's levels first (up to 112,896 B), the synth's effect lines after them with the delay's maximum halved
+  in BACKTRACK (16,384 frames = 0.37 s; 149,248 -> 83,712 B; a longer delay time is halved until it fits, as in M7).
+  tools/backtracks.py checks every backtrack in every style fits that room. GM fallback not needed.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 1 (renames).
