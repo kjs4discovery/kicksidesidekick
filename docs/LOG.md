@@ -516,3 +516,15 @@ Questions for the planning chat:
 - Preset levels: re-level DUSK STRINGS / GLASS PLUCK by the emulator's measure in M7.1, or by the user's ear?
 - The synth UI is 1,856 B bigger than M6's (5 screens instead of 1): acceptable?
 Next: STOP. The user runs docs/step-M7-install.md; Claude Code runs only --info / fm1song list and records.
+
+2026-11-12 — Step M7 install (reported by the user) —
+Status: done
+Did:
+- The user installed 0.7.0-m7 (FM-1_46000700, package sha256 8478a955…bfdb512) and ran docs/step-M7-install.md:
+  all fine. Rockin' deleted on the unit, Zombie resent (2.1); Zombie's quieter lead sounds right.
+- docs/device.md "Currently installed" updated (M7; fallback M6, then M5.1).
+Learned / measured:
+- The user's report only; Claude Code recorded no device outputs.
+Hardware touched: WRITE (install, delete, send; by the user)
+Questions for the planning chat: none
+Next: Milestone M8 (docs/plan-M8.md), Part 0.
