@@ -20,8 +20,9 @@ T="$OUT/v21-saints"
 rm -rf "$T" && cp -r "$ROOT/songs/saints" "$T" && rm -rf "$T/previews"
 sed -i 's/^  bass:$/  bass:\n    start_level: 2/; s/^  harmony:$/  harmony:\n    start_level: 3/' "$T/song.yaml"
 "$ROOT/tools/fm1song.sh" compile "$T" -o "$OUT/saints-v21.fm1s" >/dev/null
-# M8: 2.2 seeds: that copy in FUNK with roles and energy (FORM), and every backtrack (songs/backtracks/)
-sed -i 's/^  style: march/  style: funk/; 0,/chart: \([a-z]*\) }/s//chart: \1, role: verse }/; s/chart: \([a-z]*\) }$/chart: \1, role: chorus, energy: 1 }/' "$T/song.yaml"
+# M8: 2.2 seeds: that copy in FUNK with roles (FORM; M9: energy is for backtracks only), and every backtrack
+# (songs/backtracks/: roles, energy, the tier tables)
+sed -i 's/^  style: march/  style: funk/; 0,/chart: \([a-z]*\) }/s//chart: \1, role: verse }/; s/chart: \([a-z]*\) }$/chart: \1, role: chorus }/' "$T/song.yaml"      # (M9: energy is for backtracks only: the backtracks below)
 "$ROOT/tools/fm1song.sh" compile "$T" -o "$OUT/saints-v22.fm1s" >/dev/null
 for s in "$ROOT"/songs/backtracks/*/; do
   [ -f "$s/song.yaml" ] || continue

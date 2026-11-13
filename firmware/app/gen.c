@@ -11,6 +11,7 @@
  * records of song.h (song_event_get): a note-on and its note-off take the note's 16 bytes. So a level of n notes
  * needs 16 n bytes, and song_open has counted n for every level (struct song_layer need). */
 #include "song.h"
+#include "band_styles.h"            /* M9 (D052): the tier tables of a backtrack (generated: tools/band_styles.py) */
 
 #define PPQ 480u
 #define NOTE_REC 16u
@@ -519,6 +520,196 @@ static void drums(const struct song *s, struct out *o)
     }
 }
 
+/* ------------------------------------------------- BACKTRACK: the tier tables (M9, D052) --- */
+/* A song of kind BACKTRACK has exactly 4 levels in each of drums, bass and harmony: tiers 1..4 of its style's table
+ * (band_styles.h, from tools/band_styles.txt), so the style defines the rhythm of all three layers at every
+ * complexity. Songs of kind SONG never come here. The same rules, in the same order, as tools/fm1song/arrange.py
+ * band_* (tools/fm1song's tests compare them for every backtrack, style and tier). Notes are on the table's own grid:
+ * never swung. A pattern is indexed by the step, repeated from its start if the bar has more steps than it. */
+static uint32_t bs_len(const char *p)
+{
+    uint32_t n = 0;
+    while (p[n])
+        n++;
+    return n;
+}
+
+/* a hit at step i lasts its own step and the '-' after it (to the bar's end) */
+static uint32_t bs_hold(const char *p, uint32_t plen, uint32_t i, uint32_t nsteps)
+{
+    uint32_t n = 1;
+    while (i + n < nsteps && p[(i + n) % plen] == '-')
+        n++;
+    return n;
+}
+
+static void bt_harmony(const struct song *s, struct out *o)
+{
+    const struct band_style *T = &BAND_STYLES[s->style];
+    uint32_t S = T->steps, stk = PPQ / S, bpb = s->beats_per_bar, nsteps = bpb * S, final = s->bar_count - 1u;
+    struct cells it;
+    struct cell c;
+    cells_start(&it, s);
+    while (cells_next(&it, &c)) {
+        uint8_t v1[SONG_VOICING_NOTES], v2[SONG_VOICING_NOTES];
+        uint32_t n1, n2, bar0, start, dur, cend, lv, sec, alt, st, i;
+        if (!c.has)
+            continue;
+        bar0 = c.bar * bpb * PPQ;
+        start = bar0 + c.beat * PPQ;
+        dur = c.len * PPQ;
+        cend = start + dur;
+        n1 = voicing(s, c.ev, 1, v1);
+        n2 = voicing(s, c.ev, 2, v2);
+        sort8(v2, n2);
+        if (c.bar == final) {             /* the last bar: held (CLOSE at tiers 1-2, WIDE at 3-4) */
+            for (lv = 1; lv <= 4u; lv++)
+                for (i = 0; i < (lv <= 2u ? n1 : n2); i++)
+                    note(o, lv, start, dur, lv <= 2u ? v1[i] : v2[i], 64);
+            continue;
+        }
+        sec = song_bar_section(s, c.bar);
+        alt = (c.bar - song_section_first(s, sec)) % 2u;
+        for (lv = 1; lv <= 4u; lv++) {
+            const struct band_tier *tr = &T->tier[lv - 1u];
+            const char *pat = tr->harm[alt];
+            uint32_t plen = bs_len(pat);
+            for (st = c.beat * S; st < (c.beat + c.len) * S && st < nsteps; st++) {
+                char ch = pat[st % plen];
+                uint32_t t, d, vel;
+                if (ch == '-' || ch == '.')
+                    continue;
+                vel = ch == 'x' ? 72u : ch == 'g' ? 44u : 58u;
+                t = bar0 + st * stk;
+                d = bs_hold(pat, plen, st, nsteps) * stk;
+                if (t + d > cend)
+                    d = cend - t;         /* a note is cut at a chord change */
+                if (ch == 'l' || ch == 'm' || ch == 'h') {
+                    note(o, lv, t, d, ch == 'l' ? v2[0] : ch == 'm' ? v2[n2 / 2u] : v2[n2 - 1u], vel);
+                } else if (tr->voicing == BV_CLOSE) {
+                    for (i = 0; i < n1; i++)
+                        note(o, lv, t, d, v1[i], vel);
+                } else {                  /* WIDE, or UPPER: without its lowest note */
+                    for (i = tr->voicing == BV_UPPER && n2 >= 2u ? 1u : 0u; i < n2; i++)
+                        note(o, lv, t, d, v2[i], vel);
+                }
+            }
+        }
+    }
+}
+
+static void bt_bass(const struct song *s, struct out *o)
+{
+    const struct band_style *T = &BAND_STYLES[s->style];
+    uint32_t S = T->steps, stk = PPQ / S, bpb = s->beats_per_bar, nsteps = bpb * S, final = s->bar_count - 1u;
+    struct cells it, ahead;
+    struct cell c, nc;
+    cells_start(&it, s);
+    while (cells_next(&it, &c)) {
+        uint32_t bar0, start, dur, cend, root, fifth, third, nxt, lv, sec, alt, st, mask, rootpc;
+        if (!c.has)
+            continue;
+        bar0 = c.bar * bpb * PPQ;
+        start = bar0 + c.beat * PPQ;
+        dur = c.len * PPQ;
+        cend = start + dur;
+        root = bass_root(s, c.ev);
+        fifth = root + 7u <= 40u ? root + 7u : root - 5u;
+        rootpc = song_cevt_root(s, c.ev);
+        mask = song_cevt_mask(s, c.ev);
+        third = root + ((mask >> ((rootpc + 3u) % 12u) & 1u) ? 3u : 4u);
+        nxt = root;                       /* the next chord's (N.C. skipped) */
+        ahead = it;
+        while (cells_next(&ahead, &nc))
+            if (nc.has) {
+                nxt = bass_root(s, nc.ev);
+                break;
+            }
+        if (c.bar == final) {
+            for (lv = 1; lv <= 4u; lv++)
+                note(o, lv, start, dur, root, 84);
+            continue;
+        }
+        sec = song_bar_section(s, c.bar);
+        alt = (c.bar - song_section_first(s, sec)) % 2u;
+        for (lv = 1; lv <= 4u; lv++) {
+            const char *pat = T->tier[lv - 1u].bass[alt];
+            uint32_t plen = bs_len(pat);
+            for (st = c.beat * S; st < (c.beat + c.len) * S && st < nsteps; st++) {
+                char ch = pat[st % plen];
+                uint32_t t, d, vel, p;
+                if (ch == '-' || ch == '.')
+                    continue;
+                vel = ch >= 'a' ? 68u : 88u;
+                switch (ch & ~0x20) {
+                case 'R': p = root; break;
+                case 'F': p = fifth; break;
+                case 'O': p = root + 12u; break;
+                case 'T': p = third; break;
+                case 'N': p = nxt; break;
+                default: p = nxt - 1u; break;   /* A: a semitone below the next chord's root */
+                }
+                t = bar0 + st * stk;
+                d = bs_hold(pat, plen, st, nsteps) * stk;
+                if (t + d > cend)
+                    d = cend - t;
+                note(o, lv, t, d, p, vel);
+            }
+        }
+    }
+}
+
+static void bt_drums(const struct song *s, struct out *o)
+{
+    static const uint8_t DRUM[8] = {36, 38, 42, 46, 37, 39, 51, 45};   /* K S H O R C Y T */
+    const struct band_style *T = &BAND_STYLES[s->style];
+    uint32_t S = T->steps, stk = PPQ / S, bpb = s->beats_per_bar, nsteps = bpb * S, final = s->bar_count - 1u, b, lv, r, st;
+    for (b = 0; b < s->bar_count; b++) {
+        uint32_t t0 = b * bpb * PPQ, sec, first, alt, lastbar;
+        if (b == 0 && s->pickup_beats)
+            continue;                     /* (a backtrack has none) */
+        if (b == final) {                 /* the last bar: a kick and a crash, at every tier */
+            for (lv = 1; lv <= 4u; lv++) {
+                raw(o, lv, t0, t0 + 60u, KICK, 96);
+                raw(o, lv, t0, t0 + 60u, CRASH, 90);
+            }
+            continue;
+        }
+        sec = song_bar_section(s, b);
+        first = song_section_first(s, sec);
+        alt = (b - first) % 2u;
+        lastbar = b == first + song_section_bars(s, sec) - 1u && sec + 1u < s->nsect && s->role[sec] != ROLE_ENDING;
+        for (lv = 1; lv <= 4u; lv++) {
+            int fill = lv >= 3u && lastbar;
+            for (r = 0; r < 8u; r++) {
+                const char *pat = T->tier[lv - 1u].drum[r][alt];
+                uint32_t plen;
+                if (!pat)
+                    continue;
+                plen = bs_len(pat);
+                for (st = 0; st < nsteps; st++) {
+                    char ch = pat[st % plen];
+                    if (ch == '.')
+                        continue;
+                    if (fill && st >= (bpb - 1u) * S && r < 4u)   /* the last beat: kick, snare, hats silent */
+                        continue;
+                    raw(o, lv, t0 + st * stk, t0 + (st + 1u) * stk, DRUM[r], ch == 'x' ? 92u : ch == 'o' ? 70u : 34u);
+                }
+            }
+            if (lv >= 2u && b == first && s->role[sec] != ROLE_INTRO) {   /* a crash with the kick on beat 1 */
+                raw(o, lv, t0, t0 + stk, CRASH, 92);
+                raw(o, lv, t0, t0 + stk, KICK, 92);
+            }
+            if (fill) {                   /* the last beat: a snare fill, the first 'o', the rest 'x'; tier 4: a tom */
+                for (st = (bpb - 1u) * S; st < nsteps; st++)
+                    raw(o, lv, t0 + st * stk, t0 + (st + 1u) * stk, SNARE, st == (bpb - 1u) * S ? 70u : 92u);
+                if (lv == 4u)
+                    raw(o, lv, t0 + (bpb - 1u) * S * stk, t0 + ((bpb - 1u) * S + 1u) * stk, TOM_LO, 92);
+            }
+        }
+    }
+}
+
 /* ------------------------------------------------------------------ stored levels --- */
 static uint32_t rd_varint(const uint8_t *c, uint32_t len, uint32_t *p, int *bad)
 {
@@ -718,6 +909,16 @@ static void make(const struct song *s, uint32_t l, struct out *o)
     if (s->any_energy && !s->layer[l].stored) {   /* M8: energy, for a layer with no stored level */
         o->s = s;
         o->top = s->layer[l].variants;
+    }
+    if (s->kind == SONG_KIND_BACKTRACK) { /* M9: the tier tables (the same four levels in each layer) */
+        o->swing = 0;                     /* (on the table's own grid) */
+        if (l == 0)
+            bt_drums(s, o);
+        else if (l == 1u)
+            bt_bass(s, o);
+        else if (l == 2u)
+            bt_harmony(s, o);
+        return;
     }
     if (l == 0)
         drums(s, o);

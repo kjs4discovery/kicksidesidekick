@@ -33,6 +33,7 @@ KINDS = ("song", "backtrack")
 SCALES = ("major", "minor", "blues")
 ROLES = ("intro", "verse", "chorus", "bridge", "ending", "other")
 GEN_LEVELS = {"harmony": 5, "bass": 4, "drums": 3}
+BT_LEVELS = 4                                            # M9 (D052): a backtrack: tiers 1..4 in each generated layer
 STYL = struct.Struct("<BBH")                             # style (arrange.STYLE_NAMES index), swing, 0
 NT_MAX_NOTES = 65535
 NT_MAX_PATTERN = 4096
@@ -266,7 +267,18 @@ def generate_notes(compiled, layer, level):
     starts = {s["first_bar"] for s in c["sections"]} - {first}
     sty = arr.STYLES[c["style"]]
     final = len(cells) - 1
-    if layer == "harmony":
+    if c.get("kind") == "backtrack":       # M9 (D052): the tier tables, 4 levels in each layer
+        secs = c["sections"]
+        alt = [(b - secs[x["section"]]["first_bar"]) % 2 for b, x in enumerate(c["bars"])]
+        if layer == "harmony":
+            every = arr.band_harmony(cells, bpb, c["style"], final, alt)
+        elif layer == "bass":
+            every = arr.band_bass(cells, bpb, c["style"], final, alt)
+        else:
+            per_bar = [(secs[x["section"]]["first_bar"], secs[x["section"]]["bars"], secs[x["section"]]["role"],
+                        len(secs), x["section"]) for x in c["bars"]]
+            every = arr.band_drums(len(cells), bpb, c["style"], c["pickup_beats"], per_bar, final)
+    elif layer == "harmony":
         every = arr.harmony(cells, bpb, sty["harmony"], c["swing"], final)
     elif layer == "bass":
         every = arr.bass(cells, bpb, sty["bass"], c["swing"], final)
@@ -282,6 +294,29 @@ def generate_notes(compiled, layer, level):
     for lv in sorted({min(level + e, top) for e in energy}):
         out += [n for n in every[lv] if min(level + energy[min(n[0] // bar_ticks, len(energy) - 1)], top) == lv]
     return out
+
+
+def restyled(c, style, bpb):
+    """M9: what the FM-1's song_restyle (firmware/app/song.c) makes of an opened backtrack in another style (a name of
+    arrange.STYLE_NAMES) and metre, as the Python generators see it: the compiled dict with the style, the swing, the
+    metre and every chord change moved onto the new bar lines. generate / generate_notes then give the FM-1's levels"""
+    import copy
+    r = copy.deepcopy(c)
+    old = int(c["time_signature"][0]) * c["ppq"]
+    new = bpb * c["ppq"]
+    r["style"], r["swing"] = style, style == "shuffle"
+    r["time_signature"] = [str(bpb), "4"]
+    for e in r["chord_events"]:
+        e["tick"] = e["tick"] // old * new
+    r["end_tick"] = c["bar_count"] * new
+    return r
+
+
+def need_bytes(c):
+    """the FM-1's build need of a compiled (or restyled) song: per layer the largest level's events (2 a generated
+    note) x 8 bytes, summed (song.c levels2; library.c lib_open sums them)"""
+    return 8 * sum(max(2 * len(generate_notes(c, name, lv)) for lv in ly["variants"])
+                   for name, ly in c["layers"].items() if name in GEN_LEVELS)
 
 
 def needs_22(song):
@@ -586,10 +621,11 @@ def read_compiled(blob, diag=None):
         variants = {}
         if fmt2:                           # 2.0: each level stored (NT) or generated
             full = (1 << nvar) - 1
+            gen_n = BT_LEVELS if out["kind"] == "backtrack" and name in GEN_LEVELS else GEN_LEVELS.get(name)
             if mask & ~full or (name not in GEN_LEVELS and mask != full) or \
-                    (name in GEN_LEVELS and mask != full and nvar != GEN_LEVELS[name]):
+                    (name in GEN_LEVELS and mask != full and nvar != gen_n):
                 bad(f"{name}: levels {nvar}, stored {mask:#x}: a melody is stored; a generated layer has "
-                    f"{GEN_LEVELS.get(name)} levels", "LAYR")
+                    f"{gen_n} levels", "LAYR")
             for v in range(1, nvar + 1):
                 tag = b"NT" + LAYER_LETTER[li].encode() + str(v).encode()
                 if mask >> (v - 1) & 1:

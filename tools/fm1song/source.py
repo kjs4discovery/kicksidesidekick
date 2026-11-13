@@ -21,6 +21,7 @@ KINDS = ("song", "backtrack")                                          # M8 (for
 SCALES = ("major", "minor", "blues")                                   # M8: a backtrack's scale guide
 ENERGY_MAX = 2
 GEN_LEVELS = {"harmony": 5, "bass": 4, "drums": 3}  # the generated levels of a layer (format 2.0)
+BT_LEVELS = 4                     # M9 (D052): a backtrack's drums, bass and harmony: the 4 tiers of its style
 MAX_VARIANTS = 5                  # M4 (format 1.3): up to 5 levels a layer; 1.2 and older: 3
 MODES = ["major", "minor", "dorian", "mixolydian", "lydian", "phrygian", "locrian"]
 KEEP_CC = {1: "modulation", 7: "volume", 10: "pan", 11: "expression", 64: "sustain", 91: "reverb", 93: "chorus"}
@@ -388,6 +389,8 @@ def song_from_data(data, midi_bytes, diag=None):
     # changes its style, key and metre: WALTZ makes it 3/4, a bar for a bar)
     if any(sc.energy for sc in song.sections) and not song.style:
         diag.error("energy needs format 2 (a song with a style)", "song.yaml", "form")
+    if any(sc.energy for sc in song.sections) and song.kind != "backtrack":   # M9 (D052): the chorus lift is for backtracks
+        diag.error("energy is for backtracks only", "song.yaml", "form")
     if song.kind == "backtrack":
         if not song.style or song.beats_per_bar != 4 or song.pickup_beats or any(sc.lead_ticks for sc in song.sections) \
                 or any(t % bar_ticks for t, _ in events):
@@ -479,13 +482,14 @@ def _read_layers(song, data, midi, chart_events, diag):
 
     for name, layer in song.layers.items():
         have = sorted(layer.variants)
-        nlev = GEN_LEVELS[name] if song.style and name in GEN_LEVELS else len(have)
+        gen_n = BT_LEVELS if song.kind == "backtrack" and name in GEN_LEVELS else GEN_LEVELS.get(name)   # (M9: tiers)
+        nlev = gen_n if song.style and name in GEN_LEVELS else len(have)
         if layer.start_level > 1 and (not song.style or layer.start_level > nlev):
             diag.error(f"start_level {layer.start_level}: {name} has levels 1..{nlev}" if song.style else
                        "start_level needs format 2 (a song with a style)", "song.yaml", f"layers.{name}")
             layer.start_level = 1
         if song.style and name in GEN_LEVELS:   # generated: any of its levels may be in song.mid (they override)
-            layer.levels = GEN_LEVELS[name]
+            layer.levels = gen_n
             for n in have:
                 if n > layer.levels:
                     diag.error(f"{name}:{n}: a generated {name} has levels 1..{layer.levels}", "song.mid")

@@ -378,6 +378,7 @@ static int ez_events(const struct song *s, const uint8_t *c, uint32_t len, struc
 
 static const char LETTER[SONG_LAYERS] = {'D', 'B', 'H', 'M'};
 static const uint8_t GEN_LEVELS[SONG_LAYERS] = {3, 4, 5, 0};   /* 2.0: the levels the FM-1 generates (melody: none) */
+#define BT_LEVELS 4u                      /* M9 (D052): a backtrack's drums, bass and harmony: the 4 tiers of its style */
 
 const uint8_t *song_nt_chunk(const struct song *s, uint32_t layer, uint32_t level, uint32_t *len)
 {
@@ -404,9 +405,9 @@ static int layer2(struct song *s, uint32_t l, const uint8_t *r)
 {
     struct song_layer *ly = &s->layer[l];
     uint32_t full = (1u << ly->variants) - 1u, v, len;
+    uint32_t gen = GEN_LEVELS[l] && s->kind == SONG_KIND_BACKTRACK ? BT_LEVELS : GEN_LEVELS[l];
     ly->stored = (uint16_t)u16(r + 6);
-    if ((ly->stored & ~full) || (!GEN_LEVELS[l] && ly->stored != full) ||
-        (GEN_LEVELS[l] && ly->stored != full && ly->variants != GEN_LEVELS[l]))
+    if ((ly->stored & ~full) || (!gen && ly->stored != full) || (gen && ly->stored != full && ly->variants != gen))
         return SONG_E_LAYR;
     ly->need = 0;
     ly->built = 0;

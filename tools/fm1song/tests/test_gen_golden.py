@@ -47,7 +47,7 @@ from fm1song.smf import meta_tempo, meta_timesig, write_midi       # noqa: E402
 from fm1song.source import song_from_data                           # noqa: E402
 
 
-def chart_song(style, bpb=4, swing=False, energy=True, kind="song", bars2=False):
+def chart_song(style, bpb=4, swing=False, energy=True, kind="song", bars2=False, data_only=False):
     """a test chart (format 2.2): sections with roles and energy, a chord a bar, and (bars2) two chords in some bars"""
     row = (lambda *cs: "| " + " | ".join(cs) + " |")
     two = lambda a, b: " ".join([a] + ["."] * (bpb // 2 - 1) + [b] + ["."] * (bpb - bpb // 2 - 1))
@@ -59,9 +59,9 @@ def chart_song(style, bpb=4, swing=False, energy=True, kind="song", bars2=False)
             "form": [{"section": "Intro", "bars": "1-4", "chart": "verse", "role": "intro"},
                      {"section": "Verse", "bars": "5-12", "chart": "verse2", "role": "verse"},
                      {"section": "Chorus", "bars": "13-20", "chart": "chorus", "role": "chorus",
-                      "energy": 1 if energy else 0},
+                      "energy": 1 if energy and kind == "backtrack" else 0},      # (M9: energy is for backtracks only)
                      {"section": "Bridge", "bars": "21-24", "chart": "bridge", "role": "bridge",
-                      "energy": 2 if energy else 0},
+                      "energy": 2 if energy and kind == "backtrack" else 0},
                      {"section": "Ending", "bars": "25", "chart": "ending_", "role": "ending"}],
             "chart": {"verse": verse, "verse2": verse + "\n" + verse, "chorus": row("Am", "F", "C", "G") * 1 + "\n" +
                       row("Am", "F", "C", "G7"), "bridge": row("F", "G", "Em", "G7"), "ending_": row("C")},
@@ -70,6 +70,8 @@ def chart_song(style, bpb=4, swing=False, energy=True, kind="song", bars2=False)
     if kind == "backtrack":
         data["backtrack"] = {"number": 1, "numerals": "I V vi IV", "scale": "major"}
     midi = write_midi(480, [("conductor", [(0, meta_tempo(round(60e6 / 110))), (0, meta_timesig(bpb, 4))])])
+    if data_only:
+        return data, midi
     song, _ = song_from_data(data, midi)
     return song
 
@@ -89,7 +91,7 @@ def test_m8_styles_c_and_python_the_same(case, tmp_path):
     style, bpb, swing, two = case
     blob = compile_song(chart_song(style, bpb, swing, bars2=two))
     c = read_compiled(blob)
-    assert c["version"] == "2.2" and [s["energy"] for s in c["sections"]] == [0, 0, 1, 2, 0]
+    assert c["version"] == "2.2" and [s["energy"] for s in c["sections"]] == [0, 0, 0, 0, 0]   # (M9: songs: none)
     got = c_events(exe, blob, tmp_path)
     for name, ly in c["layers"].items():
         for v, evs in ly["variants"].items():
@@ -98,13 +100,29 @@ def test_m8_styles_c_and_python_the_same(case, tmp_path):
             assert got.get((name, v), []) == want, (style, name, v)
 
 
-def test_m8_energy_changes_the_chorus_and_nothing_else():
-    """energy +1 in the chorus: its bars play the next level up; every other bar as without energy"""
-    on = read_compiled(compile_song(chart_song("rock", energy=True)))
-    off = read_compiled(compile_song(chart_song("rock", energy=False)))
+def test_m9_energy_is_for_backtracks_only():
+    """the compiler refuses an energy offset in a song (the chorus lift is BACKTRACK's)"""
+    import pytest
+    from fm1song.errors import SongError
+    data, midi = chart_song("rock", energy=False, data_only=True)
+    data["form"][2]["energy"] = 1
+    with pytest.raises(SongError, match="energy is for backtracks only"):
+        song_from_data(data, midi)
+    data["kind"] = "backtrack"
+    data["backtrack"] = {"number": 1, "numerals": "I V vi IV", "scale": "major"}
+    song_from_data(data, midi)                                      # (a backtrack takes it)
+
+
+def test_m9_energy_changes_the_chorus_and_nothing_else():
+    """BACKTRACK: energy +1 in the chorus, +2 in the bridge: its bars play that many tiers up (capped at 4); every
+    other bar as without energy"""
+    on = read_compiled(compile_song(chart_song("rock", energy=True, kind="backtrack")))
+    off = read_compiled(compile_song(chart_song("rock", energy=False, kind="backtrack")))
     bt = 4 * 480
+    assert [s["energy"] for s in on["sections"]] == [0, 0, 1, 2, 0]
     for name in ("drums", "bass", "harmony"):
         top = max(off["layers"][name]["variants"])
+        assert top == 4
         for v in range(1, top + 1):
             for b in range(25):
                 sec = on["bars"][b]["section"]
@@ -118,14 +136,15 @@ STYLE_FM1 = list(range(len(arr.STYLE_NAMES)))
 
 @pytest.mark.parametrize("style", STYLE_FM1, ids=lambda i: arr.STYLE_NAMES[i])
 def test_m8_restyle_on_the_fm1_is_a_recompile(style, tmp_path):
-    """BACKTRACK: the FM-1 plays a 4/4 POP backtrack in another style (WALTZ in 3/4, SHUFFLE swung): its events equal
-    the same chart compiled in that style and metre"""
+    """the FM-1's song_restyle of a 4/4 POP song (M9: of kind song; a backtrack has the tier tables, tests/
+    test_band_styles.py): WALTZ in 3/4, SHUFFLE swung: its events equal the same chart compiled in that style and
+    metre"""
     exe = ROOT / "build/fuzz/song_fuzz"
     if not exe.exists():
         pytest.skip("build tools/song_fuzz first (tools/song_fuzz.sh)")
     name = arr.STYLE_NAMES[style]
     bpb = 3 if name == "waltz" else 4
-    blob = compile_song(chart_song("pop", kind="backtrack"))
+    blob = compile_song(chart_song("pop"))
     want_c = read_compiled(compile_song(chart_song(name, bpb, name == "shuffle")))   # (a song: a backtrack is 4/4)
     f = tmp_path / "s.fm1s"
     f.write_bytes(blob)

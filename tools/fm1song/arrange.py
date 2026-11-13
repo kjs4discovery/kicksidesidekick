@@ -399,3 +399,135 @@ def arrange(bars, bpb, pickup, section_starts, styles, swing):
     for lv, ev in drums(len(bars), bpb, styles["drums"], swing, pickup, section_starts, final).items():
         tracks[f"drums:{lv}"] = ev
     return tracks
+
+
+# ------------------------------------------------------------------------------------------------ M9 (D052)
+# BACKTRACK: the tier tables (tools/band_styles.txt -> band_styles_data.py; firmware/app/gen.c bt_* does the same, in
+# the same order). A backtrack has exactly 4 levels in each of drums, bass and harmony: tiers 1..4 of its style's table,
+# so the style defines the rhythm of all three layers at every complexity. On the table's own grid: never swung. A
+# pattern is indexed by the step, repeated from its start if the bar has more steps than it.
+def _bs_hold(pat, i, n):
+    """a hit at step i lasts its own step and the '-' after it (to the bar's end)"""
+    k = 1
+    while i + k < n and pat[(i + k) % len(pat)] == "-":
+        k += 1
+    return k
+
+
+def _bs_tables(style):
+    from .band_styles_data import BAND_STYLES
+    return BAND_STYLES[style]
+
+
+def band_harmony(bars, bpb, style, final_bar, bar_alt):
+    """{1..4: [(start, end, pitch, vel)]}; bar_alt[b]: 0 or 1, the bar's place in its section (even: 0)"""
+    T = _bs_tables(style)
+    S = T["steps"]
+    stk, nsteps = PPQ // S, bpb * S
+    out = {lv: _Out(False) for lv in range(1, 5)}
+    for b, row in enumerate(bars):
+        bar0 = b * bpb * PPQ
+        for cell in row:
+            beat, length, c, v1, v2 = cell[0], cell[1], cell[2], list(cell[3]), sorted(cell[4])
+            if c is None:
+                continue
+            start, dur = bar0 + beat * PPQ, length * PPQ
+            cend = start + dur
+            if b == final_bar:                       # the last bar: held (CLOSE at tiers 1-2, WIDE at 3-4)
+                for lv in range(1, 5):
+                    for p in (v1 if lv <= 2 else v2):
+                        out[lv].note(start, dur, p, 64)
+                continue
+            for lv in range(1, 5):
+                tr = T["tiers"][lv]
+                pat = tr["harm"][bar_alt[b]]
+                for st in range(beat * S, min((beat + length) * S, nsteps)):
+                    ch = pat[st % len(pat)]
+                    if ch in "-.":
+                        continue
+                    vel = 72 if ch == "x" else 44 if ch == "g" else 58
+                    t = bar0 + st * stk
+                    d = min(_bs_hold(pat, st, nsteps) * stk, cend - t)      # (a note is cut at a chord change)
+                    if ch in "lmh":
+                        out[lv].note(t, d, v2[0] if ch == "l" else v2[len(v2) // 2] if ch == "m" else v2[-1], vel)
+                    else:
+                        notes = v1 if tr["voicing"] == "CLOSE" else v2[1:] if tr["voicing"] == "UPPER" and len(v2) >= 2 \
+                            else v2
+                        for p in notes:
+                            out[lv].note(t, d, p, vel)
+    return {lv: o.ev for lv, o in out.items()}
+
+
+def band_bass(bars, bpb, style, final_bar, bar_alt):
+    """{1..4: [(start, end, pitch, vel)]}"""
+    T = _bs_tables(style)
+    S = T["steps"]
+    stk, nsteps = PPQ // S, bpb * S
+    out = {lv: _Out(False) for lv in range(1, 5)}
+    flat = [(b, cell[0], cell[1], cell[2]) for b, row in enumerate(bars) for cell in row if cell[2] is not None]
+    for i, (b, beat, length, c) in enumerate(flat):
+        bar0 = b * bpb * PPQ
+        start, dur = bar0 + beat * PPQ, length * PPQ
+        cend = start + dur
+        root = _bass_root(c)
+        fifth = root + 7 if root + 7 <= 40 else root - 5
+        third = root + (3 if 3 in c.intervals else 4)
+        nxt = _bass_root(flat[i + 1][3]) if i + 1 < len(flat) else root
+        if b == final_bar:
+            for lv in range(1, 5):
+                out[lv].note(start, dur, root, 84)
+            continue
+        for lv in range(1, 5):
+            pat = T["tiers"][lv]["bass"][bar_alt[b]]
+            for st in range(beat * S, min((beat + length) * S, nsteps)):
+                ch = pat[st % len(pat)]
+                if ch in "-.":
+                    continue
+                p = {"R": root, "F": fifth, "O": root + 12, "T": third, "N": nxt, "A": nxt - 1}[ch.upper()]
+                t = bar0 + st * stk
+                out[lv].note(t, min(_bs_hold(pat, st, nsteps) * stk, cend - t), p, 68 if ch.islower() else 88)
+    return {lv: o.ev for lv, o in out.items()}
+
+
+def band_drums(nbars, bpb, style, pickup, secs, final_bar):
+    """{1..4: [(start, end, drum, vel)]}; secs[b] = (first bar of its section, its bars, its role, sections, its index):
+    the bar's place in the form (crash, fill)"""
+    from .band_styles_data import DRUM_ROWS
+    T = _bs_tables(style)
+    S = T["steps"]
+    stk, nsteps = PPQ // S, bpb * S
+    note_of = dict(zip(DRUM_ROWS, (36, 38, 42, 46, 37, 39, 51, 45)))
+    out = {lv: [] for lv in range(1, 5)}
+    for b in range(nbars):
+        t0 = b * bpb * PPQ
+        if b == 0 and pickup:
+            continue
+        if b == final_bar:                           # the last bar: a kick and a crash, at every tier
+            for lv in out:
+                out[lv] += [(t0, t0 + 60, KICK, 96), (t0, t0 + 60, CRASH, 90)]
+            continue
+        first, count, role, nsect, sec = secs[b]
+        alt = (b - first) % 2
+        lastbar = b == first + count - 1 and sec + 1 < nsect and role != "ending"
+        for lv in range(1, 5):
+            fill = lv >= 3 and lastbar
+            for row in DRUM_ROWS:
+                pats = T["tiers"][lv]["drums"].get(row)
+                if pats is None:
+                    continue
+                pat = pats[alt]
+                for st in range(nsteps):
+                    ch = pat[st % len(pat)]
+                    if ch == ".":
+                        continue
+                    if fill and st >= (bpb - 1) * S and row in "KSHO":      # the last beat: kick, snare, hats silent
+                        continue
+                    out[lv].append((t0 + st * stk, t0 + (st + 1) * stk, note_of[row], 92 if ch == "x" else 70 if ch == "o" else 34))
+            if lv >= 2 and b == first and role != "intro":                   # a crash with the kick on beat 1
+                out[lv] += [(t0, t0 + stk, CRASH, 92), (t0, t0 + stk, KICK, 92)]
+            if fill:                                                         # a snare fill; tier 4: a tom
+                for st in range((bpb - 1) * S, nsteps):
+                    out[lv].append((t0 + st * stk, t0 + (st + 1) * stk, SNARE, 70 if st == (bpb - 1) * S else 92))
+                if lv == 4:
+                    out[lv].append((t0 + (bpb - 1) * S * stk, t0 + ((bpb - 1) * S + 1) * stk, TOM_LO, 92))
+    return out
