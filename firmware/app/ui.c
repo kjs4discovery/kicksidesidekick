@@ -883,6 +883,10 @@ static void lights(void)
             uint32_t ms = in_beat * 60000u / (s->ppq * player_tempo_of());
             if (ms < (beat1 ? FLASH_BAR_MS : FLASH_MS))   /* (M2's mid level for beats 2.. was not visible on the
                                                              * unit: the user saw one flash a bar) */
+        if (bt.on) {                     /* M9: the melody has no layer, but LFO held makes it your part: its light is on */
+            dim |= 1u << LAYER_BUTTON[L_MELODY];
+            lit |= 1u << LAYER_BUTTON[L_MELODY];
+        }
                 lit |= LED_PLAY_GREEN;
             if (((lit | mid) & LED_PLAY_GREEN) && !ui.flashing) {   /* (counted for the tests) */
                 if (beat1)
@@ -915,6 +919,8 @@ static int text_before(const char *p, const char *q)
     while (*p && lower(*p) == lower(*q))
         p++, q++;
     return lower(*p) < lower(*q);
+    player_stats.btn_lit = lit;
+    player_stats.btn_dim = dim;
 }
 
 /* a song's folder name: its category, or "Other"; a song that does not peek: "Other" */
@@ -942,6 +948,15 @@ static void folders_build(void)
             ;
         if (k == ui.nfold && ui.nfold < 16u) {
             for (k = ui.nfold++; k > 0 && text_before(c, ui.fname[k - 1u]); k--)   /* insertion, sorted */
+/* M9: the songs in the store, the backtracks not counted (SONG LEARN with only backtracks stored is as an empty store) */
+static uint32_t lib_song_count(void)
+{
+    uint32_t i, n = lib_count(), c = 0;
+    for (i = 0; i < n; i++)
+        c += !lib_is_backtrack(i);
+    return c;
+}
+
                 text_cat(ui.fname[k], ""), ui.fname[k][0] = 0, text_cat(ui.fname[k], ui.fname[k - 1u]);
             ui.fname[k][0] = 0;
             text_cat(ui.fname[k], c);
@@ -982,7 +997,7 @@ static void input_list(uint32_t down)
     }
     if (((down >> B_PLAY & 1u) || (down >> B_EDIT & 1u)) && ui.sel < (uint32_t)n)
         open_song(ui.fl[ui.sel]);
-    else if ((down >> B_HOME & 1u) && lib_count()) {   /* HOME: up to the folders */
+    else if ((down >> B_HOME & 1u) && lib_song_count()) {   /* HOME: up to the folders (M9: songs, not backtracks) */
         ui.fsel = (uint32_t)ui.folder;
         ui.folder = -1;
         ui.top = 0;
@@ -1265,7 +1280,7 @@ static uint32_t learn_jobs(void)
     switch (ui.view) {
     case V_LIST:                         /* PLAY / EDIT open; HOME: up to the folders (the song list only) */
         j |= 1u << B_PLAY | 1u << B_EDIT;
-        if (ui.folder >= 0 && lib_count())
+        if (ui.folder >= 0 && lib_song_count())
             j |= 1u << B_HOME;
         return j;
     case V_PLAY:                         /* every button, but the layer buttons of layers the song does not have */
@@ -1662,8 +1677,10 @@ static void draw_folders(void)
         if (i < n) {
             if (i == ui.fsel)
                 cv_rect(2, 1, 236, LIST_ROW_H - 2, C_LINE);
-            for (k = 0, cnt = 0; k < lib_count(); k++)
-                cnt += !i || same_text(song_folder(k), ui.fname[i - 1u]);
+            for (k = 0, cnt = 0; k < lib_count(); k++)   /* (M9: the backtracks are not songs: folders_build skips them too) */
+                cnt += !lib_is_backtrack(k) && (!i || same_text(song_folder(k), ui.fname[i - 1u]));
+            if (i == ui.fsel)
+                player_stats.fold_shown = cnt;
             frame_rect(10, 9, 16, 12, i == ui.fsel ? C_HI : C_DIM);   /* a folder */
             cv_rect(10, 7, 7, 3, i == ui.fsel ? C_HI : C_DIM);
             cv_text(34, 1, &FONT_B, i ? ui.fname[i - 1u] : "All songs", i == ui.fsel ? C_WHITE : C_GRAY);

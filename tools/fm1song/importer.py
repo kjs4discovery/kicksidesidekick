@@ -126,12 +126,11 @@ def _meta(midi):
         for e in t.events:
             if e.kind == "tempo" and "tempo" not in found:
                 tempo, _ = round(60_000_000 / e.a), found.add("tempo")
-            elif e.kind == "timesig" and "ts" not in found and e.data:
-                num, den = e.data[0], 2 ** e.data[1]
+            elif e.kind == "timesig" and "ts" not in found:       # (smf.py: a = numerator, b = denominator)
+                num, den = e.a, e.b
                 found.add("ts")
-            elif e.kind == "key" and "key" not in found and e.data:
-                sf = e.data[0] - 256 if e.data[0] > 127 else e.data[0]
-                key = (sf, e.data[1] if len(e.data) > 1 else 0)
+            elif e.kind == "key" and "key" not in found:          # (smf.py: a = sharps / flats (signed), b = minor)
+                key = (e.a, e.b)
                 found.add("key")
     return tempo, num, den, key
 
@@ -193,7 +192,7 @@ FLAT_KEYS = {5, 10, 3, 8, 1}             # F Bb Eb Ab Db major (and their minors
 
 
 def detect_key(notes, meta_key=None):
-    """(root 0..11, minor) by the pitch profile of all pitched notes (a file's key signature, if any, for the
+    """(root 0..11, minor) by the pitch profile of all pitched notes (the file's key signature: import_file, for the
     sharps/flats only)"""
     hist = [0.0] * 12
     for s, e, p, v in notes:
@@ -207,9 +206,10 @@ def detect_key(notes, meta_key=None):
     return best[1], best[2]
 
 
-def key_name(root, minor):
+def key_name(root, minor, flats=None):
+    """flats: the spelling (None: by the key itself); M9: a file's key signature of flats decides it"""
     parent = (root + 3) % 12 if minor else root
-    nm = (NAMES_FLAT if parent in FLAT_KEYS else NAMES_SHARP)[root]
+    nm = (NAMES_FLAT if (parent in FLAT_KEYS if flats is None else flats) else NAMES_SHARP)[root]
     return nm + ("m" if minor else "")
 
 
@@ -422,9 +422,9 @@ def build(midi, title, slug, roles=None, style=None, report=None, eighths=False,
     roles = roles or guess_roles(infos)
     scale = PPQ / midi.ppq
     tempo, num, den, kmeta = _meta(midi)
-    if den != 4 or not 2 <= num <= 7:
-        rep.append(f"time signature {num}/{den}: the song format takes 2/4..7/4; read as {min(max(num, 2), 7)}/4")
     bpb = min(max(num, 2), 7) if den == 4 else (num // 3 if den == 8 and num % 3 == 0 else 4)
+    if den != 4 or not 2 <= num <= 7:
+        rep.append(f"time signature {num}/{den}: the song format takes 2/4..7/4; read as {bpb}/4")
     tempo = min(max(tempo, 30), 250)
     parts = {"melody": [], "harmony": [], "bass": [], "drums": []}
     progs = {}
@@ -483,9 +483,12 @@ def build(midi, title, slug, roles=None, style=None, report=None, eighths=False,
     if shift:
         rep.append(f"{shift // bar} empty bar(s) at the start left out")
     kr, km = detect_key(allpitched)
-    key = key_name(kr, km)
     flats = ((kr + 3) % 12 if km else kr) in FLAT_KEYS
-    rep.append(f"tempo {tempo} BPM (the file's first), {bpb}/4, key {key} (by the notes), {nbars} bars"
+    if kmeta is not None:                 # M9: the file's key signature decides sharps or flats (the key: by the notes)
+        flats = kmeta[0] < 0
+    key = key_name(kr, km, flats)
+    rep.append(f"tempo {tempo} BPM (the file's first), {bpb}/4, key {key} (by the notes"
+               f"{', spelled by the key signature' if kmeta is not None else ''}), {nbars} bars"
                + (f", a {pickup}-beat pickup" if pickup else ""))
     chart = chord_chart(q["harmony"], q["bass"], nbars, bpb, flats)
     if pickup:

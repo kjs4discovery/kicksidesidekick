@@ -60,10 +60,13 @@ static void draw_mode(void)
 {
     /* M8 (D050): three choices under the mascot, a row each: SONG LEARN, BACKTRACK, SYNTH */
     static const char *const NAME[MODES] = {"SONG LEARN", "BACKTRACK", "SYNTH"};
-    static const char *const SUB[MODES] = {"play along a song", "jam over a band", "play the synth"};
+    static const char *const SUB[MODES] = {"Play with a song", "jam over a band", "play the synth"};
     uint32_t i;
     lcd_fill(0, 0, 240, 240, LOGO_BG);
     draw_logo(0);
+    cv_begin(120, 14, LOGO_BG);          /* M9: "modes:", in the subtitle colour, just above the first choice */
+    cv_text(10, 0, &FONT_XS, "modes:", RGB(120, 108, 94));
+    cv_blit(0, 158);
     for (i = 0; i < MODES; i++) {
         int sel = i == sy.mode_sel;
         cv_begin(232, 22, LOGO_BG);

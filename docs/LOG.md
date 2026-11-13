@@ -719,3 +719,26 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 2.
+
+2026-11-13 — Step M9 Part 2 (small fixes and text) —
+Status: done
+Did:
+- "All songs" count (ui.c draw_folders): the count loop skips lib_is_backtrack(k); new lib_song_count() (the songs, not
+  the backtracks) for the two other "are there songs?" tests (HOME in the list, the list's button jobs). Failing check first
+  (m9p2, on the build before the fix): All songs showed 39 (9 songs + 30 backtracks); a store with only the backtracks
+  answered HOME as a non-empty store (no pop-up) instead of as an empty one (pop-up). After: All songs 9, every category's
+  count = the songs it lists when opened, bt-only = empty store.
+- Mode screen: "modes:" (FONT_XS, x 10, y 158, the subtitle colour), the rows not moved (they end at 240); SONG LEARN's
+  subtitle "Play with a song". BACKTRACK play screen: the LFO light is on steadily (like a layer that is on).
+- Importer: _meta reads smf.py's a / b (time signature: a = numerator, b = denominator; key signature: a = sharps / flats,
+  b = minor). Failing tests first (pytest, tools/fm1song/tests/test_import.py: a 3/4 file, a 6/8 file, a key signature):
+  3 failed, then 6 passed. The key signature decides the spelling (flats or sharps), the key itself stays by the notes.
+- The importer re-run on every file in import/ (4 private songs as songs/private/import_all.sh makes them, the Rockin' file,
+  the 4 files of import/test/), old code against new: songs/private/{creep, true-colors, let-it-be, zombie} song.yaml
+  UNCHANGED; Rockin' unchanged; import/test: Hallelujah changes (a 6/8 file: 4/4 -> 2/4, its report line now says
+  "read as 2/4"), the other three unchanged. No private song to resend.
+Learned / measured:
+- Pop-up numbers: the HOME pop-up on an empty list is button 6.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 3.
