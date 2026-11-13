@@ -897,12 +897,17 @@ ENDING. Sent like songs (in SONG LEARN); SONG LEARN never lists them.
 
 At entry: 1 POP 1, POP, LOOP, C, 100 BPM. The choices are kept until power-off.
 
+![SETUP](step-M8/m8p4-setup.png) ![SETUP turned](step-M8/m8p4-turn.png) ![SETUP help](step-M8/m8c-help.png)
+
 **PLAY screen**: SONG LEARN's play screen and controls (the same legend): PLAY play / pause, HOME stop then SETUP, the
 layer buttons (a press: FULL / QUIET / MUTED; held: your part), EDIT the views, SAVE the KEY mode, SELECT the tempo,
 SEQ the loop (A, B, off), ARP the count-in, OCT- / OCT+, GLO help. **K1-K3**: the drums', bass's, harmony's level
 ("busier / simpler"; the energy adds on top in a chorus); **K4**: the melody sound (shown for a moment). **LFO** (no
 melody layer: the melody is yours): held, the melody's views again. Every view of drums, bass and harmony works as in
 SONG LEARN.
+
+![LOOP playing](step-M8/m8p4-loop.png) ![WALTZ](step-M8/m8p4-waltz.png) ![in Eb](step-M8/m8p4-key.png)
+![the harmony your part](step-M8/m8p5-harmony.png) ![help](step-M8/m8c-help-play.png)
 
 ### Part 5: what can I play now (D049)
 
@@ -917,10 +922,15 @@ SONG LEARN.
   minor one, the blues scale for 20-22) / FULL SCALE (major, natural minor; a major-key blues: mixolydian) / CHORD
   TONES (only the chord).
 
+![scale keyboard](step-M8/m8p5-kb-c.png) ![the next chord in the last beat](step-M8/m8p5-next.png)
+![fretboard](step-M8/m8p5-fretboard.png) ![ukulele](step-M8/m8p5-uke.png) ![blues scale](step-M8/m8p5-blues.png)
+
 ### Part 6: the melody sound (D049)
 
 The 30 SYNTH presets (as made, arpeggio off) on 4 voices, mixed over the band; the delay's longest time is halved in
 BACKTRACK (0.37 s; a longer note value is halved until it fits). K4 on the play screen chooses; kept until power-off.
+
+![the melody sound](step-M8/m8p6-sound.png) ![a free button on SETUP](step-M8/m8c-SETUP-FX.png)
 
 The census (D044, tools/m8_test.py m8census):
 

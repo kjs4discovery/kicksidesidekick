@@ -638,3 +638,32 @@ Questions for the planning chat:
 - Mode screen cursor after leaving a mode: always SONG LEARN (decided). The melody sound's arp is switched off
   (EDS, OCT BOUNCE... play notes, not arpeggios): OK?
 Next: Part 7 (release build, the full suite once, step-M8-install.md).
+
+2026-11-13 — Step M8 Part 7 (tests, budget, the full suite once, install checklist) —
+Status: done (prepared; not installed). STOPPED for review.
+Did:
+- Before the release build, on the dev build: m8sweep (11 styles x LOOP, VERSE/CHORUS, FULL x backtracks 1, 9, 20 at
+  250 BPM: 99 runs) ALL PASS, worst 26 % of a block.
+- Release build: build/step-M8/fm1acc-0.8.0-m8.fwsc, FM-1_46000800, sha256
+  19e054002de21a3a204611b553fad6997a944db2f3fa83c08da651725e91665f, from 13c759e, reproducible (two builds).
+  fm1-base unchanged since 98fc08c.
+- The full suite once on it (test-runner subagent; build/step-M8/times.txt, *.log, emu-*/report.md): store ALL PASS;
+  fuzz 600 s 822,000 files clean; pytest 153 passed; vsynth ALL PASS; guitar ok; m8 42/0; m7 53/0; m6 21/1; m51 17/0
+  (`make m51-test`'s test on this package; longest stretch without a watchdog feed 92 ms, 0 resets, 0 XIP-off reads);
+  m5 283/1.
+- Failures: (1) m6p1 Zombie drums L1 1.68x: known, left failing. (2) m5p3 "a song sent in SYNTH mode" expected the
+  laptop's text "SYNTH mode"; it now says "SYNTH or BACKTRACK mode": fixed to the exact new text, m5p3 re-run on this
+  package: ALL PASS (build/step-M8/m5p3-rerun.log). Firmware unchanged after the build.
+- docs/controls.md "M8" (controls, census, 18 screenshots from the release run in docs/step-M8/);
+  docs/step-M8-install.md.
+Learned / measured:
+- App 493,312 B: 92,416 B free (M7.1's 32 KB there). RAM .data+.bss 81,416; pool 291,464.
+- BACKTRACK CPU worst 37 % (INDIE POP, FULL, every layer at its top, MIAMI PAD x 4 voices; EAS 15 %); limit 60 %.
+- Song store with 13 songs + 30 backtracks: 264 of 552 blocks.
+Hardware touched: none
+Questions for the planning chat:
+- Review docs/step-M8-install.md (install over M7; then the user sends songs/backtracks/*/ and resends twelve-bar-blues
+  and four-chords, in SONG LEARN).
+- The styles / progressions / names are unheard drafts: the user's ear decides (one table each).
+- Energy only for generated layers; the melody sound's arp off; the mode cursor always back on SONG LEARN: OK?
+Next: STOP. The user runs docs/step-M8-install.md; Claude Code runs only --info / fm1song list and records.

@@ -1852,7 +1852,8 @@ def test_m5p3(all_songs, rep):
     f = OUT / "runs" / "saints-synth.fm1s"
     f.write_bytes(compile_folder(ROOT / "songs/saints")[0])
     sn = run("m5p3-send", 30000, pick, mode=None, host=f"{sys.executable} -I {ROOT}/tools/m2_host.py synth-send {f}")
-    check("result 9" in sn["out"] and "SYNTH mode" in sn["out"] and records(sn["flash"]) == records(FLASH["songs"]),
+    check("result 9" in sn["out"] and "SYNTH or BACKTRACK mode" in sn["out"] and   # (M8: the message names both)
+          records(sn["flash"]) == records(FLASH["songs"]),
           "a song sent in SYNTH mode: refused (switch off, LEARN, send), the store unchanged")
     # an unknown flash chip: SYNTH still plays (it needs no flash)
     uf = run("m5p3-flash-unknown", 7000, pick + chord, flash_id="c84017", mode=None)
