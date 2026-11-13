@@ -21,7 +21,9 @@ PPQ = 480
 KICK, STICK, SNARE, HAT, OPEN_HAT, PEDAL_HAT, RIDE, CRASH, TOM_LO, TOM_HI = 36, 37, 38, 42, 46, 44, 51, 49, 45, 50
 
 # style -> what each part does; a song names one (or a part each)
-STYLE_NAMES = ("waltz", "ballad", "shuffle", "march", "pop", "train")   # (format 2.0's STYL byte: the index)
+STYLE_NAMES = ("waltz", "ballad", "shuffle", "march", "pop", "train",   # (format 2.0's STYL byte: the index)
+               "rock", "indie", "bossa", "funk", "reggae")              # M8 (D048, format 2.2): 6..10
+NEW_STYLES = STYLE_NAMES[6:]                                            # (an older FM-1 reads only the first six)
 STYLES = {
     "waltz":   dict(harmony="waltz", bass="waltz", drums="waltz"),        # 3/4: oom-pah-pah
     "ballad":  dict(harmony="ballad", bass="ballad", drums="ballad"),     # slow 4/4: held quarters, Alberti
@@ -29,7 +31,62 @@ STYLES = {
     "march":   dict(harmony="stride", bass="two-beat", drums="march"),    # 2-feel 4/4 (the Saints)
     "pop":     dict(harmony="eighths", bass="eighths", drums="pop"),      # straight eighths
     "train":   dict(harmony="eighths", bass="two-beat", drums="train"),   # fast 2-feel (Oh! Susanna)
+    # M8 (D048): table-driven (RHYTHM, BASS_LINE, GROOVE below): the harmony's L2 / L3 rhythm, the bass's L4 line,
+    # the drums' L2 groove (L1 the pulse, L3 the groove with crashes and fills, as every style)
+    "rock":    dict(harmony="rock", bass="rock", drums="rock"),           # straight eighths, driving (ROCK1)
+    "indie":   dict(harmony="indie", bass="indie", drums="indie"),        # 3-3-2 pushes (POP3)
+    "bossa":   dict(harmony="bossa", bass="bossa", drums="bossa"),        # bossa nova: the 2-bar comp (BOSSA)
+    "funk":    dict(harmony="funk", bass="funk", drums="funk"),           # 16th stabs (FUNK1)
+    "reggae":  dict(harmony="reggae", bass="reggae", drums="reggae"),     # the skank on the off-beats (REGGAE)
 }
+
+# M8 (D048): the new styles' tables, on a 16th-note grid of a 4/4 bar (step 0..15; in another metre the steps before
+# 4 x beats; a 2-bar table: even bars the first, odd bars the second). firmware/app/gen.c has the same tables.
+# RHYTHM: harmony L2 / L3: (step, length in steps, velocity); UPPER: the voicing's lowest note left out (4 or more)
+RHYTHM = {
+    "rock":   [[(0, 2, 62), (2, 2, 50), (4, 2, 58), (6, 2, 50), (8, 2, 60), (10, 2, 50), (12, 2, 58), (14, 2, 50)]],
+    "indie":  [[(0, 6, 62), (6, 6, 56), (12, 4, 58)]],
+    "bossa":  [[(0, 2, 58), (3, 2, 52), (6, 3, 54), (10, 2, 52), (13, 3, 54)],
+               [(2, 2, 52), (5, 2, 54), (8, 2, 56), (11, 3, 52)]],
+    "funk":   [[(0, 1, 70), (3, 1, 56), (6, 1, 62), (7, 1, 50), (10, 1, 64), (12, 1, 56), (14, 1, 60)]],
+    "reggae": [[(2, 1, 64), (6, 1, 64), (10, 1, 64), (14, 1, 64)]],
+}
+UPPER = {"funk", "reggae"}
+# BASS_LINE: bass L4: (step, length in steps, what, velocity); what: R root, F fifth, O octave, N the next chord's root,
+# A a step into the next root (the fifth when the next chord has the same root)
+BASS_LINE = {
+    "rock":   [(0, 2, "R", 88), (2, 2, "R", 74), (4, 2, "R", 80), (6, 2, "R", 74), (8, 2, "R", 86), (10, 2, "R", 74),
+               (12, 2, "F", 80), (14, 2, "A", 76)],
+    "indie":  [(0, 6, "R", 90), (6, 6, "R", 80), (12, 4, "F", 82)],
+    "bossa":  [(0, 6, "R", 90), (6, 2, "F", 74), (8, 6, "F", 84), (14, 2, "N", 76)],
+    "funk":   [(0, 2, "R", 96), (3, 1, "O", 72), (6, 1, "R", 84), (7, 1, "R", 70), (10, 2, "F", 84), (12, 1, "O", 72),
+               (14, 2, "A", 80)],
+    "reggae": [(0, 4, "R", 92), (6, 2, "F", 78), (8, 4, "R", 88), (13, 1, "O", 70), (14, 2, "F", 76)],
+}
+# GROOVE: drums L2, from M7's docs/drum-patterns.txt (ROCK1, POP3, BOSSA, FUNK1, REGGAE): per bar a row per drum,
+# x 92, o 70, g 34
+GROOVE_VEL = {"x": 92, "o": 70, "g": 34}
+GROOVE_DRUM = {"KICK": 36, "SNARE": 38, "CHH": 42, "OHH": 46, "CLAP": 39, "TOMLO": 45, "TOMHI": 50, "RIM": 37}
+GROOVE = {
+    "rock":   [{"CHH": "x.o.x.o.x.o.x.o.", "SNARE": "....x.......x...", "KICK": "x.......x.o....."}],
+    "indie":  [{"CHH": "o.o.o.o.o.o.o.o.", "SNARE": "....x.......x...", "CLAP": "....o.......o...",
+                "KICK": "x.....o...o....."},
+               {"CHH": "o.o.o.o.o.o.o.o.", "SNARE": "....x.......x...", "CLAP": "....o.......o...",
+                "KICK": "x.....o...o..o..", "OHH": "..............o."}],
+    "bossa":  [{"CHH": "o.o.o.o.o.o.o.o.", "RIM": "x..x..x...x..x..", "KICK": "x..ox..ox..ox..o"},
+               {"CHH": "o.o.o.o.o.o.o.o.", "RIM": "..x..x..x..x....", "KICK": "x..ox..ox..ox..o"}],
+    "funk":   [{"CHH": "xoxoxoxoxoxoxoxo", "SNARE": "....x..g.g..x..g", "KICK": "x.x.......x..o.."}],
+    "reggae": [{"CHH": "..o...o...o...o.", "RIM": "........x.......", "SNARE": "........x.......",
+                "KICK": "........x......."}],
+}
+GROOVE_ORDER = ("KICK", "SNARE", "CHH", "OHH", "CLAP", "TOMLO", "TOMHI", "RIM")   # (gen.c's row order)
+STEP = PPQ // 4
+
+
+def _steps(tab, bpb):
+    """a 16-step table over a bar of bpb beats: repeated every 16 steps, cut at the bar's end"""
+    return [(r * 16 + e[0],) + tuple(e[1:]) for r in range((bpb * 4 + 15) // 16) for e in tab
+            if r * 16 + e[0] < bpb * 4]
 
 LEVEL_TEXT = {
     "harmony": {1: "block chords, root position, held", 2: "block chords in the song's rhythm",
@@ -142,6 +199,17 @@ def harmony(bars, bpb, style, swing, final_bar):
             for p in v1:                             # L1: held
                 out[1].note(start, dur, p, 64)
             for lv, v in ((2, v1), (3, v2)):         # L2, L3: the style's rhythm
+                if style in RHYTHM:                  # (M8: the table styles, a 16th grid)
+                    vv = sorted(v)[1:] if style in UPPER and len(v) >= 4 else v
+                    tab = RHYTHM[style][b % len(RHYTHM[style])]
+                    cend = start + dur
+                    for st, ln, vel in _steps(tab, bpb):
+                        t = t0 + st * STEP
+                        if t < start or t >= cend:
+                            continue
+                        for p in vv:
+                            out[lv].note(t, min(ln * STEP, cend - t), p, vel)
+                    continue
                 for k in range(length):
                     bib = beat + k                   # the beat in the bar
                     if style == "waltz":
@@ -209,7 +277,16 @@ def bass(bars, bpb, style, swing, final_bar):
                 p = root if k == 0 or bib % bpb == 0 else fifth
                 d = min(half, length - k) * PPQ - 30
             out[3].note(start + k * PPQ, d, p, 88 if p == root else 76)
-        if style == "boogie":                                                # L4: more motion
+        if style in BASS_LINE:                                               # L4: the style's line (M8)
+            cend = start + dur
+            for st, ln, what, vel in _steps(BASS_LINE[style], bpb):
+                t = b * bpb * PPQ + st * STEP
+                if t < start or t >= cend:
+                    continue
+                p = {"R": root, "F": fifth, "O": root + 12, "N": nxt,
+                     "A": fifth if nxt == root else nxt + (1 if nxt < root else -1)}[what]
+                out[4].note(t, min(ln * STEP, cend - t), p, vel)
+        elif style == "boogie":                                              # L4: more motion
             line = [0, 4, 7, 9, 10, 9, 7, 4]
             for k in range(length * 2):
                 out[4].note(start + k * PPQ // 2, PPQ // 2, root + line[(beat * 2 + k) % 8], 84 if k % 2 == 0 else 70)
@@ -247,7 +324,7 @@ def drums(nbars, bpb, style, swing, pickup, section_starts, final_bar):
             else:
                 hits1.append((tk, SNARE, 62 if bpb == 3 else 80))
             hits1.append((tk, RIDE if style == "shuffle" else HAT, 64 if k == 0 else 56))
-        for k in range(bpb):                                                 # L2: the style's groove
+        for k in range(bpb if style not in GROOVE else 0):                   # L2: the style's groove
             tk = t0 + k * PPQ
             if style == "waltz":
                 if k == 0:
@@ -270,6 +347,13 @@ def drums(nbars, bpb, style, swing, pickup, section_starts, final_bar):
                 hits2 += [(tk + PPQ // 4, SNARE, 24), (tk + 3 * PPQ // 4, SNARE, 30)]
             if style == "march" and k == 3 and b % 2:
                 hits2.append((sw(tk + PPQ // 2), SNARE, 50))
+        if style in GROOVE:                                                  # (M8: a table groove)
+            g = GROOVE[style][b % len(GROOVE[style])]
+            for st in range(bpb * 4):
+                for name in GROOVE_ORDER:
+                    c = g.get(name, "." * 16)[st % 16]
+                    if c != ".":
+                        hits2.append((sw(t0 + st * STEP), GROOVE_DRUM[name], GROOVE_VEL[c]))
         bar_no = b + 1 - (1 if pickup else 0)
         hits3 = list(hits2)                                                  # L3: + crashes and fills
         if b in section_starts:

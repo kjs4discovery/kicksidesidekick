@@ -195,6 +195,11 @@ def cmd_send(args):
     end = device.song_list(dev)[1]
     if not args.no_validate:             # an FM-1 that reads only older formats (M2: up to 1.1, M3: 1.2, M4: 1.3):
         minor = end["minor"]             # compiled for it
+        new22 = [path for path, b in blobs if read_compiled(b)["version"] == "2.2"]
+        if new22 and (end["major"] < 2 or end.get("minor2", 0) < 2):   # M8: 2.2 has no older form
+            print(f"the FM-1 reads format 2.{end.get('minor2', 0)} at most, not 2.2 (a backtrack, a section's energy or "
+                  f"a new style): {', '.join(map(str, new22))}; install M8 first. Nothing sent", file=sys.stderr)
+            return 2
         if end["major"] < 2 and any(read_compiled(b)["version"] == "2.0" for _, b in blobs):
             print(f"the FM-1 reads formats up to 1.{minor}, not 2.0: sending 1.{minor} (every level as events)",
                   file=args.out)
@@ -334,8 +339,9 @@ def main(argv=None):
     p = sub.add_parser("compile", help="song folder -> .fm1s")
     p.add_argument("song")
     p.add_argument("-o", "--output")
-    p.add_argument("--format", choices=["2.1", "2.0", "1.3", "1.2", "1.1", "1.0"], default=None,
-                   help="default: 2.0 for a song with a style (M5; 2.1 when a layer has a start_level, M7), else 1.3; 1.0: the M1 layout (8-byte events), "
+    p.add_argument("--format", choices=["2.2", "2.1", "2.0", "1.3", "1.2", "1.1", "1.0"], default=None,
+                   help="default: 2.0 for a song with a style (M5; 2.1 when a layer has a start_level, M7; 2.2 for a "
+                        "backtrack, roles / energy or a new style, M8), else 1.3; 1.0: the M1 layout (8-byte events), "
                         "for an M1 device or tests")
     p.set_defaults(fn=cmd_compile)
     p = sub.add_parser("info", help="summary of a .fm1s file or a song folder")

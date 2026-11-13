@@ -27,7 +27,7 @@ RESULTS = {0: "ok", 1: "the FM-1's flash is not usable (RAM ONLY): it cannot kee
            2: "the file is too big for the FM-1 (M5: 256 KiB at most; M4: 64 KiB)", 3: "the transfer stopped (USB)",
            4: "the file arrived damaged (CRC)", 5: "the FM-1 refused the song", 6: "the FM-1 could not store it",
            7: "no such song on the FM-1", 8: "the FM-1 did not understand the request (an older firmware?)",
-           9: "the FM-1 is in SYNTH mode: switch it off and on, choose LEARN, then send",
+           9: "the FM-1 is in SYNTH or BACKTRACK mode: switch it off and on, choose SONG LEARN, then send",
            10: "the FM-1 is still making room (try again in a minute)"}
 SONG_ERRORS = {-1: "SHORT", -2: "MAGIC", -3: "VERSION", -4: "SIZE", -5: "CRC", -6: "HEADER", -7: "DIRECTORY",
                -8: "MISSING", -9: "META", -10: "SECTIONS", -11: "CHORDS", -12: "CHANGES", -13: "BARS", -14: "LAYERS",

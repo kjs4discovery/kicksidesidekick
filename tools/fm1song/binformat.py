@@ -26,6 +26,12 @@ MAX_VARIANTS = {0: 3, 1: 3, 2: 3, 3: 5}                  # levels a layer may ha
 #   note: varint start in the bar, varint length (ticks; LEB128, at most 3 bytes), u8 pitch, u8 velocity (1..127)
 VERSION2 = (2, 0)
 VERSION21 = (2, 1)                                       # M7: 2.0 + a start level per layer (LAYR's flags byte, r[5])
+VERSION22 = (2, 2)                                       # M8: 2.1 + FORM (kind, sections' role and energy), new styles
+FORM = struct.Struct("<BBBBHH40s")                       # kind, backtrack number, scale, 0, sections, 0, numerals
+FORM_SECT = struct.Struct("<BB")                         # per section: role (source.ROLES), energy (0..2)
+KINDS = ("song", "backtrack")
+SCALES = ("major", "minor", "blues")
+ROLES = ("intro", "verse", "chorus", "bridge", "ending", "other")
 GEN_LEVELS = {"harmony": 5, "bass": 4, "drums": 3}
 STYL = struct.Struct("<BBH")                             # style (arrange.STYLE_NAMES index), swing, 0
 NT_MAX_NOTES = 65535
@@ -261,18 +267,37 @@ def generate_notes(compiled, layer, level):
     sty = arr.STYLES[c["style"]]
     final = len(cells) - 1
     if layer == "harmony":
-        notes = arr.harmony(cells, bpb, sty["harmony"], c["swing"], final)[level]
+        every = arr.harmony(cells, bpb, sty["harmony"], c["swing"], final)
     elif layer == "bass":
-        notes = arr.bass(cells, bpb, sty["bass"], c["swing"], final)[level]
+        every = arr.bass(cells, bpb, sty["bass"], c["swing"], final)
     else:
-        notes = arr.drums(len(cells), bpb, sty["drums"], c["swing"], c["pickup_beats"], starts, final)[level]
-    return notes
+        every = arr.drums(len(cells), bpb, sty["drums"], c["swing"], c["pickup_beats"], starts, final)
+    # M8 (2.2): a section's energy adds to the level in its bars (capped at the top level), for a layer with no stored
+    # level; a note belongs to the bar it starts in
+    energy = [c["sections"][b["section"]].get("energy", 0) for b in c["bars"]]
+    if not any(energy) or c.get("stored", {}).get(layer):
+        return every[level]
+    top = max(every)
+    out = []
+    for lv in sorted({min(level + e, top) for e in energy}):
+        out += [n for n in every[lv] if min(level + energy[min(n[0] // bar_ticks, len(energy) - 1)], top) == lv]
+    return out
+
+
+def needs_22(song):
+    """M8: a song that uses anything of 2.2 (a backtrack, a section's role or energy, a new style)"""
+    return bool(song.style) and (getattr(song, "kind", "song") != "song" or
+                                 any(sc.role is not None or sc.energy for sc in song.sections) or
+                                 STYLE_NAMES.index(song.style) >= 6)
 
 
 def compile_song(song, version=None):
     starts = song.style and any(ly.start_level > 1 for ly in song.layers.values())
-    if version is None:              # (2.1 only when a layer opens on another level: every other song stays 2.0)
-        version = (VERSION21 if starts else VERSION2) if song.style else VERSION
+    if version is None:              # (2.1 only when a layer opens on another level: every other song stays 2.0;
+        # M8: 2.2 only for what needs it)
+        version = (VERSION22 if needs_22(song) else VERSION21 if starts else VERSION2) if song.style else VERSION
+    if version in (VERSION2, VERSION21) and needs_22(song):
+        raise ValueError(f"{song.slug}: needs format 2.2 (a backtrack, roles / energy, or a new style)")
     if song.style and version < VERSION2:
         song = _expanded(song)           # (an older device: the generated levels as events)
     nvars = lambda ly: min(len(ly.variants), MAX_VARIANTS[version[1]]) if version[0] == 1 else ly.levels or \
@@ -306,7 +331,7 @@ def compile_song(song, version=None):
             layr += LAYR.pack(0xFF, 0xFF, 0, 0, 0, 0, 0)
         else:
             mask = sum(1 << (v - 1) for v in ly.variants) if version[0] == 2 else 0
-            start = ly.start_level if version == VERSION21 and ly.start_level > 1 else 0
+            start = ly.start_level if version in (VERSION21, VERSION22) and ly.start_level > 1 else 0
             layr += LAYR.pack(ly.channel, 0xFF if ly.program is None else ly.program, nvars(ly),
                               ly.volume, ly.pan, start, mask)
     chunks.append((b"LAYR", layr))
@@ -314,6 +339,15 @@ def compile_song(song, version=None):
         chunks.append((b"CATG", _cstr(song.category, 16)))
     if version[0] == 2:
         chunks.append((b"STYL", STYL.pack(STYLE_NAMES.index(song.style), 1 if song.swing else 0, 0)))
+        if version == VERSION22:          # M8: what the file is, and its sections' roles and energy
+            kind = getattr(song, "kind", "song")
+            bt = kind == "backtrack"
+            body = FORM.pack(KINDS.index(kind), song.bt_number if bt else 0,
+                             SCALES.index(song.bt_scale) if bt else 0, 0, len(song.sections), 0,
+                             _cstr(song.bt_numerals if bt else "", 40))
+            for sc in song.sections:
+                body += FORM_SECT.pack(ROLES.index(sc.role or "other"), sc.energy)
+            chunks.append((b"FORM", body))
         for li, name in enumerate(LAYERS):
             ly = song.layers.get(name)
             for var in sorted(ly.variants) if ly else []:
@@ -386,10 +420,12 @@ def read_compiled(blob, diag=None):
      flags) = HEADER.unpack_from(blob)
     if magic != MAGIC:
         bad(f"magic {magic!r}, expected {MAGIC!r}", "header")
-    if not (vmaj == 1 and vmin in READS or (vmaj, vmin) in (VERSION2, VERSION21)):
-        bad(f"format version {vmaj}.{vmin}; this reader reads 1.0 to 1.{READS[-1]}, 2.0 and 2.1", "header")
+    if not (vmaj == 1 and vmin in READS or (vmaj, vmin) in (VERSION2, VERSION21, VERSION22)):
+        bad(f"format version {vmaj}.{vmin}; this reader reads 1.0 to 1.{READS[-1]}, 2.0 .. 2.2", "header")
     fmt2 = vmaj == 2
-    fmt21 = (vmaj, vmin) == VERSION21
+    fmt22 = (vmaj, vmin) == VERSION22
+    fmt21 = (vmaj, vmin) in (VERSION21, VERSION22)       # (2.2 has 2.1's start levels)
+    vminor2 = vmin
     if fmt2:
         vmin = 3                         # (2.0 has every 1.3 rule; its own below)
     if size != len(blob) or size > MAX_FILE:
@@ -436,7 +472,7 @@ def read_compiled(blob, diag=None):
         return [rec.unpack_from(body, head + k * rec.size) for k in range(count)], body
 
     bar_ticks = bpb * ppq
-    out = Compiled(version=f"{vmaj}.{(1 if fmt21 else 0) if fmt2 else vmin}", size=size, crc32=f"{crc:08x}", ppq=ppq,
+    out = Compiled(version=f"{vmaj}.{vminor2 if fmt2 else vmin}", size=size, crc32=f"{crc:08x}", ppq=ppq,
                    time_signature=f"{bpb}/{unit}", tempo_us=tempo_us, tempo_bpm=round(60e6 / tempo_us, 2),
                    end_tick=end_tick, bar_count=bar_count, pickup_beats=pickup, swing=bool(flags & 1))
     meta = chunk(b"META")
@@ -504,14 +540,34 @@ def read_compiled(blob, diag=None):
         out["bars"].append({"chord_event": idx, "section": sec, "flags": flg})
 
     style = None
-    if fmt2:                               # 2.0: the style
+    if fmt2:                               # 2.0: the style (M8: 2.2 has five more)
         st = chunk(b"STYL")
         if len(st) != STYL.size:
             bad(f"{len(st)} bytes", "STYL")
         si, sw, z = STYL.unpack(st)
-        if si >= len(STYLE_NAMES) or sw > 1 or z or bool(sw) != bool(flags & 1):
+        if si >= (len(STYLE_NAMES) if fmt22 else 6) or sw > 1 or z or bool(sw) != bool(flags & 1):
             bad("style out of range", "STYL")
         style = STYLE_NAMES[si]
+    out["kind"], out["number"], out["scale"], out["numerals"] = "song", 0, "major", ""
+    for sc in out["sections"]:
+        sc["role"], sc["energy"] = "other", 0
+    if fmt22:                              # M8: FORM: the kind, a backtrack's number, scale and numerals; per section
+        fm = chunk(b"FORM")                # its role and energy
+        if len(fm) < FORM.size:
+            bad(f"{len(fm)} bytes", "FORM")
+        kind, num, scl, z1, ns, z2, numerals = FORM.unpack_from(fm)
+        if kind >= len(KINDS) or scl >= len(SCALES) or z1 or z2 or ns != len(out["sections"]) or \
+                len(fm) != FORM.size + ns * FORM_SECT.size or (kind == 0) != (num == 0) or (kind == 0 and scl):
+            bad("kind, number, scale or sections out of range", "FORM")
+        out["kind"], out["number"], out["scale"] = KINDS[kind], num, SCALES[scl]
+        out["numerals"] = _str(diag, numerals, "FORM numerals")
+        if kind == 0 and out["numerals"]:
+            bad("a song has no numerals", "FORM")
+        for k, sc in enumerate(out["sections"]):
+            role, en = FORM_SECT.unpack_from(fm, FORM.size + k * FORM_SECT.size)
+            if role >= len(ROLES) or en > 2:
+                bad(f"section {k}: role {role}, energy {en} out of range", "FORM")
+            sc["role"], sc["energy"] = ROLES[role], en
     out["style"], out["stored"] = style, {}
     layr = chunk(b"LAYR")
     if len(layr) != 4 + len(LAYERS) * LAYR.size or layr[0] != len(LAYERS):
@@ -593,7 +649,7 @@ def read_compiled(blob, diag=None):
         if need > LIMITS["levels_events"]:
             bad(f"{need} events with the largest level of each layer: at most {LIMITS['levels_events']}", "LAYR")
     known = {b"META", b"SECT", b"CHRD", b"CEVT", b"BARS", b"LAYR"} | ({b"CATG"} if vmin >= 2 else set()) | \
-        ({b"STYL"} if fmt2 else set())
+        ({b"STYL"} if fmt2 else set()) | ({b"FORM"} if fmt22 else set())
     out["unknown_chunks"] = sorted(c.decode("latin-1") for c in chunks
                                    if c not in known and not c.startswith(b"EV") and not c.startswith(b"EZ")
                                    and not (fmt2 and c.startswith(b"NT")))

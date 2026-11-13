@@ -1,7 +1,7 @@
 #!/bin/sh
 # song_fuzz.sh [SECONDS]: build tools/song_fuzz.c with firmware/app/song.c under ASan + UBSan (host gcc) and fuzz the
 # device's song parser (and the 2.0 generators, firmware/app/gen.c) with the compiled starter songs as seeds, in formats
-# 2.0, 2.1 (M7), 1.3, 1.1 and 1.0 (default 600 s). Laptop only.
+# 2.0, 2.1 (M7), 2.2 (M8), 1.3, 1.1 and 1.0 (default 600 s). Laptop only.
 # Licence: TBD (see D017)
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -20,6 +20,13 @@ T="$OUT/v21-saints"
 rm -rf "$T" && cp -r "$ROOT/songs/saints" "$T" && rm -rf "$T/previews"
 sed -i 's/^  bass:$/  bass:\n    start_level: 2/; s/^  harmony:$/  harmony:\n    start_level: 3/' "$T/song.yaml"
 "$ROOT/tools/fm1song.sh" compile "$T" -o "$OUT/saints-v21.fm1s" >/dev/null
+# M8: 2.2 seeds: that copy in FUNK with roles and energy (FORM), and every backtrack (songs/backtracks/)
+sed -i 's/^  style: march/  style: funk/; 0,/chart: \([a-z]*\) }/s//chart: \1, role: verse }/; s/chart: \([a-z]*\) }$/chart: \1, role: chorus, energy: 1 }/' "$T/song.yaml"
+"$ROOT/tools/fm1song.sh" compile "$T" -o "$OUT/saints-v22.fm1s" >/dev/null
+for s in "$ROOT"/songs/backtracks/*/; do
+  [ -f "$s/song.yaml" ] || continue
+  "$ROOT/tools/fm1song.sh" compile "$s" -o "$OUT/bt-$(basename "$s").fm1s" >/dev/null
+done
 gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all \
     -fno-omit-frame-pointer -o "$OUT/song_fuzz" "$ROOT/tools/song_fuzz.c" "$ROOT/firmware/app/song.c" "$ROOT/firmware/app/gen.c"
 exec "$OUT/song_fuzz" "${1:-600}" "$OUT"/*.fm1s

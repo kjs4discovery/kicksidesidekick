@@ -64,11 +64,12 @@ static int header(struct song *s, const uint8_t *d, uint32_t n)
         return SONG_E_SHORT;
     if (d[0] != 'F' || d[1] != 'M' || d[2] != '1' || d[3] != 'S')
         return SONG_E_MAGIC;
-    if ((d[4] != 1u || d[5] > 3u) && (d[4] != 2u || d[5] > 1u))
+    if ((d[4] != 1u || d[5] > 3u) && (d[4] != 2u || d[5] > 2u))
         return SONG_E_VERSION;            /* 1.0, 1.1 (M2), 1.2 (M3: the category), 1.3 (M4: 5 levels), 2.0 (M5),
-                                           * 2.1 (M7: a start level per layer) */
+                                           * 2.1 (M7: a start level per layer), 2.2 (M8: FORM, the new styles) */
     s->fmt2 = d[4] == 2u;
-    s->fmt21 = d[4] == 2u && d[5] == 1u;
+    s->fmt21 = d[4] == 2u && d[5] >= 1u;
+    s->fmt22 = d[4] == 2u && d[5] == 2u;
     s->minor = s->fmt2 ? 3u : d[5];
     s->size = u32(d + 8);
     if (s->size != n || s->size > SONG_MAX_SIZE)
@@ -90,6 +91,7 @@ static int header(struct song *s, const uint8_t *d, uint32_t n)
         return SONG_E_HEADER;
     s->start_tick = s->pickup_beats ? (s->beats_per_bar - s->pickup_beats) * s->ppq : 0;
     s->first_bar_number = s->pickup_beats ? 0 : 1;
+    s->file_bar_ticks = s->bar_ticks;
     return SONG_OK;
 }
 
@@ -163,6 +165,33 @@ static int meta(struct song *s)
             return SONG_E_META;
         s->category = (const char *)c;
     }
+    s->numerals = "";
+    s->kind = SONG_KIND_SONG;
+    if (s->fmt22) {                       /* M8: FORM: u8 kind, number, scale, 0; u16 sections, 0; char numerals[40];
+                                           * per section u8 role, energy (the count checked against SECT later) */
+        uint32_t ns, i;
+        const uint8_t *c = chunk(s, fourcc("FORM"), &len);
+        if (!c)
+            return SONG_E_MISSING;
+        if (len < 48u)
+            return SONG_E_META;
+        ns = u16(c + 4);
+        if (c[0] > SONG_KIND_BACKTRACK || c[2] > SONG_SCALE_BLUES || c[3] || u16(c + 6) || ns < 1u ||
+            ns > SONG_MAX_SECT || len != 48u + 2u * ns || (c[0] == SONG_KIND_SONG) != (c[1] == 0) ||
+            (c[0] == SONG_KIND_SONG && (c[2] || c[8])) || !text_ok(c + 8, 40))
+            return SONG_E_META;
+        s->kind = c[0];
+        s->bt_number = c[1];
+        s->scale = c[2];
+        s->numerals = (const char *)(c + 8);
+        for (i = 0; i < ns; i++) {
+            if (c[48 + 2u * i] > ROLE_OTHER || c[49 + 2u * i] > 2u)
+                return SONG_E_META;
+            s->role[i] = c[48 + 2u * i];
+            s->energy[i] = c[49 + 2u * i];
+            s->any_energy |= s->energy[i];
+        }
+    }
     return SONG_OK;
 }
 
@@ -189,6 +218,14 @@ static int sections(struct song *s)
             !text_ok(r + 8, 16))
             return SONG_E_SECT;
         expect = first + count;
+        if (!s->fmt22)
+            s->role[i] = ROLE_OTHER;
+    }
+    if (s->fmt22) {                       /* M8: FORM has one record per section */
+        uint32_t len;
+        const uint8_t *c = chunk(s, fourcc("FORM"), &len);
+        if (u16(c + 4) != s->nsect)
+            return SONG_E_SECT;
     }
     return expect == s->bar_count ? SONG_OK : SONG_E_SECT;
 }
@@ -355,8 +392,9 @@ static int style(struct song *s)
     const uint8_t *c = chunk(s, fourcc("STYL"), &len);
     if (!c)
         return SONG_E_MISSING;
-    if (len != 4u || c[0] >= SONG_STYLES || c[1] > 1u || c[2] || c[3] || c[1] != s->swing)
-        return SONG_E_LAYR;
+    if (len != 4u || c[0] >= (s->fmt22 ? SONG_STYLES : SONG_STYLES_20) || c[1] > 1u || c[2] || c[3] ||
+        c[1] != s->swing)
+        return SONG_E_LAYR;               /* (M8: the new styles in 2.2 only) */
     s->style = c[0];
     return SONG_OK;
 }
@@ -507,7 +545,41 @@ uint32_t song_seek(const struct song_stream *st, uint32_t tick)
     return lo;
 }
 
-uint32_t song_cevt_tick(const struct song *s, uint32_t i) { return u32(s->cevt + i * CEVT_REC); }
+uint32_t song_cevt_tick(const struct song *s, uint32_t i)
+{
+    uint32_t t = u32(s->cevt + i * CEVT_REC);
+    return s->restyled ? t / s->file_bar_ticks * s->bar_ticks : t;   /* (M8: restyled: every change on a bar line) */
+}
+
+/* M8: another style and metre (song.h) */
+int song_restyle(struct song *s, uint32_t style, uint32_t beats_per_bar)
+{
+    uint32_t i, l;
+    if (!s->opened || !s->fmt2 || style >= SONG_STYLES || beats_per_bar < 2u || beats_per_bar > 7u ||
+        s->pickup_beats)
+        return SONG_E_LAYR;
+    for (l = 0; l < SONG_LAYERS; l++)
+        if (s->layer[l].variants && s->layer[l].stored)
+            return SONG_E_LAYR;           /* (stored notes are bars of the file's metre) */
+    for (i = 0; i < s->ncevt; i++)
+        if (u32(s->cevt + i * CEVT_REC) % s->file_bar_ticks)
+            return SONG_E_LAYR;
+    for (i = 0; i < s->nsect; i++)
+        if (song_section_lead(s, i))
+            return SONG_E_LAYR;
+    s->style = (uint8_t)style;
+    s->swing = style == 2u;               /* (shuffle: swung; every other style straight) */
+    s->beats_per_bar = beats_per_bar;
+    s->bar_ticks = s->ppq * beats_per_bar;
+    s->end_tick = s->bar_count * s->bar_ticks;
+    s->start_tick = 0;
+    s->restyled = s->bar_ticks != s->file_bar_ticks;
+    for (l = 0; l < SONG_LAYERS; l++) {
+        s->layer[l].need = 0;
+        s->layer[l].built = 0;
+    }
+    return levels2(s);
+}
 
 uint32_t song_chord_at(const struct song *s, uint32_t tick)
 {

@@ -194,6 +194,12 @@ static void walk(struct song *s)
     for (i = 0; i < 16; i++)
         sink += song_chord_at(s, rnd(s->end_tick + 100));
     sink += (uint32_t)strlen(s->title) + (uint32_t)strlen(s->slug) + (uint32_t)strlen(s->key);
+    sink += (uint32_t)strlen(s->numerals) + s->kind + s->bt_number + s->scale;
+    if (s->fmt2 && song_restyle(s, rnd(SONG_STYLES), 2u + rnd(6)) == SONG_OK) {   /* M8: another style and metre */
+        each_level(s, walk_level);
+        for (i = 0; i < 16; i++)
+            sink += song_chord_at(s, rnd(s->end_tick + 100)) + song_cevt_tick(s, rnd(s->ncevt));
+    }
 }
 
 int main(int argc, char **argv)
@@ -204,10 +210,12 @@ int main(int argc, char **argv)
     unsigned long long runs = 0, accepted = 0, per_err[17] = {0};
     time_t until;
     dec = malloc(SONG_DECODE_BYTES);
-    if (argc == 3 && !strcmp(argv[1], "--events")) {
+    if ((argc == 3 || argc == 5) && !strcmp(argv[1], "--events")) {   /* M8: [STYLE BEATS]: song_restyle first */
         uint32_t n;
         uint8_t *d = load(argv[2], &n);
         int r = d ? song_open(&s, d, n, dec, SONG_DECODE_BYTES) : -99;
+        if (r == SONG_OK && argc == 5)
+            r = song_restyle(&s, (uint32_t)atoi(argv[3]), (uint32_t)atoi(argv[4]));
         if (r != SONG_OK) {
             fprintf(stderr, "%s: %d\n", argv[2], r);
             return 1;

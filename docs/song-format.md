@@ -237,6 +237,35 @@ unchanged); `--format 2.0` leaves the start levels out. The FM-1 from M7 on read
 message: byte 12, 1); M5/M6 refuse 2.1 safely (VERSION), and `fm1song send` sends such an FM-1 the 2.0 form. The
 level generators did not change.
 
+### 2.7 Format 2.2 (M8, D046–D048)
+
+2.1 (start levels included) with these additions; a song that uses none of them stays 2.0 / 2.1, byte for byte (the
+golden tests unchanged). `fm1song compile` writes 2.2 for a backtrack, a section with a `role:` or `energy:`, or one
+of the new styles; `--format 2.0` / `2.1` refuse such a song. An M7 FM-1 refuses 2.2 safely (VERSION); `fm1song send`
+then sends nothing and says to install M8 (there is no older form of a backtrack). The FM-1 from M8 on reads 2.0..2.2
+(LIST END byte 12: 2).
+
+- header version **2.2**;
+- **`STYL`**: the style may also be 6 rock, 7 indie (INDIE POP), 8 bossa (BOSSA NOVA), 9 funk, 10 reggae
+  (arrange.STYLE_NAMES); 2.0 / 2.1 still only 0..5;
+- **`FORM`** (required in 2.2; 48 + 2n bytes): u8 kind (0 song, 1 backtrack), u8 number (a backtrack's 1..255, a
+  song's 0), u8 scale (a backtrack's scale guide: 0 major, 1 minor, 2 blues; a song's 0), u8 0, u16 n (= `SECT`'s
+  count), u16 0, char numerals[40] (a backtrack's progression as shown, "I V vi IV | vi IV I V"; a song's empty);
+  then per section: u8 role (0 intro, 1 verse, 2 chorus, 3 bridge, 4 ending, 5 other: `role:` not given), u8 energy
+  (0..2);
+- **energy**: in every bar of a section with energy e, a generated layer plays level min(L + e, its top level) instead
+  of L (the level chosen); a note belongs to the bar it starts in. Only a layer with no stored level (NT) gets it. The
+  FM-1 builds those bars at the higher level when it builds the level (song_build: no rebuild, no gap at the
+  boundary); its buffer need counts them.
+
+song.yaml (fm1-song/1): `kind: backtrack` and `backtrack: {number, numerals, scale}` (a backtrack: a style, 4/4, no
+pickup, every chord change on a bar line, no melody); per form entry `role:` and `energy:`.
+
+**On the FM-1 (BACKTRACK mode):** `song_restyle` plays a backtrack in any of the 11 styles: the style, the swing
+(SHUFFLE only) and the metre (WALTZ: 3/4, a bar for a bar: every chord change is on a bar line) change; the chord
+events' ticks are scaled bar for bar; every level is generated again (the same as compiling the chart in that style:
+`tests/test_gen_golden.py` checks all 11).
+
 ## 3. What the device does with it (M1b; M2)
 
 ### 3.1 Playback

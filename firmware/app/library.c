@@ -340,7 +340,7 @@ static void sc_list(void)
     b[9] = (uint8_t)(STORE_BLOCKS >> 8);
     b[10] = 2;                           /* M5: and 2.0 */
     b[11] = (uint8_t)player_stats.mode;  /* M5 part 3: 0 the mode screen, 1 LEARN, 2 SYNTH (sends refused) */
-    b[12] = 1;                           /* M7: 2.0 .. 2.this (2.1: a start level per layer) */
+    b[12] = 2;                           /* M7: 2.0 .. 2.this (2.1: a start level per layer; M8: 2.2, FORM) */
     ota_send_msg(SC_END, b, 13);
 }
 

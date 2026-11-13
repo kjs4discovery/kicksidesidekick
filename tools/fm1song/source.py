@@ -14,7 +14,12 @@ from .smf import read_midi
 
 FORMAT = "fm1-song/1"
 LAYERS = ["drums", "bass", "harmony", "melody"]      # fixed order everywhere (compiled file, device buttons)
-GEN_STYLES = ("waltz", "ballad", "shuffle", "march", "pop", "train")   # tools/fm1song/arrange.py STYLES, in order
+GEN_STYLES = ("waltz", "ballad", "shuffle", "march", "pop", "train",   # tools/fm1song/arrange.py STYLES, in order
+              "rock", "indie", "bossa", "funk", "reggae")             # (M8, format 2.2: the new ones)
+ROLES = ("intro", "verse", "chorus", "bridge", "ending", "other")      # M8 (format 2.2): a section's role (index)
+KINDS = ("song", "backtrack")                                          # M8 (format 2.2): what the file is
+SCALES = ("major", "minor", "blues")                                   # M8: a backtrack's scale guide
+ENERGY_MAX = 2
 GEN_LEVELS = {"harmony": 5, "bass": 4, "drums": 3}  # the generated levels of a layer (format 2.0)
 MAX_VARIANTS = 5                  # M4 (format 1.3): up to 5 levels a layer; 1.2 and older: 3
 MODES = ["major", "minor", "dorian", "mixolydian", "lydian", "phrygian", "locrian"]
@@ -25,9 +30,10 @@ _TRACK = re.compile(r"^(drums|bass|harmony|melody)(?::([1-9]))?$")
 
 
 class Section:
-    def __init__(self, name, first_bar, bar_count, lead_ticks, chart):
+    def __init__(self, name, first_bar, bar_count, lead_ticks, chart, role=None, energy=0):
         self.name, self.first_bar, self.bar_count, self.lead_ticks, self.chart = \
             name, first_bar, bar_count, lead_ticks, chart
+        self.role, self.energy = role, energy   # M8 (2.2): ROLES name or None (not given: "other"), 0..ENERGY_MAX
 
 
 class Layer:
@@ -199,6 +205,25 @@ def song_from_data(data, midi_bytes, diag=None):
     song.category = _get(diag, data, "category", str, required=False, default="")   # M3, format 1.2: the list's folder
     if song.category:
         _ascii(diag, song.category, "category", 15)
+    # M8 (format 2.2, D046): a backtrack (BACKTRACK mode lists only these; SONG LEARN only songs)
+    song.kind = _get(diag, data, "kind", str, required=False, default="song")
+    if song.kind not in KINDS:
+        diag.error(f"kind {song.kind!r}: song or backtrack", "song.yaml", "kind")
+        song.kind = "song"
+    song.bt_number, song.bt_numerals, song.bt_scale = 0, "", "major"
+    if song.kind == "backtrack":
+        song.bt_number = _get(diag, data, "backtrack.number", int, default=1)
+        if not 1 <= song.bt_number <= 255:
+            diag.error(f"backtrack.number {song.bt_number}: 1..255", "song.yaml", "backtrack.number")
+            song.bt_number = 1
+        song.bt_numerals = _get(diag, data, "backtrack.numerals", str, default="")
+        _ascii(diag, song.bt_numerals, "backtrack.numerals", 39)
+        song.bt_scale = _get(diag, data, "backtrack.scale", str, default="major")
+        if song.bt_scale not in SCALES:
+            diag.error(f"backtrack.scale {song.bt_scale!r}: one of {', '.join(SCALES)}", "song.yaml", "backtrack.scale")
+            song.bt_scale = "major"
+    elif "backtrack" in data:
+        diag.error("backtrack: needs kind: backtrack", "song.yaml", "backtrack")
     rights = _get(diag, data, "rights", dict, default={})
     song.rights = rights
     _get(diag, data, "rights.composition", str)
@@ -287,7 +312,15 @@ def song_from_data(data, midi_bytes, diag=None):
         if isinstance(lead, bool) or not isinstance(lead, int) or not 0 <= lead < bpb:
             diag.error(f"pickup_beats {lead!r}: must be 0..{bpb - 1}", "song.yaml", where)
             lead = 0
-        song.sections.append(Section(name, first - first_number, last - first + 1, lead * ppq, part))
+        role = sec.get("role")            # M8 (format 2.2): the section's role and energy (0..2: the levels added)
+        if role is not None and role not in ROLES:
+            diag.error(f"role {role!r}: one of {', '.join(ROLES)}", "song.yaml", where)
+            role = None
+        energy = sec.get("energy", 0)
+        if isinstance(energy, bool) or not isinstance(energy, int) or not 0 <= energy <= ENERGY_MAX:
+            diag.error(f"energy {energy!r}: 0..{ENERGY_MAX}", "song.yaml", where)
+            energy = 0
+        song.sections.append(Section(name, first - first_number, last - first + 1, lead * ppq, part, role, energy))
     last_bar = expect - 1
     if last_bar > LIMITS["bars"]:
         diag.fatal(f"{last_bar} bars: at most {LIMITS['bars']}", "song.yaml", "form")
@@ -351,8 +384,18 @@ def song_from_data(data, midi_bytes, diag=None):
             (2 if any(s.first_bar == b for s in song.sections) else 0)
         song.bars.append((idx, sec, flags))
 
+    # M8 (format 2.2): energy needs the generators; a backtrack also: 4/4, no pickup, chords on bar lines only (the FM-1
+    # changes its style, key and metre: WALTZ makes it 3/4, a bar for a bar)
+    if any(sc.energy for sc in song.sections) and not song.style:
+        diag.error("energy needs format 2 (a song with a style)", "song.yaml", "form")
+    if song.kind == "backtrack":
+        if not song.style or song.beats_per_bar != 4 or song.pickup_beats or any(sc.lead_ticks for sc in song.sections) \
+                or any(t % bar_ticks for t, _ in events):
+            diag.error("a backtrack needs a style, 4/4, no pickup, and its chords on bar lines", "song.yaml", "kind")
     # ---- song.mid
     _read_layers(song, data, midi, events, diag)
+    if song.kind == "backtrack" and "melody" in song.layers:
+        diag.error("a backtrack has no melody (the player plays it)", "song.yaml", "layers.melody")
     diag.check()
     return song, diag
 

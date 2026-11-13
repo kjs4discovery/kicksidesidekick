@@ -16,12 +16,53 @@
 #define NOTE_REC 16u
 #define EV_REC 8u
 enum { KICK = 36, STICK = 37, SNARE = 38, HAT = 42, RIDE = 51, CRASH = 49, TOM_LO = 45, TOM_HI = 50 };
-/* arrange.STYLES: per style (STYLE_NAMES order) what harmony, bass and drums do */
-enum { H_WALTZ, H_BALLAD, H_SHUFFLE, H_STRIDE, H_EIGHTHS };
-enum { D_WALTZ, D_BALLAD, D_SHUFFLE, D_MARCH, D_POP, D_TRAIN };
-static const uint8_t H_OF[SONG_STYLES] = {H_WALTZ, H_BALLAD, H_SHUFFLE, H_STRIDE, H_EIGHTHS, H_EIGHTHS};
-static const uint8_t BOOGIE[SONG_STYLES] = {0, 0, 1, 0, 0, 0};
-static const uint8_t D_OF[SONG_STYLES] = {D_WALTZ, D_BALLAD, D_SHUFFLE, D_MARCH, D_POP, D_TRAIN};
+/* arrange.STYLES: per style (STYLE_NAMES order) what harmony, bass and drums do. M8 (D048, 2.2): five more, table
+ * driven (T_*: the tables below; the same as arrange.RHYTHM, BASS_LINE, GROOVE) */
+enum { H_WALTZ, H_BALLAD, H_SHUFFLE, H_STRIDE, H_EIGHTHS, H_TABLE };
+enum { D_WALTZ, D_BALLAD, D_SHUFFLE, D_MARCH, D_POP, D_TRAIN, D_TABLE };
+static const uint8_t H_OF[SONG_STYLES] = {H_WALTZ, H_BALLAD, H_SHUFFLE, H_STRIDE, H_EIGHTHS, H_EIGHTHS,
+                                          H_TABLE, H_TABLE, H_TABLE, H_TABLE, H_TABLE};
+static const uint8_t BOOGIE[SONG_STYLES] = {0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+static const uint8_t D_OF[SONG_STYLES] = {D_WALTZ, D_BALLAD, D_SHUFFLE, D_MARCH, D_POP, D_TRAIN,
+                                          D_TABLE, D_TABLE, D_TABLE, D_TABLE, D_TABLE};
+#define FIRST_TABLE 6u                    /* rock, indie, bossa, funk, reggae */
+#define STEP (PPQ / 4u)                   /* the tables' grid: a 16th note */
+struct rstep { uint8_t st, len, vel; };
+struct bstep { uint8_t st, len, what, vel; };
+enum { BR, BF, BO, BN, BA };              /* the bass line's notes: root, fifth, octave, next root, a step into it */
+/* harmony L2 / L3 (per style: up to 2 bars of up to 8 hits; len 0 ends a bar); UPPER: the lowest note left out */
+static const struct rstep RHYTHM[5][2][9] = {
+    {{{0, 2, 62}, {2, 2, 50}, {4, 2, 58}, {6, 2, 50}, {8, 2, 60}, {10, 2, 50}, {12, 2, 58}, {14, 2, 50}}},   /* rock */
+    {{{0, 6, 62}, {6, 6, 56}, {12, 4, 58}}},                                                                 /* indie */
+    {{{0, 2, 58}, {3, 2, 52}, {6, 3, 54}, {10, 2, 52}, {13, 3, 54}},
+     {{2, 2, 52}, {5, 2, 54}, {8, 2, 56}, {11, 3, 52}}},                                                     /* bossa */
+    {{{0, 1, 70}, {3, 1, 56}, {6, 1, 62}, {7, 1, 50}, {10, 1, 64}, {12, 1, 56}, {14, 1, 60}}},               /* funk */
+    {{{2, 1, 64}, {6, 1, 64}, {10, 1, 64}, {14, 1, 64}}},                                                    /* reggae */
+};
+static const uint8_t RHYTHM_BARS[5] = {1, 1, 2, 1, 1};
+static const uint8_t UPPER[5] = {0, 0, 0, 1, 1};
+static const struct bstep BASS_LINE[5][9] = {
+    {{0, 2, BR, 88}, {2, 2, BR, 74}, {4, 2, BR, 80}, {6, 2, BR, 74}, {8, 2, BR, 86}, {10, 2, BR, 74}, {12, 2, BF, 80},
+     {14, 2, BA, 76}},
+    {{0, 6, BR, 90}, {6, 6, BR, 80}, {12, 4, BF, 82}},
+    {{0, 6, BR, 90}, {6, 2, BF, 74}, {8, 6, BF, 84}, {14, 2, BN, 76}},
+    {{0, 2, BR, 96}, {3, 1, BO, 72}, {6, 1, BR, 84}, {7, 1, BR, 70}, {10, 2, BF, 84}, {12, 1, BO, 72}, {14, 2, BA, 80}},
+    {{0, 4, BR, 92}, {6, 2, BF, 78}, {8, 4, BR, 88}, {13, 1, BO, 70}, {14, 2, BF, 76}},
+};
+/* drums L2: per style up to 2 bars, a row per drum in GROOVE_ORDER (KICK SNARE CHH OHH CLAP TOMLO TOMHI RIM): 16 steps
+ * of '.', 'x' (92), 'o' (70), 'g' (34) */
+static const uint8_t GROOVE_NOTE[8] = {36, 38, 42, 46, 39, 45, 50, 37};
+static const char *const GROOVE[5][2][8] = {
+    {{"x.......x.o.....", "....x.......x...", "x.o.x.o.x.o.x.o.", 0, 0, 0, 0, 0}},                       /* ROCK1 */
+    {{"x.....o...o.....", "....x.......x...", "o.o.o.o.o.o.o.o.", 0, "....o.......o...", 0, 0, 0},
+     {"x.....o...o..o..", "....x.......x...", "o.o.o.o.o.o.o.o.", "..............o.", "....o.......o...", 0, 0,
+      0}},                                                                                                /* POP3 */
+    {{"x..ox..ox..ox..o", 0, "o.o.o.o.o.o.o.o.", 0, 0, 0, 0, "x..x..x...x..x.."},
+     {"x..ox..ox..ox..o", 0, "o.o.o.o.o.o.o.o.", 0, 0, 0, 0, "..x..x..x..x...."}},                        /* BOSSA */
+    {{"x.x.......x..o..", "....x..g.g..x..g", "xoxoxoxoxoxoxoxo", 0, 0, 0, 0, 0}},                       /* FUNK1 */
+    {{"........x.......", "........x.......", "..o...o...o...o.", 0, 0, 0, 0, "........x......."}},       /* REGGAE */
+};
+static const uint8_t GROOVE_BARS[5] = {1, 2, 2, 1, 1};
 
 static uint32_t u16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
 static void w32(uint8_t *p, uint32_t v)
@@ -39,7 +80,23 @@ struct out {
     uint32_t room, n;                     /* notes */
     uint32_t level;                       /* the level wanted (the generators make every level and keep this one) */
     uint32_t swing;
+    const struct song *s;                 /* M8 (2.2): energy on: a bar's section's energy adds to the level (capped at
+                                           * top), the bar a note starts in; 0: off (a stored level, or none) */
+    uint32_t top;
 };
+
+/* the level a note starting at tick start is kept at */
+static uint32_t level_at(const struct out *o, uint32_t start)
+{
+    uint32_t bar, lv;
+    if (!o->s)
+        return o->level;
+    bar = start / o->s->bar_ticks;
+    if (bar >= o->s->bar_count)
+        bar = o->s->bar_count - 1u;
+    lv = o->level + o->s->energy[song_bar_section(o->s, bar)];
+    return lv < o->top ? lv : o->top;
+}
 
 /* arrange.swing_tick: straight eighths -> shuffle eighths (the off-beat from 1/2 to 2/3 of the beat) */
 static uint32_t swing_tick(uint32_t t)
@@ -55,7 +112,7 @@ static uint32_t swing_tick(uint32_t t)
 static void raw(struct out *o, uint32_t lv, uint32_t start, uint32_t end, uint32_t pitch, uint32_t vel)
 {
     uint8_t *r;
-    if (lv != o->level)
+    if (lv != level_at(o, start))
         return;
     if (o->buf && (o->n + 1u) * NOTE_REC <= o->room) {
         r = o->buf + o->n * NOTE_REC;
@@ -175,6 +232,33 @@ static void harmony(const struct song *s, struct out *o)
         for (lv = 2; lv <= 3u; lv++) {    /* L2, L3: the style's rhythm */
             const uint8_t *v = lv == 2u ? v1 : v2;
             uint32_t nv = lv == 2u ? n1 : n2;
+            if (hs == H_TABLE) {          /* M8: a table style, on its 16th grid (arrange._steps) */
+                uint32_t ts = s->style - FIRST_TABLE, rep, j, t, cend = start + dur, bar0 = c.bar * bpb * PPQ;
+                const struct rstep *tab = RHYTHM[ts][c.bar % RHYTHM_BARS[ts]];
+                uint8_t vv[SONG_VOICING_NOTES];
+                uint32_t nvv = 0;
+                for (i = 0; i < nv; i++)
+                    vv[nvv++] = v[i];
+                if (UPPER[ts] && nvv >= 4u) {   /* the lowest note left out */
+                    sort8(vv, nvv);
+                    for (i = 1; i < nvv; i++)
+                        vv[i - 1u] = vv[i];
+                    nvv--;
+                }
+                for (rep = 0; rep * 16u < bpb * 4u; rep++)
+                    for (j = 0; j < 9u && tab[j].len; j++) {
+                        uint32_t st = rep * 16u + tab[j].st, d;
+                        if (st >= bpb * 4u)
+                            continue;
+                        t = bar0 + st * STEP;
+                        if (t < start || t >= cend)
+                            continue;
+                        d = tab[j].len * STEP < cend - t ? tab[j].len * STEP : cend - t;
+                        for (i = 0; i < nvv; i++)
+                            note(o, lv, t, d, vv[i], tab[j].vel);
+                    }
+                continue;
+            }
             for (k = 0; k < c.len; k++) {
                 uint32_t bib = c.beat + k, t = start + k * PPQ;
                 for (i = 0; i < nv; i++)
@@ -301,7 +385,23 @@ static void bass(const struct song *s, struct out *o)
             }
             note(o, 3, start + k * PPQ, d, p, p == root ? 88u : 76u);
         }
-        if (BOOGIE[s->style]) {                                              /* L4: more motion */
+        if (s->style >= FIRST_TABLE) {                                       /* L4: the style's line (M8) */
+            const struct bstep *bl = BASS_LINE[s->style - FIRST_TABLE];
+            uint32_t rep, j, t, cend = start + dur, bar0 = c.bar * bpb * PPQ;
+            for (rep = 0; rep * 16u < bpb * 4u; rep++)
+                for (j = 0; j < 9u && bl[j].len; j++) {
+                    uint32_t st = rep * 16u + bl[j].st, d, p;
+                    if (st >= bpb * 4u)
+                        continue;
+                    t = bar0 + st * STEP;
+                    if (t < start || t >= cend)
+                        continue;
+                    d = bl[j].len * STEP < cend - t ? bl[j].len * STEP : cend - t;
+                    p = bl[j].what == BR ? root : bl[j].what == BF ? fifth : bl[j].what == BO ? root + 12u :
+                        bl[j].what == BN ? nxt : nxt == root ? fifth : nxt < root ? nxt + 1u : nxt - 1u;
+                    note(o, 4, t, d, p, bl[j].vel);
+                }
+        } else if (BOOGIE[s->style]) {                                       /* L4: more motion */
             for (k = 0; k < c.len * 2u; k++)
                 note(o, 4, start + k * (PPQ / 2u), PPQ / 2u, root + LINE[(c.beat * 2u + k) % 8u], k % 2u == 0 ? 84u : 70u);
         } else if (bpb % 3u == 0) {                                          /* 3/4: root, fifth, octave */
@@ -326,7 +426,7 @@ struct hit {
     uint32_t t;
     uint8_t p, v;
 };
-#define MAX_HITS (7u * 6u + 1u)
+#define MAX_HITS 96u                     /* (M8: a table groove: 28 steps of at most 3 hits; M5..M7: 7 x 6 + 1) */
 
 static void drums(const struct song *s, struct out *o)
 {
@@ -353,7 +453,17 @@ static void drums(const struct song *s, struct out *o)
                 HIT(h1, n1, tk, SNARE, bpb == 3u ? 62 : 80);
             HIT(h1, n1, tk, cym, k == 0 ? 64 : 56);
         }
-        for (k = 0; k < bpb; k++) {                                          /* L2: the style's groove */
+        if (ds == D_TABLE) {                                                 /* L2: a table groove (M8) */
+            uint32_t ts = s->style - FIRST_TABLE, st, r;
+            const char *const *g = GROOVE[ts][b % GROOVE_BARS[ts]];
+            for (st = 0; st < bpb * 4u; st++)
+                for (r = 0; r < 8u; r++) {
+                    char ch = g[r] ? g[r][st % 16u] : '.';
+                    if (ch != '.' && n2 < MAX_HITS)
+                        HIT(h2, n2, SW(t0 + st * STEP), GROOVE_NOTE[r], ch == 'x' ? 92 : ch == 'o' ? 70 : 34);
+                }
+        }
+        for (k = 0; k < (ds == D_TABLE ? 0 : bpb); k++) {                    /* L2: the style's groove */
             uint32_t tk = t0 + k * PPQ;
             if (ds == D_WALTZ) {
                 if (k == 0)
@@ -599,10 +709,15 @@ static uint32_t canonical(uint8_t *buf, uint32_t n)
 static void make(const struct song *s, uint32_t l, struct out *o)
 {
     uint32_t len;
+    o->s = 0;
     if (s->layer[l].stored >> (o->level - 1u) & 1u) {
         const uint8_t *c = song_nt_chunk(s, l, o->level, &len);
         song_nt_notes(s, c, len, o);
         return;
+    }
+    if (s->any_energy && !s->layer[l].stored) {   /* M8: energy, for a layer with no stored level */
+        o->s = s;
+        o->top = s->layer[l].variants;
     }
     if (l == 0)
         drums(s, o);
@@ -614,7 +729,7 @@ static void make(const struct song *s, uint32_t l, struct out *o)
 
 uint32_t song_gen_notes(const struct song *s, uint32_t layer, uint32_t level)
 {
-    struct out o = {0, 0, 0, level, s->swing};
+    struct out o = {0, 0, 0, level, s->swing, 0, 0};
     make(s, layer, &o);
     return o.n;
 }
@@ -622,7 +737,7 @@ uint32_t song_gen_notes(const struct song *s, uint32_t layer, uint32_t level)
 int song_build(struct song *s, uint32_t layer, uint32_t level, uint8_t *buf, uint32_t room)
 {
     struct song_layer *ly = &s->layer[layer];
-    struct out o = {buf, room, 0, level, s->swing};
+    struct out o = {buf, room, 0, level, s->swing, 0, 0};
     uint32_t n, v;
     if (!s->opened || !s->fmt2 || layer >= SONG_LAYERS || level < 1u || level > ly->variants)
         return SONG_E_LAYR;

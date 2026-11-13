@@ -20,7 +20,13 @@
 #define SONG_EZ_EVENTS 16384u             /* all EZ streams together, at most: 1.3 (M4: 12 levels); 1.1, 1.2: 8192 */
 #define SONG_EZ_EVENTS_OLD 8192u
 #define SONG_DECODE_BYTES (SONG_EZ_EVENTS * 8u)   /* a decode buffer this big opens any valid 1.x file */
-#define SONG_STYLES 6u                    /* 2.0's STYL: waltz ballad shuffle march pop train (arrange.STYLE_NAMES) */
+#define SONG_STYLES 11u                   /* 2.0's STYL: waltz ballad shuffle march pop train (arrange.STYLE_NAMES);
+                                           * M8, 2.2: + rock indie bossa funk reggae (6..10) */
+#define SONG_STYLES_20 6u                 /* (2.0 and 2.1: the first six) */
+#define SONG_MAX_SECT 32u
+enum { SONG_KIND_SONG, SONG_KIND_BACKTRACK };   /* M8 (2.2, FORM): what the file is */
+enum { SONG_SCALE_MAJOR, SONG_SCALE_MINOR, SONG_SCALE_BLUES };   /* M8: a backtrack's scale guide */
+enum { ROLE_INTRO, ROLE_VERSE, ROLE_CHORUS, ROLE_BRIDGE, ROLE_ENDING, ROLE_OTHER };   /* M8: a section's role */
 #define SONG_NT_PATTERN 4096u             /* 2.0: notes in a bar pattern, at most */
 #define SONG_NT_NOTES 65535u              /* 2.0: notes in a stored level, at most */
 #define SONG_LEVEL_EVENTS 24576u          /* 2.0: the largest level of each layer together, at most (as generated or
@@ -57,7 +63,14 @@ struct song {
     uint32_t size;
     uint32_t minor;                       /* format version 1.minor (2.0: 3, it has 1.3's rules) */
     uint8_t fmt2;                         /* 2.0 (and 2.1) */
-    uint8_t fmt21;                        /* M7: 2.1 (LAYR's flags byte: the start level) */
+    uint8_t fmt21;                        /* M7: 2.1 (LAYR's flags byte: the start level); M8: 2.2 too */
+    uint8_t fmt22;                        /* M8: 2.2 (FORM: kind, roles, energy; the new styles) */
+    uint8_t kind, bt_number, scale;       /* M8 (FORM): SONG_KIND_*, a backtrack's number (1..), SONG_SCALE_* */
+    const char *numerals;                 /* M8: a backtrack's numerals ("I V vi IV"; "" a song), in the file */
+    uint8_t role[SONG_MAX_SECT], energy[SONG_MAX_SECT];   /* M8: per section (FORM; else ROLE_OTHER, 0) */
+    uint8_t any_energy;                   /* M8: a section has energy > 0 */
+    uint8_t restyled;                     /* M8: song_restyle changed its style / metre (file_bar_ticks: the file's) */
+    uint32_t file_bar_ticks;
     uint8_t style;                        /* 2.0: the generators' style, 0..SONG_STYLES-1 */
     uint32_t ppq, beats_per_bar, bar_ticks, tempo_us, end_tick, bar_count, pickup_beats, swing;
     uint32_t start_tick;                  /* where playback starts: after the pickup bar's empty beats */
@@ -77,7 +90,13 @@ struct song_event {
     uint8_t d1, d2;
 };
 
-int song_peek(struct song *s, const uint8_t *data, uint32_t size);   /* header and META only: for a list */
+int song_peek(struct song *s, const uint8_t *data, uint32_t size);   /* header and META only: for a list (M8: and
+                                                                     * FORM's kind, number, scale, numerals) */
+/* M8 (BACKTRACK): an opened 2.x song played in another style (0..SONG_STYLES-1) and metre (beats a bar, 2..7): every
+ * chord change on a bar line, no pickup, no stored level of drums, bass or harmony; a bar stays a bar (its chord the
+ * same). Its levels' needs are counted again (song_layer need); every built level is gone (song_build again).
+ * SONG_OK, SONG_E_LAYR (not such a song), SONG_E_EVENTS (too many notes in that style) */
+int song_restyle(struct song *s, uint32_t style, uint32_t beats_per_bar);
 /* everything: SONG_OK or SONG_E_*. buf (room bytes, 4-aligned) takes a 1.1 file's decoded events; it must stay put
  * and unchanged while the song is in use. A 1.0 file needs none (buf may be 0) */
 int song_open(struct song *s, const uint8_t *data, uint32_t size, uint8_t *buf, uint32_t room);

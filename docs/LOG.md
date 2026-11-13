@@ -565,3 +565,29 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 2.
+
+2026-11-12 — Step M8 Part 2 (format 2.2, energy, five styles; D047, D048) —
+Status: done (laptop: C = Python); committed
+Did:
+- Format 2.2 (docs/song-format.md 2.7), additive: header 2.2; STYL 6..10 = rock, indie, bossa, funk, reggae; FORM
+  (required in 2.2): kind (song / backtrack), a backtrack's number, scale (major / minor / blues) and numerals, per
+  section role (intro verse chorus bridge ending other) and energy 0..2. 2.2 is written only for a backtrack, a role /
+  energy, or a new style: every existing song stays 2.0 / 2.1 byte for byte. Compiler, reader, C parser, fuzzer.
+- Energy, the clean way (no fallback needed): gen.c's note filter keeps, per bar, the level L + the bar's section
+  energy (capped at the top level); a note belongs to the bar it starts in. So the higher bars are generated when the
+  level is built (no rebuild, no gap); the buffer need counts them. Only for layers with no stored level (D: an NT
+  level is a bar pattern of its own level; documented).
+- Five styles, table-driven in gen.c and arrange.py (16th grid, repeated / cut for other metres, 2-bar tables by bar
+  parity): harmony L2/L3 rhythm (+ "upper" voicing for funk / reggae), bass L4 line, drums L2 groove from ROCK1, POP3,
+  BOSSA, FUNK1, REGGAE (x 92, o 70, g 34); L1 the pulse, L3 + crashes / fills as every style.
+- song_restyle (for BACKTRACK, Part 4): any of the 11 styles and a metre (WALTZ 3/4), chord ticks scaled bar for bar.
+- fm1song send refuses 2.2 to an FM-1 before M8 ("install M8 first"; there is no older form); LIST END byte 12 = 2.
+Learned / measured:
+- pytest 123 passed: the 13 songs' golden events unchanged; each new style (4/4, 3/4, 5/4, 7/4, swing, two chords a
+  bar, energy 1 and 2) C = Python at every level; energy changes the chorus/bridge bars to the next level(s) and no
+  other bar; the FM-1's restyle of a POP backtrack = the chart compiled in each of the 11 styles (WALTZ in 3/4).
+- song_fuzz 60 s clean (with 2.2 seeds and a random restyle of every accepted file).
+Hardware touched: none
+Questions for the planning chat:
+- Energy applies only to layers with no stored level (a hand-made / imported level is a different part): OK?
+Next: Part 3.
