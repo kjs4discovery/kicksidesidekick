@@ -679,3 +679,21 @@ Learned / measured:
 Hardware touched: WRITE (install, sends; by the user)
 Questions for the planning chat: none
 Next: Milestone M9 (docs/plan-M9.md), Part 0.
+
+2026-11-13 — Step M9 Part 0 (measure first) —
+Status: done
+Did:
+- Measured with a TEMPORARY build (tools/patches/m9-part0-measure.patch: bt.c, player.h; reverted, the firmware is
+  unchanged): a style change's work done from the main loop while the player plays on (song_open + song_restyle + the
+  three layers' level 1 built, into the song room's second half), for backtracks 1, 5, 9, 20, 28 in all 11 styles.
+- Free app space 92,432 B (slot 585,728 - dev build 493,296); RAM .data+.bss 81,416 B of 98,304; pool 291,464 B.
+Learned / measured:
+- The largest build need: 54,032 B (bt28, FUNK; COUNTRY 49,168; ROCK 46,528; POP 42,432). Two copies: 108,064 B <=
+  112,896 B (BACKTRACK's song room): they fit, each in half (56,448 B).
+- bt28 FUNK: song_open 11 ms, song_restyle 12 ms, build of 3 layers 38 ms = 61 ms (10.5 blocks); rebuilding 3 levels
+  62 ms (FUNK, COUNTRY), 23-50 ms for the other styles. 37-bar POP 1: 7 + 6 + 15 ms, rebuild 27 ms.
+- The audio did not miss a block while it ran (168 blocks made in 972 ms, 167 expected; render_max 17,841 of 139,296).
+- Decision M9-01: (A) SEAMLESS (docs/decisions-M9.md). To re-check after Part 3 (the tier tables change the needs).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 1 (count-in bugs, failing check first).
