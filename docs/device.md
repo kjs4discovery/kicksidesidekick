@@ -4,16 +4,16 @@ All of these must be filled in before any write to the unit is even proposed
 (see CLAUDE.md, hardware safety rules). Note for each value how and when it was
 measured.
 
-## Currently installed (updated 2026-11-12)
+## Currently installed (updated 2026-11-13)
 
-**Milestone M7, FM-1_46000700** (fm1-accompaniment v0.7.0-m7, release build, commit d1140ba, package
-`build/step-M7/fm1acc-0.7.0-m7.fwsc`, sha256 `8478a955…bfdb512`), installed by the user per
-docs/step-M7-install.md (reported 2026-11-12). All steps run by the user, all fine: Rockin' deleted on the unit,
-Zombie resent (format 2.1), its quieter lead sounds right; 13 songs (the user's report; no outputs recorded by
-Claude Code). Fallback: M6 `build/step-M6/fm1acc-0.6.0-m6.fwsc` (sha256 `8944fb02…88abec`; refuses Zombie 2.1:
-resend it after going back), behind it M5.1 `build/step-M5.1/fm1acc-0.5.4-m5p4.fwsc` (sha256 `197b84a5…0a187d`).
+**Milestone M8, FM-1_46000800** (fm1-accompaniment v0.8.0-m8, release build, commit 13c759e, package
+`build/step-M8/fm1acc-0.8.0-m8.fwsc`, sha256 `19e05400…1665f`), installed by the user per
+docs/step-M8-install.md (reported 2026-11-13). All steps run by the user, all fine: the 30 backtracks sent,
+12-Bar Blues and Four Chord Tune resent (the user's report; no outputs recorded by Claude Code). Fallback: M7
+`build/step-M7/fm1acc-0.7.0-m7.fwsc` (sha256 `8478a955…bfdb512`), behind it M6 `build/step-M6/fm1acc-0.6.0-m6.fwsc`
+(sha256 `8944fb02…88abec`), behind it M5.1 `build/step-M5.1/fm1acc-0.5.4-m5p4.fwsc` (sha256 `197b84a5…0a187d`).
 Back to stock any time: `fm1_install.py backups/stock-firmware/FM-1_015.fwsc`. History of writes: docs/LOG.md and
-docs/archive/.
+docs/archive/. (Before: M7 FM-1_46000700, installed 2026-11-12.)
 
 ## Stock firmware version
 

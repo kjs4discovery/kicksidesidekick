@@ -667,3 +667,15 @@ Questions for the planning chat:
 - The styles / progressions / names are unheard drafts: the user's ear decides (one table each).
 - Energy only for generated layers; the melody sound's arp off; the mode cursor always back on SONG LEARN: OK?
 Next: STOP. The user runs docs/step-M8-install.md; Claude Code runs only --info / fm1song list and records.
+
+2026-11-13 — Step M8 install (reported by the user) —
+Status: done
+Did:
+- The user installed 0.8.0-m8 (FM-1_46000800, package sha256 19e05400…1665f) and ran docs/step-M8-install.md: all
+  fine. The 30 backtracks sent; 12-Bar Blues and Four Chord Tune resent.
+- docs/device.md "Currently installed" updated (M8; fallback M7, M6, M5.1).
+Learned / measured:
+- The user's report only; Claude Code recorded no device outputs.
+Hardware touched: WRITE (install, sends; by the user)
+Questions for the planning chat: none
+Next: Milestone M9 (docs/plan-M9.md), Part 0.
