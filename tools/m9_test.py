@@ -414,13 +414,18 @@ def test_m9sweep(all_songs, rep):
     lines, st, check = m5.checker("M9: every style x structure x complexity x 4 progressions, with live changes")
     from concurrent.futures import ThreadPoolExecutor
     jobs = [(p, sty, stc, cx) for p in SAMPLE_PROGS for sty in range(11) for stc in range(3) for cx in (1, 2, 3)]
+    import os
+    if os.environ.get("M9_SWEEP_ONLY"):          # (a re-run of some runs: "style,structure")
+        sty_, stc_ = map(int, os.environ["M9_SWEEP_ONLY"].split(","))
+        jobs = [j for j in jobs if j[1] == sty_ and j[2] == stc_]
     bars_of = {p: compiled_bt(p)["bar_count"] for p in SAMPLE_PROGS + tuple(p + 1 for p in SAMPLE_PROGS)}
 
     def one(j):
         p, sty, stc, cx = j
         bpb = 3 if sty == 6 else 4
         bars = max(bars_of[p], bars_of[p + 1])
-        ms = int(5600 + (bars + 2) * bpb * 60000 / 250 + 3000) if stc == 2 else 17500
+        # (the style change at 6.5 s may take WALTZ to a 4/4 style: the run is timed for 4 beats a bar then)
+        ms = int(5600 + (bars + 2) * 4 * 60000 / 250 + 3000) if stc == 2 else 17500
         sc = ([f"4300:e2:{p - 1}"] if p > 1 else []) + ([f"4350:e3:{sty}"] if sty else []) + \
             ([f"4400:e1:{stc}"] if stc else []) + ([f"4420:e4:{cx - 2}"] if cx != 2 else [])
         sc += ["4450:e0:150"] + m5.press_raw(4700, "PLAY") + ["6500:e3:1", "10500:e2:1"]   # (two switches: bar 4 / 8, then 8 / 12)

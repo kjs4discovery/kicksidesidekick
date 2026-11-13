@@ -76,3 +76,15 @@ runs and long test output; keep design/debugging in the main session. Token savi
 of each milestone the user may /clear; everything you need is in CLAUDE.md, this file, the plan
 and LOG. Please also move HANDOFF notes and LOG entries older than M5 into docs/archive/ (keep
 the live files short), as part of M5.1.
+
+---
+
+## 2026-11-13 — from the planning chat — Milestone M9 planned: docs/plan-M9.md
+
+The user installed M8 (0.8.0-m8): all fine; the M8 notes are in the vault. M9, in priority order: count-in bugs
+(test first), small fixes (the "All songs" count, mode screen text, LFO light, importer time/key signature), band
+complexity tiers for backtracks (a table file, C = Python by generation), one knob map for BACKTRACK SETUP and PLAY
+with changes on the phrase, 3 renamed + 6 new minor progressions. Saving presets and sound kits are M9.1 (not now).
+**The coder for M9 is Sonnet:** the plan is prescriptive; every judgment call it does not spell out goes into
+docs/decisions-M9.md (format in the plan) for the planning chat's review.
+

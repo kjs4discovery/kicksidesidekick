@@ -829,3 +829,25 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 7 (the release build, the full suite once, the install checklist).
+
+2026-11-13 — Step M9 Part 7 (tests, budget, install checklist) —
+Status: done (prepared; not installed). STOPPED for review.
+Did:
+- Release build build/step-M9/fm1acc-0.9.0-m9.fwsc, FM-1_46000900, sha256 8a1c341d28eff7ba112463f8e633bc6828a4e703f7fa1e21313fdc8bcde3cf91, from 03ffd12, reproducible (two builds); fm1-base unchanged since 98fc08c.
+- Tests, only M9's (the user's instruction mid-run, decision M9-21; m5-m8 and m51 were stopped and NOT run): store rc 0; pytest 203 passed;
+  vsynth, guitar rc 0; song_fuzz 60 s clean; tools/m9_test.py on the package: m9p1, m9p2, m9p4, m9census, m9cpu pass; m9sweep 384 of 396
+  passed, the other 12 (WALTZ, FULL: the run was timed for 3-beat bars but the live style change makes it 4/4) failed on a test timing
+  error, fixed in the test and re-run on the same package: pass. No firmware change after the build.
+- docs/controls.md "M9" and 14 screenshots in docs/step-M9/; docs/step-M9-install.md (install over M8; delete bt06-la-bamba, bt13-mario,
+  bt14-creep; send all 36; known items).
+Learned / measured:
+- App 507,440 B: 78,288 B free (M9.1 needs 32 KB). RAM .data+.bss 82,456. BACKTRACK CPU worst 44 % of a block (POP/ROCK, complexity 3,
+  MIAMI PAD x 4, a switch in the run; EAS 22 %); limit 60 %; no tier thinning needed. Largest need 54,448 B of 56,448 per half. Store:
+  13 songs + 36 backtracks = 282 of 552 blocks.
+- The M8 backtracks on the unit are refused by M9 until resent (4 tiers a layer): step 2 of the checklist.
+Hardware touched: none
+Questions for the planning chat:
+- Decisions for review: M9-01 ... M9-21 (docs/decisions-M9.md). Especially M9-07 (crash also forces a kick), M9-08/09 (fill rules), M9-13
+  (CANON), M9-21 (test scope: only the new milestone, from now on).
+- Review docs/step-M9-install.md.
+Next: STOP. The user runs docs/step-M9-install.md; Claude Code runs only --info / fm1song list and records.
