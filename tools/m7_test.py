@@ -30,6 +30,14 @@ M7_FIELDS = ("popups popup_open popup_btn synth_page drum_on drum_pattern drum_k
 B = {n: i for i, n in enumerate("FX SCL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCTDN OCTUP".split())}
 O = m5.OPEN_MS
 SYNTH = m6.SYNTH
+# M8 (D050): E-PIANO, E-GUITAR, E-SITAR moved to presets 1-3: the tests name presets by name (P), and M7's order (OLD)
+# keeps the samples they took (PI: index by name)
+PI = {l.split('"')[1]: k for k, l in enumerate(l for l in (ROOT / "firmware/app/vsynth.c").read_text().splitlines()
+                                             if l.strip().startswith('PR("'))}
+OLD = ["NEON PAD", "DUSK STRINGS", "OCT BOUNCE", "SUNSET LEAD", "SYNC SCREAM", "CHROME BRASS", "GLASS PLUCK",
+       "VAPOR KEYS", "RISER", "CHIP BLIP", "DRIVE BASS", "HAZE PAD", "LASER ARP", "NIGHT DRIVE", "SAW STRINGS",
+       "HORIZON PWM", "TAPE CHOIR", "STAB 84", "GRID PULSE", "E-PIANO", "E-GUITAR", "E-SITAR", "POTATO", "PARKER",
+       "EDS", "OUTRUN BASS", "MIAMI PAD", "CHROME ARP", "NEON BELLS", "VHS STRINGS"]
 
 _stats6 = m5.stats
 
@@ -225,11 +233,11 @@ def fx_max(t):
 def test_m7p3(all_songs, rep):
     lines, st, check = m5.checker("M7 part 3: the effects")
     names = ["fuzz", "crush", "tremolo", "phaser", "chorus", "delay", "reverb"]
-    d = syrun("m7p3-dry", 6600, ["4600:e6:10"] + m5.press_raw(4700, "FX") + ["4900:e3:-64", "5000:e3:-64"]
+    d = syrun("m7p3-dry", 6600, [f"4600:e6:{PI['DRIVE BASS']}"] + m5.press_raw(4700, "FX") + ["4900:e3:-64", "5000:e3:-64"]
               + m5.press_raw(5100, "HOME") + ["5300:e4:-64", "5400:e5:-64", "5600:C4", "6400:C4^"])
     check(d["stats"]["fx_active"] == 0, f"DRIVE BASS with its chorus, reverb and delay at 0: no effect runs "
           f"(ran {d['stats']['fx_active']:#04x})")
-    a = syrun("m7p3-all", 19500, ["4500:e6:4"] + fx_max(4700) + [f"17000:{k}" for k in KEYS8]
+    a = syrun("m7p3-all", 19500, [f"4500:e6:{PI['SYNC SCREAM']}"] + fx_max(4700) + [f"17000:{k}" for k in KEYS8]
               + [f"19100:{k}^" for k in KEYS8])
     s = a["stats"]
     on = [n for i, n in enumerate(names) if s["fx_active"] >> i & 1]
@@ -304,7 +312,7 @@ def test_m7p5(all_songs, rep):
     # 2.1 s: as the laptop's level matching, which measures 2 s; slow attacks such as HAZE PAD's peak after 1.8 s)
     every = os.environ.get("M7_ALL_PRESETS") is not None
     bad, out, eng = [], [], {}
-    for i in range(0, 30, 1 if every else 3):
+    for i in [PI[OLD[j]] for j in range(0, 30, 1 if every else 3)]:   # (M8: the presets M7 sampled)
         r = syrun(f"m7p5-preset-{i}", 7300, ([f"4600:e6:{i}"] if i else []) + ch4)
         s = r["stats"]
         v = max(m5.rms(r["left"][int(t * m5.RATE):int((t + 0.1) * m5.RATE)]) for t in
@@ -312,23 +320,23 @@ def test_m7p5(all_songs, rep):
         # recorded audio runs ~0.1 s ahead of the script)
         out.append((i, round(v)))
         eng[i] = s["synth_engine"]
-        if s["synth_preset"] != i or (v < 300 and i != 8) or s["synth_peak"] >= 8388607 or r["halt"]:   # (RISER: slow)
+        if s["synth_preset"] != i or (v < 300 and i != PI["RISER"]) or s["synth_peak"] >= 8388607 or r["halt"]:   # (RISER: slow)
             bad.append((i, s["synth_preset"], round(v)))
     check(not bad, f"the presets by PRESET ({'all 30' if every else 'every 3rd'}): each sounds, none clips {out} "
                    f"{bad or ''}")
     n = syrun("m7p5-count", 5000, ["4600:e6:-1"])
     check(n["stats"]["synth_preset"] == 29, f"30 presets (PRESET back from the first: number "
                                             f"{n['stats']['synth_preset'] + 1})")
-    ep = syrun("m7p5-epiano-sound", 5600, ["4600:e6:19"] + presses(4900, ["EDIT", "EDIT", "EDIT"], 200))
-    an = syrun("m7p5-analog-sound", 5600, presses(4900, ["EDIT", "EDIT", "EDIT"], 200))
+    ep = syrun("m7p5-epiano-sound", 5600, presses(4900, ["EDIT", "EDIT", "EDIT"], 200))
+    an = syrun("m7p5-analog-sound", 5600, [f"4600:e6:{PI['NEON PAD']}"] + presses(4900, ["EDIT", "EDIT", "EDIT"], 200))
     check(ep["stats"]["synth_engine"] == 1 and an["stats"]["synth_engine"] == 0 and ep["stats"]["synth_page"] == 3 and
           m5.ImageChops.difference(ep["lcd"], an["lcd"]).getbbox() is not None,
           "E-PIANO is a PHASE preset: its SOUND A page shows PHASE's parameters (m7p5-epiano-sound.png), NEON PAD's "
           "ANALOG's (m7p5-analog-sound.png)")
-    pk = syrun("m7p5-phase-chord", 6600, ["4600:e6:19"] + ch4)
+    pk = syrun("m7p5-phase-chord", 6600, ch4)   # (M8: E-PIANO is preset 1)
     v = m5.rms(pk["left"][int(5.1 * m5.RATE):int(6.3 * m5.RATE)])
     check(v > 300 and pk["stats"]["synth_voices_max"] == 4, f"E-PIANO (PHASE): a 4-note chord, 4 voices (rms {v:.0f})")
-    lv = [x for i, x in out if i not in (8,)]
+    lv = [x for i, x in out if i not in (PI["RISER"],)]
     spread = max(lv) / min(lv) if lv and min(lv) else 99
     check(spread < 1.6, f"the presets level-matched (LEVEL): the chord's loudest 100 ms within {spread:.2f}x of each other "
                         f"(RISER left out: its 6 s attack; the 100 ms loudest of each, laptop: within 0.3 dB)")

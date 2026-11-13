@@ -108,6 +108,15 @@ static void defaults(struct vs_preset *r, uint32_t e)
 #define AN VS_ANALOG
 #define PH VS_PHASE
 static const struct vs_preset PRESETS[] = {
+    /* M8 (D050): E-PIANO, E-GUITAR, E-SITAR first (presets 1-3; SYNTH starts on 1). M7 (D042): PHASE waves: 0 SAW 1 SQR 2 PLS 3 DSIN 4 SPLS 5 RSAW 6 RTRI 7 RTRP; its SOUND A, B:
+     * WAVE WAVE2 DCW ENV DTN LINE SUB FOLD (the FILTER page: our filter after it) */
+    PR("E-PIANO", PH, 0, 80, 30, 40, 127, 0, 64, 0, 3, 0, 36, 90, 6, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
+       64, 50, 50, 40, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 40, 96, 0),
+    PR("E-GUITAR", AN, 0, 70, 50, 30, 70, 20, 94, 0, 0, 6, 64, 0, 0, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
+       64, 0, 0, 0, 0, 0, 0, 0, 2, 50, 20, 90, 64, 64, 30, 100, 0),
+    PR("E-SITAR", PH, 0, 55, 10, 30, 127, 0, 64, 0, 5, 0, 90, 60, 3, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
+       40, 30, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 30, 119, 0),
+    /* M5..M6's (M7: as records) */
     PR("NEON PAD", AN, 70, 90, 110, 88, 58, 18, 74, 0, 0, 18, 64, 0, 0, 40, 20, 0, ARP_UP, RATE_8, 0, 64,
        64, 100, 0, 0, 0, 0, 0, 0, 3, 64, 40, 0, 64, 64, 50, 95, 0),
     PR("DUSK STRINGS", AN, 62, 80, 112, 84, 72, 10, 70, 0, 4, 9, 50, 0, 0, 40, 28, 46, ARP_UP, RATE_8, 0, 64,
@@ -146,14 +155,6 @@ static const struct vs_preset PRESETS[] = {
        64, 60, 0, 0, 0, 0, 0, 0, 3, 64, 50, 0, 64, 64, 24, 114, 0),
     PR("GRID PULSE", AN, 0, 40, 30, 20, 54, 46, 94, 0, 4, 0, 0, 0, 0, 64, 50, 60, ARP_DOWN, RATE_16, 0, 64,
        64, 50, 0, 0, 0, 0, 0, 30, 3, 64, 60, 0, 64, 64, 20, 119, 1),
-    /* M7 (D042): the new ones. PHASE waves: 0 SAW 1 SQR 2 PLS 3 DSIN 4 SPLS 5 RSAW 6 RTRI 7 RTRP; its SOUND A, B:
-     * WAVE WAVE2 DCW ENV DTN LINE SUB FOLD (the FILTER page: our filter after it) */
-    PR("E-PIANO", PH, 0, 80, 30, 40, 127, 0, 64, 0, 3, 0, 36, 90, 6, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 50, 50, 40, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 40, 96, 0),
-    PR("E-GUITAR", AN, 0, 70, 50, 30, 70, 20, 94, 0, 0, 6, 64, 0, 0, 64, 0, 0, ARP_UP, RATE_8, 0, 64,
-       64, 0, 0, 0, 0, 0, 0, 0, 2, 50, 20, 90, 64, 64, 30, 100, 0),
-    PR("E-SITAR", PH, 0, 55, 10, 30, 127, 0, 64, 0, 5, 0, 90, 60, 3, 0, 0, 0, ARP_UP, RATE_8, 0, 64,
-       40, 30, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 30, 119, 0),
     PR("POTATO", AN, 6, 60, 100, 30, 50, 30, 74, 0, 6, 8, 70, 0, 30, 40, 0, 0, ARP_UP, RATE_8, 0, 64,
        64, 30, 30, 25, 20, 40, 30, 0, 3, 64, 20, 0, 64, 80, 30, 104, 0),
     PR("PARKER", AN, 10, 60, 90, 25, 55, 20, 104, 0, 4, 6, 40, 18, 10, 64, 30, 50, ARP_UP, RATE_8, 0, 64,

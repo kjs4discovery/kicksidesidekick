@@ -436,8 +436,9 @@ void app_splash(void)
     lcd_fill(0, 0, 240, 240, LOGO_BG);
     draw_logo(oy);
     cv_begin(240, 40, LOGO_BG);
-    text_in(0, 240, 0, &FONT_B, APP_NAME, RGB(60, 50, 40));
-    text_in(0, 240, 22, &FONT_XS, "v" FW_VERSION, RGB(150, 136, 118));
+    /* M8 (D050): the name, in FONT_B if it fits 240 px, else the next smaller font (never cut); under it the milestone */
+    text_in(0, 240, 0, text_w(&FONT_B, APP_NAME) <= 236 ? &FONT_B : &FONT_XS, APP_NAME, RGB(60, 50, 40));
+    text_in(0, 240, 22, &FONT_XS, FW_MILESTONE, RGB(150, 136, 118));
     cv_blit(0, (uint32_t)oy + LOGO_H + 6u);
 }
 
@@ -1721,7 +1722,7 @@ static void draw_help(void)
             num_cat(t, player_voices_max());
             cv_text(6, 204 - y0, &FONT_XS, t, C_DIM);
             cv_text(234 - text_w(&FONT_XS, "v" FW_VERSION), 204 - y0, &FONT_XS, "v" FW_VERSION, C_DIM);
-            cv_text(6, 220 - y0, &FONT_XS, ui.flash_ok ? "FM-1 Accompaniment" : "FM-1 Accompaniment  RAM ONLY", C_DIM);
+            cv_text(6, 220 - y0, &FONT_XS, ui.flash_ok ? APP_NAME : APP_NAME "  RAM ONLY", C_DIM);
         }
         cv_blit(0, (uint32_t)y0);
     }

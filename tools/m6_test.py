@@ -32,7 +32,7 @@ M6_FIELDS = ("mode_switches zoom uke roll_keys jam jam_notes shift fx_reverb fx_
 PRIV = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
     if (ROOT / "songs/private").is_dir() else []
 O = m5.OPEN_MS
-SYNTH = ["4050:e0:1", "4200:PLAY", "4260:PLAY^"]   # the mode screen: SELECT to SYNTH, PLAY
+SYNTH = ["4050:e0:2", "4200:PLAY", "4260:PLAY^"]   # the mode screen: SELECT to SYNTH (M8: the third), PLAY
 
 _stats5 = m5.stats
 
@@ -134,7 +134,7 @@ def test_m6p1(all_songs, rep):
     snd = m5.rms(sp["left"][int(12.2 * m5.RATE):])
     check(sp["stats"]["ui_view"] == V_PLAY and snd > 50 and not sp["halt"],
           f"... a song opened after SYNTH plays (rms {snd:.0f}), no crash")
-    ss = m5.run("m6p1-synth-again", 10000, SYNTH + hold_home(5000) + ["7600:e0:1", "7800:PLAY!", "7860:PLAY^!",
+    ss = m5.run("m6p1-synth-again", 10000, SYNTH + hold_home(5000) + ["7600:e0:2", "7800:PLAY!", "7860:PLAY^!",
                                                                      "8500:C4", "9500:C4^"], mode=None)
     snd = m5.rms(ss["left"][int(8.7 * m5.RATE):int(9.4 * m5.RATE)])
     check(ss["stats"]["mode"] == 2 and snd > 300, f"SYNTH, the mode screen, SYNTH again: it plays (rms {snd:.0f})")

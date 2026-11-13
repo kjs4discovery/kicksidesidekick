@@ -6,9 +6,9 @@ Each folder is one song in format `fm1-song/1` (docs/song-format.md): `song.yaml
 | folder | song | category (M3) | key, metre | notes from |
 |---|---|---|---|---|
 | amazing-grace | Amazing Grace | Hymns | G, 3/4, 1-beat pickup | `amazing-grace/make_amazing_grace.py` (the planning chat's sample) |
-| twelve-bar-blues | Twelve-Bar Blues in C | Blues | C, 4/4 shuffle | `make_songs.py` |
+| twelve-bar-blues | 12-Bar Blues (M8; was Twelve-Bar Blues in C) | Blues | C, 4/4 shuffle | `make_songs.py` |
 | saints | When the Saints Go Marching In | Hymns | F, 4/4, 3-beat pickup | `make_songs.py` |
-| four-chords | Four Chords in G (I-vi-IV-V) | Practice forms | G, 4/4 straight 8ths | `make_songs.py` |
+| four-chords | Four Chord Tune (I-vi-IV-V; M8; was Four Chords in G) | Practice forms | G, 4/4 straight 8ths | `make_songs.py` |
 | scarborough-fair | Scarborough Fair | Folk | D dorian, 3/4 | `make_songs.py` |
 | greensleeves | Greensleeves (M2) | Folk | A minor, 3/4, 1-beat pickup, 88 BPM | `make_songs.py` |
 | danny-boy | Londonderry Air (Danny Boy) (M2) | Folk | C, 4/4, slow (66 BPM), slash chords (C/E, C/G, D7/F#, G/F) | `make_songs.py` |

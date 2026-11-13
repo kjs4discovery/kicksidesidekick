@@ -547,3 +547,21 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 1 (renames).
+
+2026-11-12 — Step M8 Part 1 (renames, D050) —
+Status: done (emulator); committed
+Did:
+- Mode screen: SONG LEARN, BACKTRACK, SYNTH (a row each under the mascot); the cursor on SONG LEARN at power-on and
+  whenever the screen opens (HOME held 2 s, Switch mode); SELECT steps and stops at the ends. (BACKTRACK: Part 4.)
+- APP_NAME "Notami - SongSidekick" (splash in FONT_B: it fits; the help line; words.tsv), the splash's second line
+  "m8"; FW_VERSION 0.8.0-m8. USB / MIDI names, identity, package name unchanged.
+- Presets: E-PIANO, E-GUITAR, E-SITAR are 1-3 (SYNTH starts on E-PIANO). Tests now name presets by name
+  (m7_test PI / OLD keeps M7's samples); m5p3 / vsynth_test indices moved; SYNTH = e0:2 on the mode screen.
+- Titles: "12-Bar Blues", "Four Chord Tune" (make_songs.py; slugs unchanged).
+Learned / measured:
+- Fast checks on that build: m5p3 ALL PASS; m6p1 only the known Zombie drums 1.68x; m7p2, m7p5, m7p6 ALL PASS;
+  vsynth_test ALL PASS; pytest 95.
+- (Decided: leaving a mode puts the cursor on SONG LEARN, not on "the other one" as M7 did with two choices.)
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 2.

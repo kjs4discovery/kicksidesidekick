@@ -1800,8 +1800,8 @@ def test_m5p3(all_songs, rep):
           "after the splash: the mode screen (the mascot, LEARN / SYNTH, the cursor on LEARN; m5p3-mode.png)")
     l = run("m5p3-learn", 4700, [])
     check(l["stats"]["ui_view"] == 0 and l["stats"]["mode"] == 1, "PLAY on LEARN: the song list, as before")
-    pick = ["4050:e0:1", f"4200:PLAY", f"4260:PLAY^"]       # SELECT to SYNTH, PLAY
-    m2 = run("m5p3-mode-synth-cursor", 4150, ["4050:e0:1"], mode=None)
+    pick = ["4050:e0:2", f"4200:PLAY", f"4260:PLAY^"]       # SELECT to SYNTH (M8: the third), PLAY
+    m2 = run("m5p3-mode-synth-cursor", 4150, ["4050:e0:2"], mode=None)
     chord = ["5000:C4", "5000:E4", "5000:G4", "6500:C4^", "6500:E4^", "6500:G4^"]
     s1 = run("m5p3-synth", 7000, pick + chord, mode=None)
     ss = s1["stats"]
@@ -1822,9 +1822,9 @@ def test_m5p3(all_songs, rep):
         if r1["stats"]["synth_preset"] != i or v < 50 or r1["stats"]["synth_peak"] >= 8388607:   # (RISER: a 6 s attack)
             bad.append((i, r1["stats"]["synth_preset"], round(v)))
     check(not bad, f"presets by PRESET (M7): each sounds, none clips (rms of 0, 4, .. 28: {peaks}) {bad or ''}")
-    # the arpeggiator: a preset with one (OCT BOUNCE, 3rd), and ARP on preset 1 (a press). M7: pattern and rate on the
+    # the arpeggiator: a preset with one (OCT BOUNCE, 3rd; M8: 6th), and ARP on preset 1 (a press). M7: pattern and rate on the
     # ARP page (M5, M6: SEQ and GLO; SEQ is now the drum pattern menu, GLO the help)
-    a1 = run("m5p3-arp-preset", 7000, pick + ["4600:e6:2", "5000:C4", "5000:G4", "6800:C4^", "6800:G4^"], mode=None)
+    a1 = run("m5p3-arp-preset", 7000, pick + ["4600:e6:5", "5000:C4", "5000:G4", "6800:C4^", "6800:G4^"], mode=None)
     a2 = run("m5p3-arp-button", 7500, pick + ["4600:ARP", "4700:ARP^", "5000:C4", "5000:E4", "5000:G4",
                                               "7200:C4^", "7200:E4^", "7200:G4^"], mode=None)
     a3 = run("m5p3-arp-seq", 8400, pick + ["4600:ARP", "4700:ARP^", "4800:e1:-5", "5000:e2:2", "5400:e3:2",
@@ -1841,7 +1841,7 @@ def test_m5p3(all_songs, rep):
     check(oc["stats"]["key_note_last"] == 72, f"OCT+: the keys an octave up (C4 key -> {oc['stats']['key_note_last']})")
     # CPU: 8 voices of the busiest sound (SYNC SCREAM, 5th), chorus and delay on
     keys8 = ("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5")
-    cp = run("m5p3-cpu", 7000, pick + ["4600:e6:4"] + [f"5000:{k}" for k in keys8] + [f"6800:{k}^" for k in keys8],
+    cp = run("m5p3-cpu", 7000, pick + ["4600:e6:7"] + [f"5000:{k}" for k in keys8] + [f"6800:{k}^" for k in keys8],
              mode=None)
     c = cp["stats"]
     load = c["synth_render_max"] / c["budget"] if c["budget"] else 9

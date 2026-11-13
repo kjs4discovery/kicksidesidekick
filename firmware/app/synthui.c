@@ -2,8 +2,8 @@
 /* M5 Part 3 (D030); M7 (D039): the mode screen and SYNTH mode's screens and controls. Included by ui.c (fm1-base's
  * unity build), after its drawing helpers and the NOT IMPLEMENTED pop-up. The sound is vsynth.c's, the drums synth.c's.
  *
- * The mode screen comes after the splash at every power-on: the mascot (the splash's logo), LEARN and SYNTH, the
- * cursor on LEARN; SELECT moves it, PLAY or EDIT chooses. HOME held 2 s from any screen, or Settings > Switch mode,
+ * The mode screen comes after the splash at every power-on: the mascot (the splash's logo), SONG LEARN, BACKTRACK and
+ * SYNTH (M8, D050), the cursor on SONG LEARN; SELECT moves it, PLAY or EDIT chooses. HOME held 2 s from any screen, or Settings > Switch mode,
  * comes back here (the song stops, or the synth goes quiet and gives the song buffer back).
  *
  * SYNTH (M7, the map the user approved; docs/controls.md "M7"): the main screen shows the preset (big), the drum
@@ -19,13 +19,15 @@
 #include "vsynth.h"
 
 enum { SY_MAIN, SY_PAGE, SY_MENU, SY_HELP, SY_SET };
+enum { M_LEARN, M_BACKTRACK, M_SYNTH, MODES };   /* M8: the mode screen's choices, in order */
 #define QUICK_MS 1200u                   /* the bottom row shows a quick knob's value this long */
 #define SY_SET_ROWS 2u                   /* SYNTH's settings: drum volume, drum kit */
 static const uint8_t QUICK[4] = {VP_CUT, VP_RES, VP_REV_MIX, VP_DLY_MIX};
 static const char *const KIT_NAME[KITS] = {"ACOUSTIC", "808", "CHIP"};
 
 static struct {
-    uint32_t mode_sel;                   /* the mode screen's cursor: 0 LEARN, 1 SYNTH */
+    uint32_t mode_sel;                   /* the mode screen's cursor: M_LEARN, M_BACKTRACK, M_SYNTH (M8: on SONG LEARN
+                                          * whenever the screen opens) */
     uint32_t scr, back;                  /* SY_*; the screen the help / menu returns to */
     uint32_t page;                       /* SY_PAGE: PG_* */
     uint32_t preset, bpm;
@@ -54,28 +56,35 @@ static void drum_settings_apply(void)
 /* ---------------------------------------------------------------- the mode screen --- */
 static void draw_mode(void)
 {
-    static const char *const NAME[2] = {"LEARN", "SYNTH"};
-    static const char *const SUB[2] = {"play along", "play the synth"};
+    /* M8 (D050): three choices under the mascot, a row each: SONG LEARN, BACKTRACK, SYNTH */
+    static const char *const NAME[MODES] = {"SONG LEARN", "BACKTRACK", "SYNTH"};
+    static const char *const SUB[MODES] = {"play along a song", "jam over a band", "play the synth"};
     uint32_t i;
     lcd_fill(0, 0, 240, 240, LOGO_BG);
-    draw_logo(4);
-    for (i = 0; i < 2u; i++) {
+    draw_logo(0);
+    for (i = 0; i < MODES; i++) {
         int sel = i == sy.mode_sel;
-        cv_begin(112, 52, LOGO_BG);
-        cv_rect(0, 0, 112, 52, sel ? C_HI : RGB(200, 190, 176));
-        cv_rect(3, 3, 106, 46, sel ? RGB(40, 34, 28) : LOGO_BG);
-        text_in(0, 112, 8, &FONT_B, NAME[i], sel ? C_WHITE : RGB(60, 50, 40));
-        text_in(0, 112, 30, &FONT_XS, SUB[i], sel ? C_HI : RGB(120, 108, 94));
-        cv_blit(6u + i * 116u, 182);
+        cv_begin(232, 22, LOGO_BG);
+        if (sel) {
+            cv_rect(0, 0, 232, 22, C_HI);
+            cv_rect(2, 2, 228, 18, RGB(40, 34, 28));
+        }
+        cv_text(10, 3, &FONT_B, NAME[i], sel ? C_WHITE : RGB(60, 50, 40));
+        cv_text(222 - text_w(&FONT_XS, SUB[i]), 4, &FONT_XS, SUB[i], sel ? C_HI : RGB(120, 108, 94));
+        cv_blit(4, 172u + i * 23u);
     }
 }
 
 static void mode_choose(uint32_t m)
 {
     ui.redraw = 1;
-    if (m == 0) {                        /* learning: the song list, as before */
+    if (m == M_LEARN) {                  /* SONG LEARN: the song list, as before */
         player_stats.mode = 1;
         ui.view = V_LIST;
+        return;
+    }
+    if (m == M_BACKTRACK) {              /* M8: BACKTRACK (Part 4) */
+        app_say("BACKTRACK", "not yet");
         return;
     }
     player_stats.mode = 2;
@@ -102,11 +111,10 @@ static void mode_leave(void)
                                           * block is 5.8 ms; a song opened next reads into it) */
         while (plat_ms() - t < 20u)
             ;
-        sy.mode_sel = 0;
     } else {
         lib_release();                   /* the song stops */
-        sy.mode_sel = 1;
     }
+    sy.mode_sel = M_LEARN;               /* (M8: the cursor on SONG LEARN, as at power-on) */
     synth_panic();
     ui.keymode_until = 0;
     ui.loop_step = 0;
@@ -120,8 +128,8 @@ static void mode_input(uint32_t keys, uint32_t btn, uint32_t down)
 {
     int32_t d = plat_enc(EN_SELECT);
     (void)keys, (void)btn;
-    if (d) {
-        sy.mode_sel = d > 0 ? 1u : 0u;
+    if (d) {                             /* (M8: three choices, a step a click) */
+        sy.mode_sel = (uint32_t)clamp((int32_t)sy.mode_sel + d, 0, (int32_t)MODES - 1);
         ui.redraw = 1;
     }
     if (down & (1u << B_PLAY | 1u << B_EDIT))
@@ -290,7 +298,7 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
                                                : synth_page(SY_PAGE, PG_FX1);
     if (down & 1u << B_HOME) {           /* a tap: the main screen (held 2 s: the mode screen, ui.c); on it, a hint */
         if (sy.scr == SY_MAIN)
-            synth_say("HOME", "hold 2 s: LEARN / SYNTH");
+            synth_say("HOME", "hold 2 s: the modes");
         else
             synth_page(SY_MAIN, 0), sy.say_until = 0;
     }
