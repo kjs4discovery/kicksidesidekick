@@ -697,3 +697,25 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 1 (count-in bugs, failing check first).
+
+2026-11-13 — Step M9 Part 1 (the count-in bugs, both modes) —
+Status: done
+Did:
+- The failing check first (tools/m9_test.py m9p1, on the M8 player + a counter of count-ins, player_stats.countins): (a)
+  BACKTRACK POP 3, LOOP and FULL, K4 and K1-K3 turned while playing: PASSED already (count-ins 1; K4 is not a second
+  path: it only loads a melody sound); (b) BACKTRACK LOOP, pause in bar 3, PLAY, 3 wraps: FAILED, count-ins 5, clicks 29
+  (expected 2); (c) SONG LEARN, LOOP SONG with the start point at bar 4: FAILED, count-ins 2 (one at the wrap); BARS A-B
+  pause / resume, 3 wraps: FAILED, count-ins 8, clicks 50; (d) count-in OFF: FAILED, clicks after the first start (d-off-pause
+  4 count-ins / 28 clicks; d-off-song 1 / 9, the wrap's).
+- The fix (player.c): a flag `counting`, set by start() when a count-in is scheduled (from < s0), cleared when the position
+  reaches music_from; the click test and the state test (PL_COUNT_IN) both need it. A loop jump back below music_from (the
+  loop starts before the resume point) no longer counts in.
+- m9p1 ALL PASS: (a) count-ins 1; (b) 2 (the start's and the resume's); (c) 1, and 2 with 6 wraps; (d) count-in OFF: 0 clicks
+  at wraps (BACKTRACK 1 count-in, 1 click: the first start's, stopped at once).
+- Fast checks on that build: m8p4 + m8p6 ALL PASS; m5p3 ALL PASS; m6p1 only the known Zombie failure (drums 1.68x).
+Learned / measured:
+- The user's "K4 restarts the count-in from 20-something" was the loop wrap after a pause / resume or a later start point
+  (the wrap went back below music_from); K4 itself cannot do it. Decision M9-02.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 2.

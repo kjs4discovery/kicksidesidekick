@@ -58,6 +58,9 @@ static uint8_t var_cur[SONG_LAYERS] = {1, 1, 1, 1};
 static uint8_t hold_cur;
 static uint32_t mute_cur;
 static int32_t transpose_cur, bass_oct_cur;
+static uint8_t counting;                  /* M9: a count-in is under way: set by a start that schedules one, cleared when the
+                                           * position reaches music_from; clicks and PL_COUNT_IN need it, so a loop jump
+                                           * back below music_from never counts in again */
 static uint32_t active[SONG_LAYERS][4];   /* notes sounding, per layer */
 static int loop_mode;
 static int32_t loop_from, loop_to;
@@ -362,7 +365,7 @@ static void clicks(int32_t from, int32_t to)
         synth_send_now((uint8_t)(0x80u | click_ch), click_on, 0);
         click_on = 0;
     }
-    if (from >= music_from)
+    if (!counting || from >= music_from)
         return;
     /* the first beat at or after from (from may be negative: round towards +infinity by hand) */
     t = from >= 0 ? (from + ppq - 1) / ppq * ppq : -((-from) / ppq * ppq);
@@ -455,7 +458,10 @@ static void start(uint32_t f0, int32_t s0, int count_in)
     seek_all(s0);
     if (from < s0)
         click_channel_setup();
-    state = from < s0 ? PL_COUNT_IN : PL_PLAYING;
+    counting = from < s0;
+    state = counting ? PL_COUNT_IN : PL_PLAYING;
+    if (counting)
+        player_stats.countins++;
     pub_from = s0;
     player_stats.starts++;
     player_stats.start_frames = f0;
@@ -640,7 +646,9 @@ void player_block(uint32_t n)
     }
     run_events(to);
     log_chords(from, to, f0);
-    state = to < music_from ? PL_COUNT_IN : PL_PLAYING;
+    if (counting && to >= music_from)
+        counting = 0;                     /* (M9) the music has started: never a count-in again until player_start */
+    state = counting ? PL_COUNT_IN : PL_PLAYING;
     player_stats.blocks++;
     player_stats.last_tick = to;
     pub_loop = loop_mode;

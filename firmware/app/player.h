@@ -53,6 +53,18 @@ uint32_t player_variant_of(uint32_t layer);
 uint32_t player_tempo_of(void);           /* BPM */
 int player_count_in_of(void);
 int player_loop_of(uint32_t *from, uint32_t *to);
+/* M9 (BACKTRACK, D053): from the bar line at tick `at` of the song playing, play `next` (another version of the band, or
+ * the same song in another key / at other levels) from tick `to` of it, sample-exact, with the loop and transposition
+ * given and `levels` (4 bits a layer, drums low) as each layer's level; the notes sounding are released. The song
+ * playing and `next` must both stay put and unchanged until player_swaps() counts it (the old one after that no more
+ * than the main loop reads it). A request the position has passed (or while not PL_PLAYING) is dropped:
+ * player_swaps() stays, player_swaps_late() counts it. player_swap_cancel() withdraws a waiting request. */
+void player_swap(const struct song *next, int32_t at, int32_t to, int loop_mode, uint32_t loop_from, uint32_t loop_to,
+                 int32_t transpose, uint32_t levels);
+void player_swap_cancel(void);
+uint32_t player_swaps(void);
+uint32_t player_swaps_late(void);
+uint32_t player_swap_waiting(void);       /* the interrupt holds a swap (not made, not dropped) */
 
 /* for tools/m1_test.py: in RAM behind a magic word, found in an emulator RAM dump */
 #define PL_STATS_BARS 64u
@@ -144,6 +156,17 @@ struct player_stats {
     uint32_t mode_sel;                    /* the mode screen's cursor: 0 SONG LEARN, 1 BACKTRACK, 2 SYNTH */
     uint32_t list_n;                      /* SONG LEARN: the songs the list's folder shows (backtracks never) */
     uint32_t bt_loop_from, bt_loop_to;    /* the loop set now (player_loop_of; 0 0: none) */
+    /* M9 (tools/m9_test.py reads them by these names) */
+    uint32_t countins;                    /* times the player went into PL_COUNT_IN (a start with a count-in, ...) */
+    uint32_t fold_shown;                  /* SONG LEARN's folders: the count shown for the row the cursor is on */
+    uint32_t btn_lit, btn_dim;            /* the buttons' lights as last set (bit b: button b, ui.c B_*) */
+    uint32_t swaps, swaps_late;           /* BACKTRACK: swaps made at a bar line; requests the position had passed */
+    uint32_t swap_at, swap_to;            /* the last swap's old tick and new tick */
+    uint32_t bt_cplx, bt_want;            /* BACKTRACK: the complexity playing; changes waiting (bit 0 progression,
+                                           * 1 style, 2 structure, 3 complexity, 4 key) */
+    uint32_t bt_tier_now;                 /* the tier the drums play now (the layers row's L: level + the section's energy) */
+    uint32_t bt_prepares, bt_prepare_ms;  /* new versions built; the last one's time (ms) */
+    uint32_t bt_pending_bar;              /* the bar line (bar index) the next swap is requested for, 0xFFFFFFFF: none */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;
