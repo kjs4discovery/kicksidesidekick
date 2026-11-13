@@ -771,3 +771,20 @@ Learned / measured:
 Hardware touched: none
 Questions for the planning chat: decisions M9-03 .. M9-12 (docs/decisions-M9.md)
 Next: Part 4 (the knob map and the live switch; m8p4 is superseded by m9p4: the knob map it tests changed).
+
+2026-11-13 — Step M9 Part 5 (progressions: renames, 6 new minor ones; D054) —
+Status: done
+Did:
+- tools/backtracks.tsv: 6 LA BAMBA -> FIESTA, 13 MARIO -> HEROIC, 14 CREEP -> BITTERSWEET (names and slugs; the folders
+  bt06-la-bamba, bt13-mario, bt14-creep git rm'd); 31 MINOR FOLK, 32 EPIC, 33 AEOLIAN, 34 HARMONIC, 35 MINOR 2-5-1, 36 MINOR
+  FUNK added (minor; bridges by M8's rule). backtracks.py accepts ii7b5 (Bm7b5 in A minor); i7 / iv7 were accepted already
+  (Am7, Dm7); the device's chord line spells ii7b5 too (bt.c bt_chords).
+- Generated and compiled all 36: total 46,496 B, 110 blocks of the song store's 552; with the 13 songs (172 blocks in M8) the store
+  holds 282 of 552 blocks (270 free). The largest need in any style 54,448 B (two copies fit).
+- Names checked: none is a song title or a trademark; doubts in decisions-M9.md (M9-13: CANON is the name of a piece (Pachelbel's);
+  FIESTA is a common word).
+- pytest: the 36 backtracks C = Python in 11 styles x 4 tiers (40 test cases of band_styles + gen golden: 77 passed); m9p4: progressions
+  31-36 each play (drums, bass, harmony) in A minor; the setup screen shows 35 as "Bm7b5 E7 Am Am" (m9p4-setup-35.png).
+Hardware touched: none
+Questions for the planning chat: M9-13 (names)
+Next: Part 4's commit (the knob map, live switch), then Part 6, 7.

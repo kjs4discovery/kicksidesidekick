@@ -74,23 +74,23 @@ layers:
   drums:
     channel: 10
     variants:
-      1: the pulse (kick, snare backbeat, hi-hat)
-      2: a groove
-      3: the groove with fills and crashes
+      1: 'tier 1: the sparest'
+      2: tier 2
+      3: tier 3
+      4: 'tier 4: the busiest (choruses at complexity 3)'
   bass:
     channel: 3
     program: 34
     variants:
-      1: the root, held
-      2: the root in rhythm
-      3: root and fifth
-      4: walking, more motion
+      1: 'tier 1: the sparest'
+      2: tier 2
+      3: tier 3
+      4: 'tier 4: the busiest (choruses at complexity 3)'
   harmony:
     channel: 2
     program: 5
     variants:
-      1: block chords, root position, held
-      2: block chords in the song's rhythm
-      3: the same rhythm with inversions (voice leading)
-      4: broken chords
-      5: arpeggios across about 1.5 octaves
+      1: 'tier 1: the sparest'
+      2: tier 2
+      3: tier 3
+      4: 'tier 4: the busiest (choruses at complexity 3)'
