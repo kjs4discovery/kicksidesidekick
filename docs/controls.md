@@ -1014,3 +1014,74 @@ Renamed: 6 FIESTA (was LA BAMBA), 13 HEROIC (MARIO), 14 BITTERSWEET (CREEP). New
 | BACKTRACK play screen | **SEQ, SAVE** | as SONG LEARN's, FX SCL ENV LFO volume / your part, EDIT views, ARP count-in, REC tempo mode, HOME stop; LFO: the melody yours (held) |
 | Mode screen (no pop-up, D044) | the others do nothing | PLAY / EDIT choose |
 | SONG LEARN, SYNTH | unchanged (M7, M8) | |
+
+## M10 (docs/plan-M10.md), part by part
+
+Version 0.10.0-m10 (FM-1_46001000; the early build 0.10.1-m10a, FM-1_46001001), the splash's second line "m10". Screenshots:
+docs/step-M10/ (the emulator, the final package; the file names below).
+
+### Part 1: two fixes from the M9 review
+
+- **A section's crash no longer forces a kick.** At the first bar of every section but the INTRO, tiers 2-4 add the crash only; the
+  kick is whatever the tier's pattern has (REGGAE's one-drop keeps its empty beat 1).
+- **A change made while PAUSED keeps the pause**: the new band is built (the 300 ms rule) and the player stays paused at the same
+  section and bar; PLAY then goes on from there (a count-in first, if it is on). While STOPPED a change is made at once and PLAY
+  starts from the loop's start, as in M9.
+
+### Part 2: BACKTRACK's screens (D057; SONG LEARN unchanged)
+
+- **The value pop-up** (`m10p2-setup-K1.png` "15 MINOR POP" with its badge, `m10p2-setup-K3.png` "BUSY", `m10-p2-play-K2.png` on the
+  play screen): turning K1 (**Progression**), K2 (**Style**), K3 (**Song Complexity**), K4 (**Melody Sound**), PRESETS (**Key**, "C
+  major" / "A minor"), ALGO (**Structure**) or SELECT (**Tempo**, "105 BPM") opens a pop-up with the title and the value in big
+  letters, over the screen (the music and the key lights go on; the screen under it is drawn again when it closes). On the play
+  screen a change that waits adds "at the next phrase" or "at the next bar". It closes by itself 1.5 s after the last turn;
+  any button press closes it AND does its job (unlike the "not implemented" pop-up); HOME held 2 s always works.
+- **SIMPLE / MEDIUM / BUSY** on SETUP, in the pop-up, in the NEXT line and on the top line (no "C1".."C3" anywhere).
+- **The NEXT line says what waits** (`m10-p2-play-two.png`): `NEXT: PROG 7`, `NEXT: STYLE REGGAE`, `NEXT: STRUCTURE FULL`, `NEXT: KEY D`,
+  `NEXT: COMPLEXITY BUSY`; several: the first (in that order) and `+n`. A value that does not fit is shortened, never the word.
+- SETUP's K4 row is **MELODY SOUND**.
+- **The section indicator** (play screen, top line, right end): INTRO, VERSE, CHORUS, BRIDGE or ENDING. In the last bar before a
+  different section starts it shows the NEXT section's name and **blinks** (250 ms on, 250 ms off) until that section starts (`m10-p2-blink-12.png`
+  caught in a pause, `m10-p2-steady-12.png` after it). In LOOP it never blinks; in VERSE/CHORUS it blinks at the loop's wrap. The MAJOR /
+  MINOR badge moved to SETUP and the pop-up only.
+
+### Part 3: Tuneka - Song Sidekick (D058, D063)
+
+The product name is now **Tuneka**: "Tuneka - Song Sidekick" on the splash (`m10p3-splash.png`, with `m10` under it), in the help and in fm1-base's
+crash and safe-mode screens. The mode screen has the name as a title across the top and the mascot a little smaller (`m10p3-mode.png`);
+the cursor starts on SONG LEARN. The USB and MIDI names are unchanged.
+
+### Part 4: 42 progressions (D060)
+
+37 PHRYGIAN (i bII), 38 LINE CLICHE (i imaj7 i7 i6), 39 MINOR CADENCE (i iv V i), 40 DESCENT (IVmaj7 iii7 ii7 Imaj7), 41 LYDIAN (I II), 42
+JAZZ BLUES (a 12-bar jazz blues; suggested style SHUFFLE). K1 goes to 42 and wraps. The chord names on SETUP show Ammaj7 / Am6 etc.;
+42's numerals line shows its first eleven chords (a 39-character field; the music has all twelve). `m10p4-reach.png`, `m10p4-42-SHUFFLE.png`.
+
+### Part 5: the song info line (D062)
+
+A song's Settings screen (GLO twice from its play screen) ends with its info line in small dim type (`m10p5-info.png`): "Traditional
+spiritual, c. 1896". Private and imported songs have none; nothing when no song is loaded; nowhere else. Stored in an optional INFO chunk
+(docs/song-format.md 2.8).
+
+### Part 6: band kits (D062)
+
+On SETUP only, **SEQ** steps the kit: **STUDIO** (M9's sound), **ACOUSTIC** (GM kit, acoustic bass, nylon guitar), **ELECTRO** (the 808 drums,
+Synth Bass 1, Pad 2) and **CHIP** (the CHIP drums, Synth Bass 1, Electric Piano 1); the pop-up is titled "Band Kit" and the KIT row is under TEMPO
+(`m10p6-seq2.png`). The notes are the same in every kit; only the sound changes. Reset at power-off like the other choices. On the play screen SEQ
+stays "not implemented". The worst-case CPU (FULL, BUSY chorus, MIAMI PAD x 4, a live switch): STUDIO 44 %, ACOUSTIC 41 %, ELECTRO 57 %,
+CHIP 47 % of a block (limit 60 %).
+
+### Part 7: saving user presets (D040, D062)
+
+In SYNTH, **SAVE** opens **SAVE TO Unn** (`m10p7-open.png`): **SELECT** chooses the slot (U01..U30, each with its name or EMPTY), the name starts
+as the current preset's, **K1** moves its cursor, **K2** changes the character (A-Z, 0-9, space, -) (`m10p7-edit.png`); **SAVE** again saves. A
+taken slot asks "REPLACE U05 <name>?  SAVE = yes  HOME = no" (`m10p7-ask.png`); **HOME** cancels at any point with nothing written. After the
+write "SAVED U05" shows for 1.5 s (`m10p7-save.png`) and the sound goes on as the saved preset, now selected as U05. The stock presets 1-30
+can never be written. **PRESETS** goes through the 30 stock presets and then the saved ones ("U05 <name>"); BACKTRACK's K4 uses the same list.
+There is no delete (overwrite only). The presets live in their own flash object (0xDE000-0xDFFFF), torn-write safe; the song store, WIPE SONG
+STORE, sends and deletes never touch it, and it never touches them.
+
+### The census (tools/m9_test.py m9census, M10)
+
+SETUP: PLAY, GLO, OCT-/OCT+ and now **SEQ** (the band kit) have jobs; every other button shows the "not implemented" pop-up. The play screen as in M9.
+SYNTH: SAVE has a job (it was "not yet").
