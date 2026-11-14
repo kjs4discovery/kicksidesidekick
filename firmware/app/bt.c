@@ -583,6 +583,9 @@ static uint32_t bt_ind_update(int st)
     int blink;
     uint32_t sec = bt_indicator(ui.s, st, &blink), on = 1;
     int32_t tk = player_tick(PL_LEAD_BEAT_MS);
+    bt.ind_loop = (uint8_t)(bt.structure == BS_LOOP);
+    if (bt.ind_loop)
+        blink = 0;                       /* M10.1: LOOP structure: the indicator reads LOOP and never blinks (no change is coming) */
     if (blink && (!was_blink || was_to != sec)) {
         t0 = tk;
         player_stats.ind_blink_starts++;
@@ -603,7 +606,10 @@ static uint32_t bt_ind_update(int st)
     player_stats.ind_on = on;
     {
         char nm[16];
-        bt_section_name(ui.s, sec, nm, sizeof nm);
+        if (bt.ind_loop)
+            nm[0] = 0, text_cat(nm, "LOOP");
+        else
+            bt_section_name(ui.s, sec, nm, sizeof nm);
         vpop_text(player_stats.ind_name, nm, sizeof player_stats.ind_name);
     }
     return sec | (uint32_t)blink << 8 | on << 9;
@@ -624,7 +630,12 @@ static void bt_top(int32_t avail, int st)
     if (bt.ind_on) {
         char nm[16];
         int32_t w;
-        bt_section_name(ui.s, bt.ind_sec, nm, sizeof nm);
+        if (bt.ind_loop) {
+            nm[0] = 0;
+            text_cat(nm, "LOOP");
+        } else {
+            bt_section_name(ui.s, bt.ind_sec, nm, sizeof nm);
+        }
         w = text_w(&FONT_XS, nm) + 8;
         cv_rect(avail - w, 1, w, 14, bt.ind_blink ? C_AMB : C_HI);
         cv_text(avail - w + 4, 2, &FONT_XS, nm, C_BLACK);

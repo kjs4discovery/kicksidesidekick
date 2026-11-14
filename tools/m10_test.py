@@ -172,7 +172,7 @@ def test_m10p2(all_songs, rep):
           f"FULL: the indicator names INTRO, then VERSE, CHORUS, BRIDGE, ENDING; the blink starts in the last bar before each change "
           f"(ticks {[I[f'blink-{b}']['ind_blink_tick'] for b in changes]} for the bars {[(b - 1) * BAR for b in changes]}, "
           f"within 140 ticks = 2 frames) and is steady once it has started {bad or ''} first: {I["first"]["ind_name"]!r} blinking {I["first"]["ind_blinking"]} (m10p2-blink-12.png, m10p2-steady-12.png)")
-    check(I["loop"]["ind_blink_starts"] == 0 and I["loop"]["ind_name"] == "VERSE",
+    check(I["loop"]["ind_blink_starts"] == 0 and I["loop"]["ind_name"] == "LOOP",   # (M10.1-02: LOOP structure says LOOP)
           f"LOOP (one verse repeating): the indicator never blinks (blinks {I['loop']['ind_blink_starts']})")
     check(I["vc"]["ind_blink_starts"] >= 1 and I["vc"]["ind_name"] == "VERSE",
           f"VERSE/CHORUS: at the loop's wrap to the verse it blinks as at any change (blinks {I['vc']['ind_blink_starts']}, shows "
@@ -202,7 +202,7 @@ def test_m10p3(all_songs, rep):
         ch = ex.submit(lambda: m5.run("m10p3-choose", 5200, ["4400:PLAY", "4460:PLAY^"], mode=None, flash=bt_flash()))
         sp, md, ch = sp.result(), md.result(), ch.result()
     ssrc = (ROOT / "firmware/app/app.h").read_text()
-    check('#define APP_NAME "Tuneka - Song Sidekick"' in ssrc and '#define FW_MILESTONE "m10"' in ssrc and
+    check('#define APP_NAME "KickSide - Your Musical SideKick"' in ssrc and '#define FW_MILESTONE "m10.1"' in ssrc and   # (M10.1-02: the name and milestone follow M10.1)
           sp["stats"]["ui_view"] >= 16,
           "the splash: \"Tuneka - Song Sidekick\" and \"m10\" under it (app.h; m10p3-splash.png)")
     simg = sp["lcd"].convert("RGB").resize((240, 240))

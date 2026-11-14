@@ -182,6 +182,8 @@ struct player_stats {
     uint32_t info_shown;                  /* the Settings screen shows a song info line */
     uint32_t m10_pad[2];
     char vp_title[24], vp_value[40], vp_sub[32], next_text[48], ind_name[16], info_text[40], preset_name[16];
+    /* M10.1 (tools/m101_test.py): after the M10 texts */
+    char title_now[48], legend_now[64];   /* the SYNTH screen's title as drawn last; the bottom instruction row's text as drawn last */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

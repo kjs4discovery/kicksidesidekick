@@ -226,7 +226,7 @@ static struct {
     uint32_t sw_ms, sw_bar;              /* the knob time it was made for; the bar line (index) it is asked for */
     uint32_t no_ms;                      /* the knob time for which no boundary was left (the song ends first) */
     uint32_t ind_sec;                    /* M10: the section indicator: the section it names, blinking, shown (this frame) */
-    uint8_t ind_blink, ind_on;
+    uint8_t ind_blink, ind_on, ind_loop;   /* ind_loop (M10.1): the structure is LOOP: the indicator says LOOP, never blinks */
 } bt;
 
 /* M10 (D057): the VALUE POP-UP: a title and a value in a big font over the screen, for BACKTRACK's knobs (and "SAVED U05").
@@ -239,6 +239,7 @@ static struct {
     uint32_t until, since;
     char title[24], value[40], sub[32];
 } vpop;
+static void vpop_show(const char *title, const char *value, const char *sub, uint32_t badge);
 static void bt_vp_select(void);          /* (bt.c) */
 static uint32_t bt_ind_update(int st);   /* (bt.c) */
 static void vpop_text(volatile char *d, const char *t, uint32_t n)
@@ -1059,6 +1060,7 @@ static void say_from(void)
     char t[24] = "BAR ";
     num_cat(t, ui.from_bar + ui.s->first_bar_number);
     app_say("START", t);
+    vpop_show("Start", t, "", 0);        /* M10.1: the pop-up "Start" / "BAR 9" */
 }
 
 static void input_play(uint32_t down, uint32_t now)
@@ -1136,6 +1138,14 @@ static void input_play(uint32_t down, uint32_t now)
             t[6] = (char)('0' + v);
             t[7] = 0;
             app_say(LAYER_NAME[l], t);
+            {                            /* M10.1: the value pop-up "Drums Level" / "2 of 3" */
+                static const char *const TITLE[SONG_LAYERS] = {"Drums Level", "Bass Level", "Harmony Level", "Melody Level"};
+                char pv[16] = "";
+                num_cat(pv, (uint32_t)v);
+                text_cat(pv, " of ");
+                num_cat(pv, ui.s->layer[l].variants);
+                vpop_show(TITLE[l], pv, "", 0);
+            }
         }
     }
     if (ui.keymode_until && now >= ui.keymode_until) {
@@ -1221,6 +1231,12 @@ static void input_play(uint32_t down, uint32_t now)
         ui.tempo_ms = now;
         player_tempo((uint32_t)clamp((int32_t)player_tempo_of() + step * d, PL_BPM_MIN, PL_BPM_MAX));
         ui.sh_top_key = 0xFFFFFFFFu;
+        if (!bt.on) {                    /* M10.1: the pop-up "Tempo" in SONG LEARN (BACKTRACK's is bt_vp_select) */
+            char pv[16] = "";
+            num_cat(pv, player_tempo_of());
+            text_cat(pv, " BPM");
+            vpop_show("Tempo", pv, "", 0);
+        }
         if (bt.on) {                     /* M8: the synth's arp and delay follow; SETUP keeps it */
             bt.bpm = player_tempo_of();
             bt.bpm_turned = 1;
@@ -1254,6 +1270,7 @@ static void input_play(uint32_t down, uint32_t now)
         int32_t i = clamp((int32_t)section_at(ui.from_tick) + d, 0, (int32_t)ui.s->nsect - 1);
         set_from_bar(song_section_first(ui.s, (uint32_t)i));
         app_say("START", song_section_name(ui.s, (uint32_t)i));
+        vpop_show("Start", song_section_name(ui.s, (uint32_t)i), "", 0);   /* M10.1 */
         ui.sh_status = 0xFFFFFFFFu;
     } else if (d) {
         app_say("LOOP ON", "SEQ: OFF FIRST");
@@ -1701,6 +1718,7 @@ static void draw_legend(int32_t y, const char *t)
     uint32_t n = 0, i, k;
     int32_t w = 0, x, gap = 9;
     const char *p = t;
+    vpop_text(player_stats.legend_now, t, sizeof player_stats.legend_now);   /* M10.1: for the tests */
     while (*p && n < 8u) {               /* split at '|' */
         for (k = 0; *p && *p != '|' && k < 39u; p++)
             seg[n][k++] = *p;
@@ -3731,7 +3749,7 @@ static const char *legend_play(int st)
 {
     if (bt.on) {                         /* M9: BACKTRACK: no loops, no key mode */
         if (st == PL_STOPPED)
-            return (plat_ms() / 3000u) & 1u ? "FX-LFO press volume|hold your part" : "PLAY start|HOME setup|GLO help";
+            return (plat_ms() / HINT_PAGE_MS) & 1u ? "FX-LFO: pick part|again: volume" : "PLAY start|HOME setup|GLO help";
         if (st == PL_PAUSED)
             return "PLAY go on|HOME stop|GLO help";
         return "PLAY pause|HOME stop|EDIT view|GLO help";
@@ -3740,7 +3758,7 @@ static const char *legend_play(int st)
         return "SELECT key|SAVE done";
     if (ui.tempomode_until)              /* M6 */
         return "SELECT tempo|REC done";
-    if (view_zooms(ui.pview) && st != PL_STOPPED && (plat_ms() / 3000u) % 3u == 2u)
+    if (view_zooms(ui.pview) && st != PL_STOPPED && (plat_ms() / HINT_PAGE_MS) % 3u == 2u)
         return "SELECT zoom|REC tempo|EDIT view";
     if (ui.loop_step == 1)
         return "ALGO bar A|PRESETS section|SEQ set|HOME cancel";
@@ -3751,8 +3769,8 @@ static const char *legend_play(int st)
                "PLAY pause|SEQ set A-B|EDIT view|GLO help" : "PLAY pause|EDIT view|SEQ loop|GLO help";
     if (ui.loop == LOOP_BARS && st == PL_STOPPED)
         return "PLAY from A|SEQ loop off|EDIT view|GLO help";
-    if (st == PL_STOPPED && (plat_ms() / 3000u) & 1u)   /* M5: the layer buttons, in short, every other 3 s */
-        return "FX-LFO press volume|hold your part";
+    if (st == PL_STOPPED && (plat_ms() / HINT_PAGE_MS) & 1u)   /* M5: the layer buttons, in short, every other page (M10.1: D066) */
+        return "FX-LFO: pick part|again: volume";
     if (st == PL_STOPPED)
         return ui.loop == LOOP_SONG ? "PLAY|PRESETS/ALGO start|SEQ set A-B|GLO help" :
                "PLAY|PRESETS/ALGO start|SEQ loop|GLO help";

@@ -390,7 +390,10 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
     d = plat_enc(EN_PRESET);
     if (d) {
         int32_t n = (int32_t)pl_count();   /* (M10: the stock presets, then the saved ones) */
+        char lab[24];
         synth_load((uint32_t)((((int32_t)sy.preset + d) % n + n) % n));
+        pl_label(sy.preset, lab);
+        vpop_show("Preset", lab, "", 0);   /* M10.1: the value pop-up */
     }
     d = plat_enc(EN_SELECT);
     if (d) {                             /* the tempo: 1 BPM a click, turned quickly 5 */
@@ -399,6 +402,12 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
         sy.bpm = (uint32_t)clamp((int32_t)sy.bpm + step * d, 60, 200);
         vsynth_tempo(sy.bpm);
         synth_drum_tempo(sy.bpm);
+        {
+            char pv[16] = "";
+            num_cat(pv, sy.bpm);
+            text_cat(pv, " BPM");
+            vpop_show("Tempo", pv, "", 0);   /* M10.1 */
+        }
     }
     d = plat_enc(EN_ALGO);
     if (d) {                             /* the pages forward / back, through the main screen */
@@ -431,6 +440,11 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
             param_turn(QUICK[k], d, &sy.acc[k]);
             sy.quick = k;
             sy.quick_until = now + QUICK_MS;
+            {                            /* M10.1: the value pop-up: the parameter's name and value (replaces the bottom row's) */
+                char pv[16] = "";
+                vsynth_value_text(pv, QUICK[k], vsynth_get(QUICK[k]));
+                vpop_show(vsynth_param(QUICK[k])->name, pv, "", 0);
+            }
         } else {
             uint32_t p, i = 0;
             for (p = 0; p < VP_N; p++)
@@ -509,6 +523,7 @@ static uint32_t synth_hash(uint32_t now)
         for (k = 0; k < VS_NAME; k++)
             h = h * 31u + (uint8_t)sy.sv_name[k];
     }
+    h = h * 31u + (now / HINT_PAGE_MS & 1u) * 3u;   /* M10.1: the bottom row's page */
     if (sy.scr == SY_HELP)
         h += now / 500u;                 /* (the CPU line) */
     return h ^ (now < sy.say_until ? 0x5A5A5A5Au : 0);
@@ -526,8 +541,15 @@ static int synth_dirty(uint32_t now)
 /* the top line: the screen's title, the preset's number (or the page's) on the right */
 static void synth_top(const char *title, const char *right)
 {
+    int32_t room = 234 - text_w(&FONT_XS, right) - 6 - 8;   /* M10.1: a title that does not fit beside the right text: the next smaller font */
+    vpop_text(player_stats.title_now, title, sizeof player_stats.title_now);   /* M10.1: for the tests */
     cv_begin(240, 32, C_BLACK);
-    cv_text(6, 4, &FONT_B, title, C_HI);
+    if (text_w(&FONT_B, title) <= room)
+        cv_text(6, 4, &FONT_B, title, C_HI);
+    else if (text_w(&FONT_XS, title) <= room)
+        cv_text(6, 8, &FONT_XS, title, C_HI);
+    else
+        cv_text(6, 9, &FONT_T, title, C_HI);
     cv_text(234 - text_w(&FONT_XS, right), 8, &FONT_XS, right, C_DIM);
     cv_rect(0, 31, 240, 1, C_LINE);
     cv_blit(0, 0);
@@ -610,18 +632,8 @@ static void draw_synth_main(uint32_t now)
     text_in(0, 240, 76, &FONT_XS, t, C_GRAY);
     cv_blit(0, 40);
     synth_drum_line(now, 170);
-    if (now < sy.quick_until) {          /* a quick knob turned: its value in the bottom row */
-        char v[16] = "";
-        t[0] = 0;
-        text_cat(t, vsynth_param(QUICK[sy.quick])->name);
-        vsynth_value_text(v, QUICK[sy.quick], vsynth_get(QUICK[sy.quick]));
-        text_cat(t, " ");
-        text_cat(t, v);
-        draw_legend(Y_LEGEND, t);
-    } else {
-        draw_legend(Y_LEGEND, (now / 3000u) & 1u ? "PRESET sound|SELECT tempo|EDIT pages" :
-                              "K1-K4 quick|PLAY drums|SEQ pattern|GLO help");
-    }
+    draw_legend(Y_LEGEND, (now / HINT_PAGE_MS) & 1u ? "PRESET sound|SELECT tempo|EDIT pages" :
+                          "K1-K4 quick|PLAY drums|SEQ pattern|GLO help");
 }
 
 static void draw_synth_page(uint32_t now)
@@ -631,7 +643,14 @@ static void draw_synth_page(uint32_t now)
     num_cat(t, sy.page + 1u);
     text_cat(t, "/");
     num_cat(t, VS_PAGES);
-    synth_top(vsynth_page_name(sy.page), t);
+    {                                    /* M10.1: the title names the preset being edited: "FX 2 - POTATO", "ENVELOPE - U05 ZUNJET" */
+        char ti[48] = "", lab[24];
+        text_cat(ti, vsynth_page_name(sy.page));
+        text_cat(ti, " - ");
+        pl_label(sy.preset, lab);
+        text_cat(ti, lab);
+        synth_top(ti, t);
+    }
     for (p = 0; p < VP_N && k < 4u; p++)
         if (vsynth_param(p)->page == sy.page)
             synth_cell(k++, p, 0);
