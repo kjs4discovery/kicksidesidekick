@@ -125,6 +125,7 @@ static void mode_leave(void)
         while (plat_ms() - t < 20u)
             ;
     } else {
+        lm_off();                        /* M10.1: SONG LEARN's melody synth, if on (the song still plays: its layer is held) */
         lib_release();                   /* the song stops */
     }
     sy.mode_sel = M_LEARN;               /* (M8: the cursor on SONG LEARN, as at power-on) */
@@ -426,11 +427,12 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
         sy.scr == SY_PAGE && sy.page >= PG_FX1 ? (sy.page < PG_FX4 ? synth_page(SY_PAGE, sy.page + 1u)
                                                                     : synth_page(SY_MAIN, 0))
                                                : synth_page(SY_PAGE, PG_FX1);
-    if (down & 1u << B_HOME) {           /* a tap: the main screen (held 2 s: the mode screen, ui.c); on it, a hint */
-        if (sy.scr == SY_MAIN)
-            synth_say("HOME", "hold 2 s: the modes");
-        else
-            synth_page(SY_MAIN, 0), sy.say_until = 0;
+    if (down & 1u << B_HOME) {           /* a tap: the main screen; from it the mode screen (held 2 s: the mode screen at once, ui.c) */
+        if (sy.scr == SY_MAIN) {         /* M10.1: from the main screen a tap goes to the mode screen (released: a hold goes there too) */
+            mode_leave();
+            return;
+        }
+        synth_page(SY_MAIN, 0), sy.say_until = 0;
     }
     for (k = 0; k < 4u; k++) {           /* K1..K4: the main screen's quick four, or the page's */
         d = plat_enc(KENC[k]);

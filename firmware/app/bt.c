@@ -26,6 +26,7 @@
 #define BT_SONG_ROOM (LIB_DEC_BYTES - VS_MEM_BT)   /* 112,896: two copies of every backtrack in every style fit (backtracks.py) */
 #define BT_HALF (BT_SONG_ROOM / 2u)        /* a version of the band: 56,448 B (the largest need: 54,448) */
 #define BT_VOICES 4u
+static uint32_t bt_snd(void);            /* M10.1 (below) */
 enum { BS_LOOP, BS_VERSE_CHORUS, BS_FULL, BS_N };
 #define BT_STYLES 11u
 #define BT_NONE 0xFFFFFFFFu
@@ -202,7 +203,7 @@ static void draw_setup(void)
             /* (M10: the KIT row under TEMPO: the rows from STYLE on are 2 px closer, 18 px apart, KEY's chord line 14 under it) */
             bt_row(78 - y0, "K2", "STYLE", bt.style == BT_WALTZ ? "WALTZ (3/4)" : BT_STYLE_NAME[bt.style], "");
             bt_row(96 - y0, "K3", "COMPLEXITY", BT_CPLX_NAME[bt.cplx], "");
-            pl_label(bt.sound % pl_count(), lab);
+            pl_label(bt_snd(), lab);
             bt_row(114 - y0, "K4", "MELODY SOUND", lab, "");
             kn[0] = 0;
             bt_key_name(kn, it, bt.key, 1);
@@ -230,7 +231,7 @@ static void draw_setup(void)
 static uint32_t bt_hash(void)
 {
     return bt.prog | bt.style << 6 | bt.structure << 10 | bt.key << 12 | bt.bpm << 16 | bt.n << 24 |
-           (uint32_t)(plat_ms() < ui.msg_until) << 31 ^ bt.cplx << 28 ^ bt.sound << 20 ^ bt.kit * 0x9E3779B1u;
+           (uint32_t)(plat_ms() < ui.msg_until) << 31 ^ bt.cplx << 28 ^ bt_snd() << 20 ^ bt.kit * 0x9E3779B1u;
 }
 
 /* the style's tempo, unless SELECT was turned */
@@ -240,9 +241,17 @@ static void bt_style_bpm(void)
         bt.bpm = BT_STYLE_BPM[bt.style];
 }
 
+/* the melody sound's list index now (M10.1: from its reference; the list may have grown since it was chosen) */
+static uint32_t bt_snd(void)
+{
+    bt.sound = pl_index_of_ref(bt.sound_ref) % pl_count();
+    return bt.sound;
+}
+
 static void bt_sound(uint32_t i)
 {
     bt.sound = i % pl_count();          /* (M10: the stock presets, then the saved ones) */
+    bt.sound_ref = pl_ref(bt.sound);
     vsynth_load(pl_get(bt.sound));
     vsynth_set(VP_ARP_ON, 0);            /* (the melody: the notes played, not an arpeggio) */
     player_stats.synth_preset = bt.sound;
@@ -274,10 +283,10 @@ static void bt_enter(void)
         bt.cplx = 2;
         bt.kit = 0;
         bt.bpm_turned = 0;
-        bt.sound = 0;
+        bt.sound = bt.sound_ref = 0;
         bt_style_bpm();
     }
-    bt_sound(bt.sound);
+    bt_sound(bt_snd());                  /* (M10.1: the reference, not the old list position) */
     bt_kit_apply(1);
     vsynth_tempo(bt.bpm < 60u ? 60u : bt.bpm > 200u ? 200u : bt.bpm);
     bt.on = 1;
@@ -839,7 +848,7 @@ static void bt_stats(void)
     player_stats.bt_structure = bt.structure;
     player_stats.bt_key = bt.key;
     player_stats.bt_bpm = bt.bpm;
-    player_stats.bt_sound = bt.sound;
+    player_stats.bt_sound = bt_snd();
     player_stats.bt_cplx = bt.cplx;
     player_stats.bt_pending_bar = bt.sw_pending == 1u ? bt.sw_bar : BT_NONE;
     player_stats.synth_preset = bt.sound;
@@ -903,7 +912,7 @@ static void bt_vp(uint32_t k)
         break;
     case VK_SOUND:
         title = "Melody Sound";
-        pl_label(bt.sound % pl_count(), v);
+        pl_label(bt_snd(), v);
         break;
     case VK_KEY:
         title = "Key";
@@ -944,7 +953,7 @@ static void bt_setup_input(uint32_t down)
     if (d3)
         bt.cplx = (uint32_t)clamp((int32_t)bt.cplx + d3, 1, 3);
     if (d4)
-        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)pl_count()));
+        bt_sound((uint32_t)bt_wrap((int32_t)bt_snd() + d4, (int32_t)pl_count()));
     if (dp)
         bt.key = (uint32_t)bt_wrap((int32_t)bt.key + dp, 12);
     if (da)
@@ -975,6 +984,8 @@ static void bt_setup_input(uint32_t down)
     if (down >> B_PLAY & 1u)
         bt_open();
     bt_stats();
+    if (down >> B_HOME & 1u)             /* M10.1: SETUP is BACKTRACK's first screen: HOME goes to the mode screen */
+        mode_leave();
 }
 
 /* the play screen's own (before input_play, which does not see these): the same knobs as SETUP. K4 and (in input_play)
@@ -1009,7 +1020,7 @@ static void bt_play_input(uint32_t down)
     if (da)
         bt_vp(VK_STRUCT);
     if (d4) {
-        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)pl_count()));
+        bt_sound((uint32_t)bt_wrap((int32_t)bt_snd() + d4, (int32_t)pl_count()));
         bt_vp(VK_SOUND);
         bt.sound_until = now + 1500u;
     }

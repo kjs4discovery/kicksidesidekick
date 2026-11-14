@@ -341,6 +341,8 @@ void vsynth_key(uint32_t note, int on)
 }
 
 void vsynth_all_off(void) { off_req++; }
+static volatile uint32_t ext_gain = 256u;
+void vsynth_gain(uint32_t q8) { ext_gain = q8 > 256u ? 256u : q8; }
 const struct vs_stats *vsynth_stats(void) { return &st; }
 
 /* ------------------------------------------------------------------- the interrupt's --- */
@@ -918,6 +920,8 @@ void vsynth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
         static const uint16_t OCT12[12] = {4096, 4340, 4598, 4871, 5161, 5468, 5793, 6137, 6502, 6889, 7298, 7732};
         int32_t e = (int32_t)cv[VP_LEVEL] - 100 + 120, ip = e / 12 - 10;   /* (e >= 20: no negative division) */
         level = ip >= 0 ? OCT12[e % 12] << ip : OCT12[e % 12] >> -ip;
+        if (ext_gain != 256u)            /* M10.1: QUIET (the biggest level, 4.76 x 4096 x 256, fits 31 bits) */
+            level = level * (int32_t)ext_gain >> 8;
     }
     {
         int32_t s = 127 - cv[VP_REV_SIZE];

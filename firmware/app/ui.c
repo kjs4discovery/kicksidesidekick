@@ -22,6 +22,9 @@
 static void ui_busy(const char *a, const char *b);
 static void text_cat(char *d, const char *s);
 static void num_cat(char *d, uint32_t v);
+static int lm_active(void);              /* M10.1: SONG LEARN's melody sound on vsynth (below input_play) */
+static void lm_off(void);
+static void mode_leave(void);            /* M10.1: HOME on a mode's first screen (synthui.c) */
 #include "library.c"
 
 #define KEY_LOW 53                       /* key 0 is F3 (plat.h) */
@@ -158,6 +161,7 @@ static struct {
     uint32_t popup, popup_until;         /* M7 (D044): the NOT IMPLEMENTED pop-up open (1: to draw, 2: drawn) */
     uint32_t closed;                     /* M7: the buttons that closed it, still held (their release does nothing) */
     uint32_t home_free;                  /* M7: HOME went down where it has no job (its release: the pop-up) */
+    uint32_t home_tap;                   /* M10.1: HOME went down (armed): a tap acts when it is released, before 2 s */
     struct settings set;
     uint32_t set_row, set_dirty;
     uint32_t sel, top;                   /* the list's cursor and first row */
@@ -185,7 +189,7 @@ static struct {
     uint32_t tempomode_until;            /* M6: the TEMPO mode (REC): SELECT sets the tempo there until then */
     uint8_t pv_of[SONG_LAYERS];
     uint32_t vs_row;                     /* the Views settings screen's cursor (M4) */
-    uint32_t mine;                       /* your part (D027): chosen by holding its button; harmony when a song opens */
+    uint32_t mine;                       /* your part (D027; M10.1, D066: a press on its button); harmony when a song opens */
     uint8_t vol[SONG_LAYERS];            /* VOL_FULL / VOL_QUIET / VOL_MUTED: a press cycles it (D027) */
     uint32_t hold_t[SONG_LAYERS], hold_done, released;   /* a layer button's press time; held long (done); released */
     uint32_t kb_lo;                      /* the keyboard view's lowest key (it follows the notes) */
@@ -207,6 +211,7 @@ static struct {
     uint8_t on;                          /* BACKTRACK is the mode */
     uint8_t entered;                     /* entered since power-on (the defaults set) */
     uint8_t bpm_turned;                  /* SELECT turned: the tempo stays when the style changes */
+    uint32_t sound_ref;                  /* M10.1: the melody sound as a reference (pl_ref), not a list position: a new save cannot shift it */
     uint32_t prog, style, structure, key, bpm, sound;   /* the choices (prog: an index into list[]); on the play screen
                                           * what is playing now */
     uint32_t kit;                        /* M10: the band kit chosen on SETUP (0 STUDIO .. 3 CHIP; kept until power-off) */
@@ -590,7 +595,7 @@ static void note_cat(char *d, uint32_t n)
 
 /* ----------------------------------------------- your part (M4, D027: chosen on purpose, whatever its volume) --- */
 /* your part: the screen, the rhythm cue, the key lights and the views follow it, muted or not (M3: the last layer
- * muted). Hold its button about a second to choose it; a song opens with the harmony */
+ * muted). Press its button to choose it (M10.1; was: hold it about a second); a song opens with the harmony */
 static uint32_t yours(void) { return ui.mine < SONG_LAYERS ? ui.mine : L_HARM; }
 
 static const struct song_stream *layer_stream(uint32_t l)
@@ -859,7 +864,9 @@ static void open_play(const struct song *s);
 static void open_song(uint32_t i)
 {
     const struct song *s;
-    int r = lib_open(i, &s);             /* checked in full at first use, not at boot */
+    int r;
+    lm_off();                            /* M10.1: a song opened: its own melody instrument again */
+    r = lib_open(i, &s);             /* checked in full at first use, not at boot */
     if (r) {
         app_say("SONG ERROR", song_error_name(r));
         ui.sh_list = 0xFFFFFFFFu;
@@ -1037,6 +1044,8 @@ static void input_list(uint32_t down)
             folders_build();
             ui.redraw = 1;
         }
+        if (down >> B_HOME & 1u)         /* M10.1: the first screen of SONG LEARN: HOME goes to the mode screen */
+            mode_leave();
         return;
     }
     n = (int32_t)ui.nfl;
@@ -1051,6 +1060,8 @@ static void input_list(uint32_t down)
         ui.folder = -1;
         ui.top = 0;
         ui.redraw = 1;
+    } else if (down >> B_HOME & 1u) {    /* (M10.1: no songs: the folders are empty: the mode screen) */
+        mode_leave();
     }
     player_stats.folder = (uint32_t)(ui.folder + 1);
 }
@@ -1061,6 +1072,103 @@ static void say_from(void)
     num_cat(t, ui.from_bar + ui.s->first_bar_number);
     app_say("START", t);
     vpop_show("Start", t, "", 0);        /* M10.1: the pop-up "Start" / "BAR 9" */
+}
+
+/* ------------------------------------------------------------------ M10.1: SONG LEARN's melody sound --- */
+/* K4 steps SONG (the song's own instrument, EAS) and then the preset list (stock, then the saved ones). A preset plays the MELODY layer
+ * on vsynth (the player sends that layer's notes to vsynth_key, player_melody_synth); the other layers stay on EAS (synth_band). The
+ * synth's memory is the top of the song buffer, as in BACKTRACK; a song whose levels do not fit beside it keeps its own instrument.
+ * The choice is a reference (pl_ref), kept until a song is opened. */
+#define LM_SONG 0xFFFFu
+#define LM_ROOM (LIB_DEC_BYTES - VS_MEM_BT)    /* the song's part of the buffer while the synth runs (112,896) */
+#define LM_VOICES 4u
+static struct { uint8_t on; uint16_t ref; } lm = {0, LM_SONG};
+
+static int lm_active(void) { return lm.on; }
+
+/* the melody layer's notes to vsynth (on) or EAS (off): the layer held meanwhile (its notes released the old way) */
+static void lm_route(int on)
+{
+    uint32_t t = plat_ms();
+    player_hold(1u << L_MELODY);
+    while (!(player_held() >> L_MELODY & 1u) && plat_ms() - t < 200u)
+        ;
+    player_melody_synth(on);
+    player_hold(0);
+}
+
+static void lm_off(void)
+{
+    uint32_t t;
+    player_stats.mel_sound = 0;
+    if (!lm.on) {
+        lm.ref = LM_SONG;
+        return;
+    }
+    if (current_i >= 0)
+        lm_route(0);
+    else
+        player_melody_synth(0);
+    synth_band(0);
+    vsynth_stop();
+    t = plat_ms();
+    while (plat_ms() - t < 20u)
+        ;
+    lib_room = sizeof dec;
+    lm.on = 0;
+    lm.ref = LM_SONG;
+}
+
+/* do the levels of the open song leave the synth's memory free? */
+static int lm_fits(void)
+{
+    uint32_t l, at = 0;
+    if (current_i < 0 || !current.fmt2)
+        return 0;
+    for (l = 0; l < SONG_LAYERS; l++)
+        at += current.layer[l].need * 8u;
+    return at <= LM_ROOM;
+}
+
+static void lm_set(uint32_t ref)
+{
+    if (ref == LM_SONG) {
+        lm_off();
+        player_stats.mel_sound = 0;
+        return;
+    }
+    if (!lm.on) {
+        if (!lm_fits()) {
+            lm.ref = LM_SONG;
+            return;
+        }
+        lib_room = LM_ROOM;
+        vsynth_start(dec + LM_ROOM, sizeof dec - LM_ROOM);
+        vsynth_voices(LM_VOICES);
+        synth_band(1);
+        lm_route(1);
+        lm.on = 1;
+    }
+    vsynth_load(pl_get(pl_index_of_ref(ref)));
+    vsynth_set(VP_ARP_ON, 0);            /* (the melody is played by the song: no arpeggiator over it) */
+    vsynth_tempo(player_tempo_of() < 60u ? 60u : player_tempo_of() > 200u ? 200u : player_tempo_of());
+    lm.ref = (uint16_t)ref;
+}
+
+static void lm_step(int32_t d)
+{
+    int32_t n = (int32_t)pl_count() + 1;    /* 0: SONG, then the list */
+    int32_t p = lm.ref == LM_SONG ? 0 : (int32_t)pl_index_of_ref(lm.ref) + 1, want;
+    char v[24] = "";
+    p = ((p + d) % n + n) % n;          /* (turned fast: several steps at once, as BACKTRACK's K4) */
+    want = p;
+    lm_set(p ? pl_ref((uint32_t)p - 1u) : LM_SONG);
+    if (lm.ref == LM_SONG)
+        text_cat(v, "SONG");
+    else
+        pl_label(pl_index_of_ref(lm.ref), v);
+    vpop_show("Melody Sound", v, want && lm.ref == LM_SONG ? "no room: keeps SONG" : "", 0);
+    player_stats.mel_sound = lm.ref == LM_SONG ? 0u : 1u + pl_index_of_ref(lm.ref);
 }
 
 static void input_play(uint32_t down, uint32_t now)
@@ -1102,24 +1210,20 @@ static void input_play(uint32_t down, uint32_t now)
     }
     for (l = 0; l < SONG_LAYERS; l++) {
         int has = ui.s->layer[l].variants || (bt.on && l == L_MELODY);   /* (M8: BACKTRACK's melody: yours) */
-        if ((down >> LAYER_BUTTON[l] & 1u) && has) {   /* pressed: wait to see how long */
-            ui.hold_t[l] = now;
-            ui.hold_done &= ~(1u << l);
-        }
-        if ((ui.buttons >> LAYER_BUTTON[l] & 1u) && !(ui.hold_done >> l & 1u) && has &&
-            now - ui.hold_t[l] >= HOLD_MS) {   /* held: your part (the view follows: the last one used for it) */
-            ui.hold_done |= 1u << l;
-            if (ui.mine != l) {
+        if ((down >> LAYER_BUTTON[l] & 1u) && has) {   /* M10.1 (D066): a press, acted on at once (no hold): a layer that is not your
+                                          * part becomes it (its volume stays); on your part the volume goes FULL -> QUIET -> MUTED */
+            static const char *const LT[SONG_LAYERS] = {"Drums", "Bass", "Harmony", "Melody"};
+            if (yours() != l) {
                 ui.pv_of[yours()] = (uint8_t)ui.pview;
                 ui.mine = l;
                 ui.pview = (int)view_ok(l, ui.pv_of[l]);
                 player_stats.view = (uint32_t)ui.pview;
                 ui.redraw = 1;
-            }
-            app_say(LAYER_NAME[l], "YOUR PART");
-        }
-        if ((ui.released >> LAYER_BUTTON[l] & 1u) && ui.s->layer[l].variants) {
-            if (!(ui.hold_done >> l & 1u)) {   /* a short press: FULL -> QUIET -> MUTED -> FULL */
+                app_say(LAYER_NAME[l], "YOUR PART");
+                vpop_show("Your Part", LT[l], "", 0);
+                player_stats.part = l;   /* (the frame, which sets it, does not run under a pop-up) */
+            } else if (ui.s->layer[l].variants) {   /* (BACKTRACK's melody is the keys: no volume) */
+                char tt[24] = "";
                 ui.vol[l] = (uint8_t)((ui.vol[l] + 1u) % 3u);
                 if (ui.vol[l] == VOL_MUTED)
                     ui.muted |= 1u << l;
@@ -1127,10 +1231,21 @@ static void input_play(uint32_t down, uint32_t now)
                     ui.muted &= ~(1u << l);
                 player_mute(ui.muted);
                 app_say(LAYER_NAME[l], ui.vol[l] == VOL_FULL ? "FULL" : ui.vol[l] == VOL_QUIET ? "QUIET" : "MUTED");
+                text_cat(tt, LT[l]);
+                text_cat(tt, " Volume");
+                vpop_show(tt, ui.vol[l] == VOL_FULL ? "FULL" : ui.vol[l] == VOL_QUIET ? "QUIET" : "MUTED", "", 0);
+                player_stats.vols = (uint32_t)ui.vol[0] | (uint32_t)ui.vol[1] << 2 | (uint32_t)ui.vol[2] << 4 | (uint32_t)ui.vol[3] << 6;
+            } else {
+                vpop_show("Your Part", LT[l], "", 0);
+                player_stats.part = l;
             }
-            ui.hold_done &= ~(1u << l);
         }
         d = bt.on ? 0 : plat_enc(LAYER_ENC[l]);   /* (M9: BACKTRACK's knobs are bt.c's alone) */
+        if (d && l == L_MELODY && ui.s->layer[l].variants == 1u) {   /* M10.1: K4 = Melody Sound (a melody has one level; a song with
+                                          * more would keep the level job) */
+            lm_step(d);
+            d = 0;
+        }
         if (d && ui.s->layer[l].variants) {
             int32_t v = clamp((int32_t)player_variant_of(l) + (d > 0 ? 1 : -1), 1, ui.s->layer[l].variants);
             char t[8] = "LEVEL ";
@@ -1231,6 +1346,8 @@ static void input_play(uint32_t down, uint32_t now)
         ui.tempo_ms = now;
         player_tempo((uint32_t)clamp((int32_t)player_tempo_of() + step * d, PL_BPM_MIN, PL_BPM_MAX));
         ui.sh_top_key = 0xFFFFFFFFu;
+        if (lm_active())                 /* M10.1: the melody's synth follows (its delay and arpeggiator times) */
+            vsynth_tempo(player_tempo_of() < 60u ? 60u : player_tempo_of() > 200u ? 200u : player_tempo_of());
         if (!bt.on) {                    /* M10.1: the pop-up "Tempo" in SONG LEARN (BACKTRACK's is bt_vp_select) */
             char pv[16] = "";
             num_cat(pv, player_tempo_of());
@@ -1346,8 +1463,7 @@ static uint32_t learn_jobs(void)
     switch (ui.view) {
     case V_LIST:                         /* PLAY / EDIT open; HOME: up to the folders (the song list only) */
         j |= 1u << B_PLAY | 1u << B_EDIT;
-        if (ui.folder >= 0 && lib_song_count())
-            j |= 1u << B_HOME;
+        j |= 1u << B_HOME;               /* (M10.1: up to the folders; from the folders: the mode screen) */
         return j;
     case V_PLAY:                         /* every button, but the layer buttons of layers the song does not have */
         j = ALL_BUTTONS;
@@ -1358,7 +1474,7 @@ static uint32_t learn_jobs(void)
                 j &= ~(1u << LAYER_BUTTON[l]);
         return j;
     case V_SETUP:                        /* M8: PLAY starts (with backtracks); HOME: held only; M10: SEQ steps the band kit */
-        return j | (bt.n ? 1u << B_PLAY : 0u) | 1u << B_SEQ;
+        return j | (bt.n ? 1u << B_PLAY : 0u) | 1u << B_SEQ | 1u << B_HOME;   /* (M10.1: HOME: the mode screen) */
     case V_SETTINGS:
     case V_VIEWSET:                      /* PLAY / EDIT change, GLO / HOME back */
         return j | 1u << B_PLAY | 1u << B_EDIT | 1u << B_HOME;
@@ -1501,6 +1617,16 @@ static void input(void)
 {
     uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k, now = plat_ms();
     ui.seen_up |= ~btn & ALL_BUTTONS;    /* M7: a button held since power-on never opens the pop-up */
+    /* M10.1: HOME acts when it is RELEASED, as a tap (under 2 s): a press that starts the 2 s hold never acts as a single press first */
+    if (down >> B_HOME & 1u) {
+        ui.home_tap = ui.home_armed && !ui.splash;
+        down &= ~(1u << B_HOME);
+    }
+    if ((ui.buttons & ~btn) >> B_HOME & 1u) {
+        if (ui.home_tap)
+            down |= 1u << B_HOME;
+        ui.home_tap = 0;
+    }
     if (!(btn >> B_HOME & 1u)) {         /* M6: HOME held 2 s, from any screen (not the WIPE question): the mode
                                           * screen. A HOME held since power-on (GLO + HOME: WIPE) never counts */
         ui.home_t = 0;
@@ -1510,6 +1636,7 @@ static void input(void)
     } else if (ui.home_armed && !ui.splash && ui.view != V_MODE && ui.view != V_WIPE &&
                held_ms(ui.home_t, now) >= HOME_HOLD_MS) {
         ui.home_armed = 0;               /* (once a hold) */
+        ui.home_tap = 0;
         if (ui.view == V_SETTINGS || ui.view == V_VIEWSET)
             settings_save();
         mode_leave();
@@ -1895,7 +2022,7 @@ static void draw_help(void)
                                           {"OCT- OCT+", "keys' octave"}};
     static const char *const ENC_LIST[5][2] = {{"MASTER", "volume"}, {"SELECT", "choose a song"},
                                                {"PRESETS", "-"}, {"ALGORITHM", "-"}, {"OCT- OCT+", "keys' octave"}};
-    static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX..LFO", "mute a layer"},
+    static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX..LFO", "your part, volume"},
                                           {"PLAY", "play / pause"}, {"HOME", "stop, list"}, {"SEQ", "loop: A, B, off"},
                                           {"ARP", "count-in"}, {"EDIT", "view"}, {"SAVE", "key (SELECT)"},
                                           {"HOME", "held: mode"}};   /* (M6; the keys play along: plain) */
@@ -2008,10 +2135,10 @@ static void draw_hint(void)
     frame_rect(8, 4, 224, 136, C_HI);
     text_in(0, 240, 12, &FONT_B, "THE LAYER BUTTONS", C_WHITE);
     text_in(0, 240, 34, &FONT_XS, "FX drums  SEL bass  ENV harm  LFO melody", C_GRAY);
-    text_in(0, 240, 60, &FONT_B, "PRESS: its volume", C_HI);
-    text_in(0, 240, 78, &FONT_XS, "FULL > QUIET > MUTE > FULL", C_GRAY);
-    text_in(0, 240, 100, &FONT_B, "HOLD: make it YOUR PART", C_HI);
-    text_in(0, 240, 118, &FONT_XS, "(the keys, views and cue follow it)", C_GRAY);
+    text_in(0, 240, 60, &FONT_B, "PRESS: make it YOUR PART", C_HI);   /* M10.1 (D066): no hold any more */
+    text_in(0, 240, 78, &FONT_XS, "(the keys, views and cue follow it)", C_GRAY);
+    text_in(0, 240, 100, &FONT_B, "PRESS AGAIN: its volume", C_HI);
+    text_in(0, 240, 118, &FONT_XS, "FULL > QUIET > MUTE > FULL", C_GRAY);
     cv_blit(0, 40);
     cv_begin(240, 24, C_BLACK);
     text_in(0, 240, 2, &FONT_XS, "Settings > Controls hint: off", C_DIM);
@@ -3972,6 +4099,7 @@ static void frame_play(uint32_t now)
         ui.flash_keys = ui.lit_keys != 0;
     }
     player_stats.part = pi.part;
+    player_stats.vols = (uint32_t)ui.vol[0] | (uint32_t)ui.vol[1] << 2 | (uint32_t)ui.vol[2] << 4 | (uint32_t)ui.vol[3] << 6;
     {
         uint32_t l, q = 0;
         for (l = 0; l < SONG_LAYERS; l++)
@@ -4175,6 +4303,8 @@ void app_frame(void)
         ui.sel = ui.top = 0;
         ui.redraw = 1;
     }
+    if (lm.on)                           /* M10.1: SONG LEARN's melody synth: its voices started (for the tests) */
+        player_stats.synth_notes = vsynth_stats()->notes;
     input();
     ann_tick(now);
     player_stats.ui_view = (uint32_t)ui.view + (ui.splash ? 16u : 0u);

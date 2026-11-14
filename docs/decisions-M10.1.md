@@ -39,3 +39,49 @@ Format (docs/plan-M10.1.md, "Read this first"): one entry per judgment call the 
 - SYNTH: PRESET "Preset" + the list label ("NEON PAD", "U05 NAME"), SELECT "Tempo", K1-K4 on the main screen: the parameter's name as the page
   names it ("CUTOFF", "RESONANCE", "REVERB MIX", "DELAY MIX"; the plan's "Cutoff" is the page's capitals). PRESET and SELECT also pop up on the edit
   pages (they act there too); the K knobs do not (the page shows them). The old bottom-row value ("quick knob") is gone: the pop-up replaces it.
+
+## M10.1-07 — Part 2: the layer buttons (D066)
+- input_play (ui.c) has no hold logic any more: a press (the button-down edge, at once) on a layer that is not your part makes it your part (the
+  view follows, as the old hold did; its volume does not change); on your part it cycles FULL -> QUIET -> MUTED -> FULL. Every layer keeps its own
+  volume (ui.vol[]). Pop-ups: "Your Part" + "Drums" (the layer name in capitals-and-lower case), or "Drums Volume" + "QUIET".
+  The old hold fields (ui.hold_t, hold_done, HOLD_MS) stay in the code unused (the plan: no refactors); popup_input still writes hold_done.
+- Text: the instruction row is "FX-LFO: pick part|again: volume" (M10.1-05); the controls hint screen (draw_hint) now says "PRESS: make it YOUR PART"
+  / "PRESS AGAIN: its volume"; the help screen's button list says "your part, volume".
+- BACKTRACK: its layer buttons are the same code (input_play), so they got the same rule. The melody is the keys there: its button only selects it
+  as your part (a second press shows the same pop-up; there is no melody volume). Drums, bass and harmony: first press = part, again = volume.
+
+## M10.1-08 — Part 2: HOME acts on RELEASE
+- A HOME press acts when HOME is released after under 2 s (input() in ui.c turns the press edge into a release "tap": ui.home_tap, set only if HOME was
+  seen up since power-on, i.e. never for the WIPE power-on combination or a HOME held since boot). A hold of 2 s fires the straight-to-mode-screen
+  jump (unchanged) and clears the tap; so a hold never acts as a single press first. Released after 1.5 s it counts as one single press.
+  Consequence for every screen: the other buttons' behaviour is unchanged; HOME's "no" in the REPLACE question, "back" in SAVE / Settings / help all act at
+  the release now.
+- HOME no longer opens the "NOT IMPLEMENTED" pop-up anywhere: its only two "free" screens (SONG LEARN's folder list and BACKTRACK's SETUP) now go to the
+  mode screen (the pop-up code for a free HOME stays but never triggers). SYNTH's main screen: HOME goes to the mode screen (was a hint message).
+  SONG LEARN's song list with no songs on the unit (nothing to go up to): HOME goes to the mode screen too.
+- The pop-up (value pop-up) closes on a button press as before; for HOME that is at its release (the same moment HOME acts).
+
+## M10.1-09 — Part 2: K4 = Melody Sound in SONG LEARN
+- Check: every public and private song has exactly one melody level (and 3 / 4 / 5 levels for drums / bass / harmony), so K4 is free everywhere. A song with
+  more than one melody level would keep the level job for itself (code path kept in input_play: variants > 1).
+- vsynth plays the melody: player.c send() routes layer 3 to vsynth_key (note on / off; controllers and programs are dropped) while player_melody_synth(1);
+  QUIET becomes vsynth_gain (the melody's velocity squared, as EAS's gain does). synth_band(1) keeps EAS under it; vsynth lives in the top of the song
+  buffer (as in BACKTRACK; VS_MEM_BT 83,712 B, 4 voices). Changing the routing holds the melody layer (player_hold) as lib_level does.
+- RAM check: public songs need at most 24,672 B of level buffers (oh-susanna), the song room beside the synth is 112,896 B. Private zombie needs 172,384 B
+  (and let-it-be 30,672, true-colors 54,160, creep 59,840 fit): a song that does not fit keeps its own instrument: K4 shows "SONG" with
+  "no room: keeps SONG". A pre-2.0 file (not fmt2) is treated the same.
+- The choice is a reference (pl_ref: a stock preset's position, or 0x100 + user slot; lm.ref in ui.c), not a list position. It resets to SONG whenever a song is
+  opened (open_song, also the same song again), when the song store is touched (send, delete, wipe: lib_release) and on leaving the mode.
+  The preset's arpeggiator is forced off (the melody is played by the song; BACKTRACK does the same for the keys) and its delay follows the song's tempo.
+- BACKTRACK's K4 (closes M10-14): bt.sound_ref (pl_ref) is the truth; bt.sound (the list index) is recomputed from it (bt_snd) wherever it is used, so a preset
+  saved in SYNTH (which can shift the list) cannot change the sound BACKTRACK keeps. SONG LEARN's and BACKTRACK's K4 use the same list.
+
+## M10.1-10 — Part 2: measurements and small choices
+- CPU, SONG LEARN with the melody on vsynth (tools/m101_test.py m101p2): MIAMI PAD (M9 / M10's heaviest) on every public song at its busiest levels
+  (drums 3, bass 4, harmony 5), 20 s from PLAY: the worst block (EAS render + vsynth render, each at its own maximum, so a little pessimistic) is
+  **35 %** of a block (limit 60 %); the same song with its own instrument 14 %. A sweep of all 30 stock presets on one song is in the LOG.
+- RAM: vsynth's memory (83,712 B) sits in the top of the song buffer as in BACKTRACK; the public songs' level buffers are at most 24,672 B
+  of the 112,896 B left (M10.1-09); .data + .bss grew by about 0.1 KB (see the budget in the install note).
+- Stats for the tests: player_stats.mel_sound and .vols (the two spare words m10_pad[2], same offsets); the part and volume stats are set at the press
+  because the frame (which normally sets them) does not run under the value pop-up.
+- The pop-up's value for K4 when the song has no room for the synth: "SONG" with the second line "no room: keeps SONG".

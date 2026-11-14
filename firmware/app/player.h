@@ -27,6 +27,7 @@ void player_park(int32_t at);             /* M10: the song stopped at tick `at`,
 /* M10 (BACKTRACK band kits): the drums to vsynth's drum voices (kit_drum 0: EAS's GM kit as before; 1: the 808; 2: CHIP) and
  * the bass / harmony programs (0xFF: the song's own); they apply when the player starts. Main loop. */
 void player_kit(uint32_t kit_drum, uint32_t bass_prog, uint32_t harm_prog);
+void player_melody_synth(int on);          /* M10.1: SONG LEARN: the melody layer's notes to vsynth (a preset) instead of EAS; call with the layer held */
 void player_pause(void);                  /* playing: hold the position, sound off (PL_PAUSED); player_start goes on */
 void player_mute(uint32_t layers);        /* bit l: layer l muted (song.h order) */
 void player_variant(uint32_t layer, uint32_t v);   /* 1..variants; takes effect at the next block */
@@ -180,7 +181,8 @@ struct player_stats {
     uint32_t kit, kit_hits, kit_bass_prog, kit_harm_prog;     /* BACKTRACK's band kit (0 STUDIO..3 CHIP), its drum hits */
     uint32_t preset_used, preset_saves, preset_loaded, preset_sel, save_screen, save_slot, preset_junk;   /* user presets */
     uint32_t info_shown;                  /* the Settings screen shows a song info line */
-    uint32_t m10_pad[2];
+    uint32_t mel_sound, vols;             /* M10.1 (were m10_pad[2]): SONG LEARN's melody sound: 0 SONG, else 1 + the list index; the four
+                                           * layers' volumes, 2 bits each (drums low): 0 FULL, 1 QUIET, 2 MUTED */
     char vp_title[24], vp_value[40], vp_sub[32], next_text[48], ind_name[16], info_text[40], preset_name[16];
     /* M10.1 (tools/m101_test.py): after the M10 texts */
     char title_now[48], legend_now[64];   /* the SYNTH screen's title as drawn last; the bottom instruction row's text as drawn last */

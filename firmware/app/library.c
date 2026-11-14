@@ -167,6 +167,8 @@ static const struct lib_item *lib_peek(uint32_t i, int *err)
 static void lib_release(void)
 {
     uint32_t t = plat_ms();
+    if (lm_active())                     /* M10.1: SONG LEARN's melody synth ends with the song (its layer still held by lm_off) */
+        lm_off();
     player_load(0);
     while (!player_idle() && plat_ms() - t < 200u)
         ;
@@ -392,6 +394,8 @@ static void sc_send(const uint8_t *body, uint32_t n)
         sc_result(SC_SEND, SR_BAD, 0);
         return;
     }
+    if (lm_active())                     /* M10.1: SONG LEARN's melody synth gives the buffer back first */
+        lm_off();
     if (vsynth_active()) {               /* (song_open would decode into the synth's delay lines) */
         sc_result(SC_SEND, SR_SYNTH, 0);
         return;

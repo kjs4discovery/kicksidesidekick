@@ -155,3 +155,17 @@ uint32_t pl_index_of_slot(uint32_t slot)
         idx += slots[s][0] != 0;
     return idx;
 }
+
+/* M10.1: a sound as a reference (a K4 choice kept in RAM): the stock preset's position in vsynth.c's table, or 0x100 + the user slot */
+uint32_t pl_ref(uint32_t i)
+{
+    int32_t s = pl_slot(i);
+    return s < 0 ? (i < vsynth_presets() ? i : 0u) : 0x100u + (uint32_t)s;
+}
+
+uint32_t pl_index_of_ref(uint32_t ref)
+{
+    if (ref >= 0x100u)
+        return pl_index_of_slot(ref - 0x100u);   /* (a slot no longer used: the first sound) */
+    return ref < vsynth_presets() ? ref : 0u;
+}

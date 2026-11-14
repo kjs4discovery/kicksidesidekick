@@ -37,6 +37,7 @@ static const struct song *volatile want_song;
 static volatile uint32_t song_req, song_done, play_req, play_done, loop_req, loop_done;
 static volatile uint8_t play_cmd, countin_want = 1, start_countin;   /* play_cmd: 0 stop, 1 start, 2 pause */
 static volatile uint8_t countin_bars_want = 1, beep_vol_want = 127;
+static volatile uint8_t mel_vs;                  /* M10.1: the melody layer plays on vsynth (player_melody_synth) */
 static volatile uint8_t quiet_mask, quiet_q8;   /* M4 (D027): the layers set to QUIET play their velocities x
                                                   * quiet_q8 / 256 (M3's guide for your part, now for any layer) */
 static volatile int32_t start_want;
@@ -167,6 +168,7 @@ void player_quiet(uint32_t layers, uint32_t pct)
         q++;
     quiet_q8 = (uint8_t)(pct ? (q ? q : 1u) : 0u);
     quiet_mask = (uint8_t)(layers & ((1u << SONG_LAYERS) - 1u));
+    vsynth_gain((quiet_mask >> 3 & 1u) && mel_vs && quiet_q8 ? (uint32_t)quiet_q8 * quiet_q8 / 256u + 1u : 256u);   /* M10.1 (EAS: gain ~ velocity squared) */
 }
 
 void player_count_in_bars(uint32_t bars) { countin_bars_want = (uint8_t)(bars >= 2u ? 2u : 1u); }
@@ -274,8 +276,20 @@ static void kit_hit(uint32_t note, uint32_t vel)
         }
 }
 
+/* M10.1: SONG LEARN's melody sound: the melody layer (3) plays on vsynth's voices (a preset); its controllers and programs have no
+ * meaning there and are dropped. The QUIET melody's velocities cannot reach vsynth: its gain follows quiet_q8 (player_quiet) */
+void player_melody_synth(int on) { mel_vs = (uint8_t)(on != 0); }
+
 static void send(uint32_t l, uint32_t status, uint32_t d1, uint32_t d2)
 {
+    if (mel_vs && l == 3u) {
+        uint32_t k = status & 0xF0u;
+        if (k == 0x90u && d2)
+            vsynth_key(d1, 1);
+        else if (k == 0x90u || k == 0x80u)
+            vsynth_key(d1, 0);
+        return;
+    }
     synth_send_now((uint8_t)(status | song->layer[l].channel), (uint8_t)d1, (uint8_t)d2);
 }
 

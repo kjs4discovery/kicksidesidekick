@@ -39,3 +39,5 @@ const struct vs_preset *pl_get(uint32_t i);      /* valid until the next call */
 int32_t pl_slot(uint32_t i);                     /* -1 stock, else the user slot */
 void pl_label(uint32_t i, char *d);              /* "E-PIANO", "U05 NAME" (d >= 20 bytes) */
 uint32_t pl_index_of_slot(uint32_t slot);        /* the list index of a used slot (0 if not used) */
+uint32_t pl_ref(uint32_t i);                     /* M10.1: a reference to the sound at list index i: its stock position, or 0x100 + its user slot */
+uint32_t pl_index_of_ref(uint32_t ref);          /* ... and back to the list index now (a new save or another order cannot shift what it names) */

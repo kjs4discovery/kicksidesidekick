@@ -88,6 +88,7 @@ void vsynth_set(uint32_t p, int32_t v);   /* clamped to its range */
 void vsynth_tempo(uint32_t bpm);          /* 60..200: the arp, the delay and the drums */
 void vsynth_key(uint32_t note, int on);   /* a key: played, or given to the arpeggiator */
 void vsynth_all_off(void);
+void vsynth_gain(uint32_t q8);            /* M10.1: an overall gain on the output, 256 = 1 (SONG LEARN's QUIET melody on this synth); any context */
 const struct vs_stats *vsynth_stats(void);
 
 /* the drums' synthesized kits (synth.c's sequencer calls these in the audio interrupt, before vsynth_render) */
