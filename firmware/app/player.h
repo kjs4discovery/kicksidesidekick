@@ -23,6 +23,7 @@ const struct song *player_song(void);
 void player_start(int32_t from, int count_in);   /* play from tick from (count-in: the bar before from's bar, and
                                                    * from's bar up to it, in clicks) */
 void player_play(int on);                 /* 1: player_start(the song's start, the count-in setting); 0: stop */
+void player_park(int32_t at);             /* M10: the song stopped at tick `at`, held PAUSED there (no sound); PLAY goes on */
 void player_pause(void);                  /* playing: hold the position, sound off (PL_PAUSED); player_start goes on */
 void player_mute(uint32_t layers);        /* bit l: layer l muted (song.h order) */
 void player_variant(uint32_t layer, uint32_t v);   /* 1..variants; takes effect at the next block */
@@ -167,6 +168,17 @@ struct player_stats {
     uint32_t bt_tier_now;                 /* the tier the drums play now (the layers row's L: level + the section's energy) */
     uint32_t bt_prepares, bt_prepare_ms;  /* new versions built; the last one's time (ms) */
     uint32_t bt_pending_bar;              /* the bar line (bar index) the next swap is requested for, 0xFFFFFFFF: none */
+    /* M10 (24 words, then the texts: tools/m10_test.py reads them by these names) */
+    uint32_t vp_open, vp_count, vp_close_ms, vp_btn_closed;   /* the value pop-up: open now, times shown, ms it was open at
+                                           * the last close, the last close was a button press */
+    uint32_t ind_section, ind_blinking, ind_blink_starts, ind_blink_tick, ind_blink_to, ind_on;   /* the section indicator:
+                                           * the section it names, blinking now, blinks started, the tick the last began,
+                                           * the section it blinked to, shown now (blink phase) */
+    uint32_t kit, kit_hits, kit_bass_prog, kit_harm_prog;     /* BACKTRACK's band kit (0 STUDIO..3 CHIP), its drum hits */
+    uint32_t preset_used, preset_saves, preset_loaded, preset_sel, save_screen, save_slot, preset_junk;   /* user presets */
+    uint32_t info_shown;                  /* the Settings screen shows a song info line */
+    uint32_t m10_pad[2];
+    char vp_title[24], vp_value[40], vp_sub[32], next_text[48], ind_name[16], info_text[40], preset_name[16];
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

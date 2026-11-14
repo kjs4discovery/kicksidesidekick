@@ -119,6 +119,16 @@ void player_play(int on)
     play_req++;
 }
 
+/* M10 (Part 1 b): the song loaded, held PAUSED at tick `at` (no sound, no count-in): BACKTRACK's change while paused */
+void player_park(int32_t at)
+{
+    start_want = at;
+    start_countin = 0;
+    play_cmd = 3;
+    __asm__ volatile("" ::: "memory");
+    play_req++;
+}
+
 void player_pause(void)
 {
     play_cmd = 2;
@@ -563,7 +573,13 @@ static void requests(uint32_t f0)
             start(f0, start_want, start_countin);
         else if (play_cmd == 2)
             pause(f0);
-        else
+        else if (play_cmd == 3) {         /* M10: parked: started and held at once (nothing sounds) */
+            start(f0, start_want, 0);
+            state = PL_PAUSED;
+            player_stats.starts--;        /* (a park is not a PLAY press) */
+            stop_frames = frames ? frames : 1u;
+            player_stats.voices_after_stop = 0xFFFFFFFFu;
+        } else
             stop();
     }
     if (loop_req != loop_done) {

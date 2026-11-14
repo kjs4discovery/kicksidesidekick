@@ -63,7 +63,10 @@ static void draw_mode(void)
     static const char *const SUB[MODES] = {"Play with a song", "jam over a band", "play the synth"};
     uint32_t i;
     lcd_fill(0, 0, 240, 240, LOGO_BG);
-    draw_logo(0);
+    cv_begin(240, 20, LOGO_BG);          /* M10 (D058): the name across the top, the mascot scaled 4 : 5 under it */
+    text_in(0, 240, 2, text_w(&FONT_B, APP_NAME) <= 232 ? &FONT_B : &FONT_XS, APP_NAME, RGB(60, 50, 40));
+    cv_blit(0, 0);
+    draw_logo_s(20, 4u, 5u);
     cv_begin(120, 14, LOGO_BG);          /* M9: "modes:", in the subtitle colour, just above the first choice */
     cv_text(10, 0, &FONT_XS, "modes:", RGB(120, 108, 94));
     cv_blit(0, 158);
@@ -109,6 +112,7 @@ static void mode_choose(uint32_t m)
 /* back to the mode screen, from either mode */
 static void mode_leave(void)
 {
+    vpop_close(0);                       /* M10: a value pop-up goes with the screen */
     if (bt.on) {                         /* M8: BACKTRACK: the song and the synth */
         bt_leave();
     } else if (vsynth_active()) {

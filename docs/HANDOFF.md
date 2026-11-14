@@ -88,3 +88,27 @@ with changes on the phrase, 3 renamed + 6 new minor progressions. Saving presets
 **The coder for M9 is Sonnet:** the plan is prescriptive; every judgment call it does not spell out goes into
 docs/decisions-M9.md (format in the plan) for the planning chat's review.
 
+
+---
+
+## 2026-11-13 — from the planning chat — Milestone M10 planned: docs/plan-M10.md
+
+The user installed M9 (0.9.0-m9) and ran docs/step-M9-install.md steps 1-5: all fine (3 renamed backtracks deleted,
+36 sent). M10, in priority order: M9-review fixes (M9-07 reversed: crash only; M9-17 changed: a change while paused
+keeps the pause), BACKTRACK screens (value pop-up with titles, SIMPLE/MEDIUM/BUSY everywhere, NEXT spelled out,
+"MELODY SOUND", the section indicator that blinks in the bar before a change), the mode screen title "Notami - Song
+Sidekick", 6 progressions (42), a song info line on the Settings screen (INFO chunk), BACKTRACK band kits (SEQ on
+SETUP), then saving user presets (D040, own store object at 0xDE000), docs + NOTICE, the full suite once.
+**The 12 new songs were written by the planning chat** (songs/m10_songs.py + the 12 folders, uncommitted in the
+working tree): commit them as they are; never change their notes. songs/hallelujah/ moves to songs/private/.
+The coder is Sonnet again: every judgment call goes into docs/decisions-M10.md. One early install point after Part 6
+(do not stop there). The full suite runs once on the final package (a beta candidate; M9-21 is suspended for M10 unless the user says otherwise in the prompt).
+
+## 2026-11-13 (later) — from the planning chat — M10 amended before the run
+
+The product name is now **Tuneka** (it replaces Notami; plan-M10.md Part 3). The user dropped 6 of the planning chat's
+12 songs after listening: M10 has **6 new songs** (camptown-races, clementine, auld-lang-syne, drunken-sailor,
+blow-the-man-down, michael-row); the other 6 stay in songs/m10_songs.py's DROPPED_SONGS, never generated or sent.
+The full suite in Part 9 is trimmed and runs in three lanes (plan-M10.md Part 9).
+
+Correction (the user, later): "Tuneka - Song Sidekick" (two words, Song and Sidekick) on every screen, as plan-M10.md says.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# backtracks.py -- M8 (D046, D047), M9 (D054: 36): the backtracks from ONE table (tools/backtracks.tsv) -> songs/backtracks/<slug>/
+# backtracks.py -- M8 (D046, D047), M9 (D054: 36), M10 (D060: 42): the backtracks from ONE table (tools/backtracks.tsv) -> songs/backtracks/<slug>/
 # song.yaml + song.mid (a conductor track only: the compiler wants the file; a backtrack has no melody). Every one in C
 # major or A minor, kind backtrack, style POP (the FM-1 plays it in the style chosen there), category "Backtracks".
 # Licence: TBD (see D017)
@@ -38,20 +38,26 @@ TEMPO = 100
 TIER_TEXT = {1: "tier 1: the sparest", 2: "tier 2", 3: "tier 3", 4: "tier 4: the busiest (choruses at complexity 3)"}
 
 
+# M10 (D060): the numeral + extension pairs the parser knows; anything else is an error (it used to drop "maj7" on a minor
+# numeral silently): major: maj7, 7; minor: 7, 7b5 (half-diminished), maj7 (minor-major seventh), 6 (minor sixth)
+MAJOR_EXT = {"": "", "maj7": "maj7", "7": "7"}
+MINOR_EXT = {"": "", "7": "7", "7b5": "7b5", "maj7": "maj7", "6": "6"}
+
+
 def chord(numeral, tonic):
-    """'bVII' -> 'Bb' (tonic C), 'iv' -> 'Dm' (tonic A), 'ii7' -> 'Dm7', 'Imaj7' -> 'Cmaj7', 'I7' -> 'C7', 'ii7b5' -> 'Bm7b5' (tonic A)"""
-    m = re.fullmatch(r"(b?)([IViv]+)(maj7|7b5|7)?", numeral)
-    if not m:
+    """'bVII' -> 'Bb' (tonic C), 'iv' -> 'Dm' (tonic A), 'ii7' -> 'Dm7', 'Imaj7' -> 'Cmaj7', 'I7' -> 'C7', 'ii7b5' -> 'Bm7b5',
+    'imaj7' -> 'Ammaj7' (tonic A), 'i6' -> 'Am6', 'II' -> 'D' (tonic C), 'bII' -> 'Bb' (tonic A)"""
+    m = re.fullmatch(r"(b?)([IViv]+)(maj7|7b5|7|6)?", numeral)
+    if not m or m.group(2).upper() not in DEGREE:
         raise SystemExit(f"backtracks: numeral {numeral!r}?")
     flat, deg, ext = m.groups()
     pc = (tonic + DEGREE[deg.upper()] - (1 if flat else 0)) % 12
     minor = deg.islower()
-    # (M9: "ii7b5" = the half-diminished chord, m7b5; "i7" / "iv7" = minor sevenths)
-    q = ("m" if minor else "") + ({"maj7": "maj7", "7": "7"}.get(ext or "", "") if not minor else
-                                   {"7": "7", "7b5": "7b5"}.get(ext or "", ""))
-    if ext == "7b5" and not minor:
-        raise SystemExit(f"backtracks: numeral {numeral!r}: 7b5 is for a minor numeral (ii7b5)")
-    return FLAT[pc] + q
+    table = MINOR_EXT if minor else MAJOR_EXT
+    if (ext or "") not in table:
+        raise SystemExit(f"backtracks: numeral {numeral!r}: {ext} is not known on a {'minor' if minor else 'major'} numeral "
+                         f"(known: {', '.join(k for k in table if k)})")
+    return FLAT[pc] + ("m" if minor else "") + table[ext or ""]
 
 
 def rows():
@@ -108,6 +114,8 @@ def song_data(r, style="pop", bpb=4):
                      "chart": part, "role": role, "energy": energy})
         bar += len(nums)
     numerals = " ".join(r["verse"]) + (" | " + " ".join(r["chorus"]) if r["chorus"] else "")
+    while len(numerals) > 39:                            # (M10: FORM's field is 40 bytes: whole numerals only; the music is whole)
+        numerals = numerals.rsplit(" ", 1)[0]
     return {
         "format": "fm1-song/1", "slug": slug_of(r), "title": r["name"], "category": "Backtracks", "kind": "backtrack",
         "backtrack": {"number": r["number"], "numerals": numerals,

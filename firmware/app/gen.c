@@ -696,10 +696,8 @@ static void bt_drums(const struct song *s, struct out *o)
                     raw(o, lv, t0 + st * stk, t0 + (st + 1u) * stk, DRUM[r], ch == 'x' ? 92u : ch == 'o' ? 70u : 34u);
                 }
             }
-            if (lv >= 2u && b == first && s->role[sec] != ROLE_INTRO) {   /* a crash with the kick on beat 1 */
+            if (lv >= 2u && b == first && s->role[sec] != ROLE_INTRO)   /* a crash (M10: no extra kick; the tier's own) */
                 raw(o, lv, t0, t0 + stk, CRASH, 92);
-                raw(o, lv, t0, t0 + stk, KICK, 92);
-            }
             if (fill) {                   /* the last beat: a snare fill, the first 'o', the rest 'x'; tier 4: a tom */
                 for (st = (bpb - 1u) * S; st < nsteps; st++)
                     raw(o, lv, t0 + st * stk, t0 + (st + 1u) * stk, SNARE, st == (bpb - 1u) * S ? 70u : 92u);

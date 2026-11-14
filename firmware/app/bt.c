@@ -39,7 +39,6 @@ static const char *const BT_CPLX_NAME[4] = {"", "SIMPLE", "MEDIUM", "BUSY"};
 #define BT_IDLE_MS 300u                    /* the knobs still this long: the new version is built */
 #define BT_PLAN_MS 250u                    /* the boundary is chosen at least this far ahead (the build takes about 60 ms) */
 #define BT_GUARD_MS 100u                   /* ... and after the build the swap is asked for a line at least this far ahead */
-#define COL_MINOR RGB(96, 156, 240)        /* the MINOR badge (MAJOR: the amber highlight) */
 
 static struct song bt_song[2];             /* the band: the version playing and the one being built */
 
@@ -193,12 +192,8 @@ static void draw_setup(void)
             cv_text(6, 41 - y0, &FONT_B, t, C_WHITE);
             cv_text(6, 62 - y0, &FONT_XS, it ? it->numerals : "", C_HI);
             bt_row(80 - y0, "K2", "STYLE", bt.style == BT_WALTZ ? "WALTZ (3/4)" : BT_STYLE_NAME[bt.style], "");
-            t[0] = 0;
-            num_cat(t, bt.cplx);
-            text_cat(t, " ");
-            text_cat(t, BT_CPLX_NAME[bt.cplx]);
-            bt_row(100 - y0, "K3", "COMPLEXITY", t, "");
-            bt_row(120 - y0, "K4", "SOUND", vsynth_stock(bt.sound)->name, "");
+            bt_row(100 - y0, "K3", "COMPLEXITY", BT_CPLX_NAME[bt.cplx], "");
+            bt_row(120 - y0, "K4", "MELODY SOUND", vsynth_stock(bt.sound)->name, "");
             kn[0] = 0;
             bt_key_name(kn, it, bt.key, 1);
             ch[0] = 0;
@@ -443,65 +438,173 @@ static uint32_t bt_pending(void)
 #define BT_PHRASE_CLASS 7u                 /* progression, style, structure: at the next phrase boundary */
 #define BT_BAR_CLASS 24u                   /* complexity, key: at the next bar line */
 
-/* what waits, for the top line: "REGGAE, 15 MINOR POP, FULL" (as many as fit in `room` pixels, then "+n") */
-static void bt_next_text(char *d, int32_t room)
+/* what waits, for the top line (M10: spelled out): "NEXT: PROG 7", "NEXT: STYLE REGGAE +1" -- the first of progression, style,
+ * structure, key, complexity, then "+n"; a value that does not fit `room` pixels is shortened, never the setting's word */
+static void bt_next_item(char *d, uint32_t which, uint32_t shorter)
 {
     const struct lib_item *it = bt_item(bt.w_prog);
-    char item[5][28];
-    uint32_t pend = bt_pending(), n = 0, i, shown = 0;
-    for (i = 0; i < 5u; i++)
-        item[i][0] = 0;
-    if (pend & 1u) {
-        num_cat(item[n], it ? it->number : 0);
-        text_cat(item[n], " ");
-        text_cat(item[n++], it ? it->title : "?");
-    }
-    if (pend & 2u)
-        text_cat(item[n++], BT_STYLE_NAME[bt.w_style]);
-    if (pend & 4u)
-        text_cat(item[n++], BT_STRUCT_NAME[bt.w_structure]);
-    if (pend & 8u) {
-        text_cat(item[n], "C");
-        num_cat(item[n++], bt.w_cplx);
-    }
-    if (pend & 16u)
-        bt_key_name(item[n++], bt_item(bt.w_prog), bt.w_key, 0);
     d[0] = 0;
-    text_cat(d, "NEXT: ");
-    for (i = 0; i < n; i++) {
-        char more[8] = "";
-        int32_t w;
-        text_cat(more, " +");
-        num_cat(more, n - i - 1u);
-        w = text_w(&FONT_XS, d) + text_w(&FONT_XS, item[i]) + (i ? text_w(&FONT_XS, ", ") : 0) +
-            (i + 1u < n ? text_w(&FONT_XS, more) : 0);
-        if (w > room && i)
-            break;
-        if (i)
-            text_cat(d, ", ");
-        text_cat(d, item[i]);
-        shown++;
-    }
-    if (shown < n) {
-        text_cat(d, " +");
-        num_cat(d, n - shown);
+    switch (which) {
+    case 0:
+        text_cat(d, "PROG ");
+        num_cat(d, it ? it->number : 0);
+        break;
+    case 1:
+        text_cat(d, "STYLE ");
+        text_cat(d, shorter && bt.w_style == 8u ? "BOSSA" : shorter && bt.w_style == 2u ? "INDIE" : BT_STYLE_NAME[bt.w_style]);
+        break;
+    case 2:
+        text_cat(d, "STRUCTURE ");
+        text_cat(d, bt.w_structure == BS_VERSE_CHORUS ? (shorter == 1u ? "VERSE/CH." : shorter ? "V/C" : "VERSE/CHORUS") :
+                                                        BT_STRUCT_NAME[bt.w_structure]);
+        break;
+    case 3:
+        text_cat(d, "KEY ");
+        bt_key_name(d, bt_item(bt.w_prog), bt.w_key, 0);
+        break;
+    default:
+        text_cat(d, "COMPLEXITY ");
+        text_cat(d, BT_CPLX_NAME[bt.w_cplx]);
     }
 }
 
-/* the play screen's top lines (ui.c draw_top): the progression's number, name and badge; then what waits (NEXT: ...), or
- * the message, or the style, structure and complexity. avail: the pixels before the bar label */
+static void bt_next_text(char *d, int32_t room)
+{
+    static const uint8_t ORDER[5] = {0, 1, 2, 3, 4};      /* progression, style, structure, key, complexity */
+    static const uint8_t BIT[5] = {1, 2, 4, 16, 8};         /* (bt_pending's bits) */
+    uint32_t pend = bt_pending(), n = 0, first = 5, i, sh;
+    char item[40], more[8] = "";
+    for (i = 0; i < 5u; i++)
+        if (pend & BIT[ORDER[i]]) {
+            if (first == 5u)
+                first = ORDER[i];
+            n++;
+        }
+    d[0] = 0;
+    if (!n)
+        return;
+    if (n > 1u) {
+        text_cat(more, " +");
+        num_cat(more, n - 1u);
+    }
+    for (sh = 0; sh < 3u; sh++) {
+        bt_next_item(item, first, sh);
+        d[0] = 0;
+        text_cat(d, "NEXT: ");
+        text_cat(d, item);
+        text_cat(d, more);
+        if (text_w(&FONT_XS, d) <= room)
+            break;
+    }
+}
+
+/* ------------------------------------------------------------------- the section indicator (M10, D057) --- */
+/* the section's name in capitals: its role (INTRO, VERSE, CHORUS, BRIDGE, ENDING), else its name without a number */
+static void bt_section_name(const struct song *s, uint32_t sec, char *d, uint32_t n)
+{
+    static const char *const ROLE[5] = {"INTRO", "VERSE", "CHORUS", "BRIDGE", "ENDING"};
+    uint32_t i = 0;
+    d[0] = 0;
+    if (sec >= s->nsect)
+        return;
+    if (s->role[sec] < 5u) {
+        text_cat(d, ROLE[s->role[sec]]);
+        return;
+    }
+    {
+        const char *nm = song_section_name(s, sec);
+        for (; nm[i] && i + 1u < n; i++)
+            d[i] = (char)(nm[i] >= 'a' && nm[i] <= 'z' ? nm[i] - 32 : nm[i]);
+        while (i && (d[i - 1u] == ' ' || (d[i - 1u] >= '0' && d[i - 1u] <= '9')))
+            i--;
+        d[i] = 0;
+    }
+}
+
+/* what the indicator shows: the section playing, or in the last bar before a different section starts the NEXT one,
+ * blinking. *blink 1: blinking now. The phase (shown / hidden) follows the clock in 250 ms halves */
+static uint32_t bt_indicator(const struct song *s, int st, int *blink)
+{
+    int32_t tk = player_tick(PL_LEAD_BEAT_MS);
+    uint32_t bar, sec, next = 0xFFFFFFFFu, a, b;
+    *blink = 0;
+    if (tk < 0)
+        tk = 0;
+    bar = (uint32_t)tk / s->bar_ticks;
+    if (bar >= s->bar_count)
+        bar = s->bar_count - 1u;
+    sec = song_bar_section(s, bar);
+    if (st == PL_PLAYING) {
+        uint32_t nb = bar + 1u;
+        if (player_loop_of(&a, &b) && ui.loop == LOOP_BARS && nb * s->bar_ticks >= b)
+            nb = a / s->bar_ticks;          /* the wrap: the loop's first bar carries on */
+        if (nb < s->bar_count)
+            next = song_bar_section(s, nb);
+        if (next != 0xFFFFFFFFu && next != sec) {
+            *blink = 1;
+            return next;
+        }
+    }
+    return sec;
+}
+
+/* the indicator's state for this frame (called from frame_play before the top line is drawn): the section it names, whether
+ * it blinks, and the blink phase (on 250 ms, off 250 ms, from the moment the blink began, in the player's own time: the beat
+ * light's base). Returns a number that changes when the top line has to be drawn again. */
+static uint32_t bt_ind_update(int st)
+{
+    static int was_blink;
+    static uint32_t was_to = 0xFFFFFFFFu;
+    static int32_t t0;
+    int blink;
+    uint32_t sec = bt_indicator(ui.s, st, &blink), on = 1;
+    int32_t tk = player_tick(PL_LEAD_BEAT_MS);
+    if (blink && (!was_blink || was_to != sec)) {
+        t0 = tk;
+        player_stats.ind_blink_starts++;
+        player_stats.ind_blink_tick = (uint32_t)tk;
+        player_stats.ind_blink_to = sec;
+    }
+    if (blink) {
+        uint32_t ms = (uint32_t)(tk - t0) * 60000u / (ui.s->ppq * player_tempo_of());
+        on = (ms / 250u & 1u) ? 0u : 1u;
+    }
+    was_blink = blink;
+    was_to = blink ? sec : 0xFFFFFFFFu;
+    bt.ind_sec = sec;
+    bt.ind_blink = (uint8_t)blink;
+    bt.ind_on = (uint8_t)on;
+    player_stats.ind_section = sec;
+    player_stats.ind_blinking = (uint32_t)blink;
+    player_stats.ind_on = on;
+    {
+        char nm[16];
+        bt_section_name(ui.s, sec, nm, sizeof nm);
+        vpop_text(player_stats.ind_name, nm, sizeof player_stats.ind_name);
+    }
+    return sec | (uint32_t)blink << 8 | on << 9;
+}
+
+/* the play screen's top lines (ui.c draw_top): the progression's number and name; the section indicator at the right end
+ * of the line (M10; the MAJOR / MINOR badge is on SETUP and in the pop-up); then what waits (NEXT: ...), or the message, or
+ * the style, structure and complexity. avail: the pixels before the bar label */
 static void bt_top(int32_t avail, int st)
 {
     const struct lib_item *it = bt_item(bt.prog);
     char t[64] = "";
-    int32_t w;
     (void)st;
     num_cat(t, it ? it->number : 0);
     text_cat(t, " ");
     text_cat(t, it ? it->title : "?");
     cv_text(6, 1, &FONT_XS, t, C_GRAY);
-    w = 6 + text_w(&FONT_XS, t) + 6;
-    bt_badge(w + text_w(&FONT_XS, it && it->key_mode == 1u ? "MINOR" : "MAJOR") + 8, 1, it);
+    if (bt.ind_on) {
+        char nm[16];
+        int32_t w;
+        bt_section_name(ui.s, bt.ind_sec, nm, sizeof nm);
+        w = text_w(&FONT_XS, nm) + 8;
+        cv_rect(avail - w, 1, w, 14, bt.ind_blink ? C_AMB : C_HI);
+        cv_text(avail - w + 4, 2, &FONT_XS, nm, C_BLACK);
+    }
     t[0] = 0;
     if (bt_pending()) {
         bt_next_text(t, avail - 6);
@@ -515,8 +618,8 @@ static void bt_top(int32_t avail, int st)
         text_cat(t, BT_STYLE_NAME[bt.style]);
         text_cat(t, "  ");
         text_cat(t, BT_STRUCT_NAME[bt.structure]);
-        text_cat(t, "  C");
-        num_cat(t, bt.cplx);
+        text_cat(t, "  ");
+        text_cat(t, BT_CPLX_NAME[bt.cplx]);
         cv_text(6, 16, &FONT_XS, t, C_AMB);
     }
 }
@@ -664,13 +767,26 @@ static void bt_live(void)
     if (now - bt.w_ms < BT_IDLE_MS || bt.no_ms == bt.w_ms)
         return;
     if (st == PL_STOPPED || st == PL_PAUSED) {                 /* not playing: at once (the band stops, as a new open) */
+        const struct song *o = ui.s;
+        uint32_t ob = 0;
+        if (st == PL_PAUSED) {                                 /* M10 (M9-17 changed): a pause is kept, at the mapped bar */
+            int32_t pt = player_tick(0);
+            ob = pt > 0 ? (uint32_t)pt / o->bar_ticks : 0;
+            if (ob >= o->bar_count)
+                ob = o->bar_count - 1u;
+        }
         bt.prog = bt.w_prog;
         bt.style = bt.w_style;
         bt.structure = bt.w_structure;
         bt.cplx = bt.w_cplx;
         bt.key = bt.w_key;
         bt_style_bpm();
-        bt_load(1u - bt.cur);
+        if (bt_load(1u - bt.cur) == 0 && st == PL_PAUSED) {
+            const struct song *ns = &bt_song[bt.cur];
+            uint32_t la = 0, lb = 0;
+            int lo = 0;
+            player_park((int32_t)(bt_map_bar(o, ob, ns, bt.structure, &lo, &la, &lb) * ns->bar_ticks));
+        }
         return;
     }
     if (st == PL_PLAYING)
@@ -692,6 +808,14 @@ static void bt_stats(void)
     player_stats.bt_cplx = bt.cplx;
     player_stats.bt_pending_bar = bt.sw_pending == 1u ? bt.sw_bar : BT_NONE;
     player_stats.synth_preset = bt.sound;
+    if (bt.on && ui.view == V_PLAY && vpop.open)   /* (the screen is frozen under a pop-up: the indicator goes on) */
+        (void)bt_ind_update(player_state());
+    {
+        char nt[48] = "";
+        if (bt.on && ui.view == V_PLAY && bt_pending())
+            bt_next_text(nt, 1000);
+        vpop_text(player_stats.next_text, nt, sizeof player_stats.next_text);
+    }
     player_stats.synth_notes = v->notes;
     player_stats.synth_voices_max = v->voices_max;
     player_stats.synth_peak = v->peak;
@@ -709,6 +833,66 @@ static void bt_stats(void)
         player_stats.bt_loop_to = b;
     }
 }
+
+/* ------------------------------------------------------------------- the value pop-up (M10, D057) --- */
+enum { VK_PROG, VK_STYLE, VK_CPLX, VK_SOUND, VK_KEY, VK_STRUCT, VK_TEMPO, VK_KIT };
+
+/* knob k's pop-up: on SETUP the choice, on the play screen what waits (w_*) with its class, K4 and SELECT as they are */
+static void bt_vp(uint32_t k)
+{
+    int play = ui.view != V_SETUP;
+    uint32_t prog = play ? bt.w_prog : bt.prog, style = play ? bt.w_style : bt.style, cplx = play ? bt.w_cplx : bt.cplx,
+             key = play ? bt.w_key : bt.key, structure = play ? bt.w_structure : bt.structure;
+    const struct lib_item *it = bt_item(prog);
+    char v[40] = "";
+    const char *title = "", *sub = "";
+    uint32_t badge = 0, pend = play ? bt_pending() : 0;
+    switch (k) {
+    case VK_PROG:
+        title = "Progression";
+        num_cat(v, it ? it->number : 0);
+        text_cat(v, " ");
+        text_cat(v, it ? it->title : "?");
+        badge = it && it->key_mode == 1u ? 2u : 1u;
+        sub = pend & 1u ? "at the next phrase" : "";
+        break;
+    case VK_STYLE:
+        title = "Style";
+        text_cat(v, BT_STYLE_NAME[style]);
+        sub = pend & 2u ? "at the next phrase" : "";
+        break;
+    case VK_CPLX:
+        title = "Song Complexity";
+        text_cat(v, BT_CPLX_NAME[cplx]);
+        sub = pend & 8u ? "at the next bar" : "";
+        break;
+    case VK_SOUND:
+        title = "Melody Sound";
+        text_cat(v, vsynth_stock(bt.sound)->name);
+        break;
+    case VK_KEY:
+        title = "Key";
+        bt_key_name(v, it, key, 1);
+        sub = pend & 16u ? "at the next bar" : "";
+        break;
+    case VK_STRUCT:
+        title = "Structure";
+        text_cat(v, BT_STRUCT_NAME[structure]);
+        sub = pend & 4u ? "at the next phrase" : "";
+        break;
+    case VK_TEMPO:
+        title = "Tempo";
+        num_cat(v, play ? player_tempo_of() : bt.bpm);
+        text_cat(v, " BPM");
+        break;
+    default:
+        title = "Band Kit";
+        text_cat(v, "");
+    }
+    vpop_show(title, v, sub, badge);
+}
+
+static void bt_vp_select(void) { bt_vp(VK_TEMPO); }
 
 static int32_t bt_wrap(int32_t v, int32_t n) { return (v % n + n) % n; }
 
@@ -734,6 +918,20 @@ static void bt_setup_input(uint32_t down)
         bt.bpm = (uint32_t)clamp((int32_t)bt.bpm + sel, (int32_t)PL_BPM_MIN, (int32_t)PL_BPM_MAX);
         bt.bpm_turned = 1;
     }
+    if (d1 && bt.n)
+        bt_vp(VK_PROG);
+    if (d2)
+        bt_vp(VK_STYLE);
+    if (d3)
+        bt_vp(VK_CPLX);
+    if (d4)
+        bt_vp(VK_SOUND);
+    if (dp)
+        bt_vp(VK_KEY);
+    if (da)
+        bt_vp(VK_STRUCT);
+    if (sel)
+        bt_vp(VK_TEMPO);
     if (down >> B_PLAY & 1u)
         bt_open();
     bt_stats();
@@ -760,9 +958,19 @@ static void bt_play_input(uint32_t down)
         bt.w_ms = now;
         ui.sh_top_key = 0xFFFFFFFFu;
     }
+    if (d1 && bt.n)
+        bt_vp(VK_PROG);
+    if (d2)
+        bt_vp(VK_STYLE);
+    if (d3)
+        bt_vp(VK_CPLX);
+    if (dp)
+        bt_vp(VK_KEY);
+    if (da)
+        bt_vp(VK_STRUCT);
     if (d4) {
         bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)vsynth_presets()));
-        app_say("MELODY SOUND", vsynth_stock(bt.sound)->name);
+        bt_vp(VK_SOUND);
         bt.sound_until = now + 1500u;
     }
     if (down >> B_LFO & 1u)

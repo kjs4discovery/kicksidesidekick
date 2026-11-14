@@ -318,6 +318,12 @@ STYLE_OF = {"twelve-bar-blues": "shuffle", "saints": "march", "four-chords": "po
             "greensleeves": "waltz", "happy-birthday": "waltz", "danny-boy": "ballad", "oh-susanna": "train",
             "amazing-grace": "waltz"}
 
+# M10 (D059): the planning chat's six new songs (songs/m10_songs.py: melody, chart, credits, info line)
+sys.path.insert(0, str(HERE))
+from m10_songs import NEW_SONGS                                       # noqa: E402
+SONGS.update(NEW_SONGS)
+STYLE_OF.update({k: v["style"] for k, v in NEW_SONGS.items()})
+
 
 def arrange(s):
     """the melody (typed in) and every generated level: harmony 1-5, bass 1-4, drums 1-3 (D026)"""

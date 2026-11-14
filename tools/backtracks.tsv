@@ -1,4 +1,4 @@
-# The 36 backtracks (M8, D046; the user's list, 2026-11-12; M9, D054: 3 renamed, 31-36 minor ones added). tools/backtracks.py
+# The 42 backtracks (M8, D046; the user's list, 2026-11-12; M9, D054: 3 renamed, 31-36 minor ones added). tools/backtracks.py
 # writes songs/backtracks/ from it.
 # number	name (<= 15, drafts)	verse	chorus (- none)	mode (major: C, minor: A minor, blues)
 # one chord a bar; b = flat; lower case = minor; 7, maj7 as written. The numerals shown are "verse | chorus".
@@ -38,3 +38,9 @@
 34	HARMONIC	i bVI iv V	-	minor
 35	MINOR 2-5-1	ii7b5 V7 i i	-	minor
 36	MINOR FUNK	i7 i7 iv7 iv7	-	minor
+37	PHRYGIAN	i bII	-	minor
+38	LINE CLICHE	i imaj7 i7 i6	-	minor
+39	MINOR CADENCE	i iv V i	-	minor
+40	DESCENT	IVmaj7 iii7 ii7 Imaj7	-	major
+41	LYDIAN	I II	-	major
+42	JAZZ BLUES	I7 IV7 I7 I7 IV7 IV7 I7 VI7 ii7 V7 I7 V7	-	blues

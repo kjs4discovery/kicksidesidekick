@@ -163,9 +163,9 @@ def main_uke():
                 break
     print(f"ukulele: {len(opens)} open shapes, {len(moves)} movable shapes: "
           f"{'all match their chords' if not bad else f'{bad} FAIL'}")
-    folders = [p for p in (ROOT / "songs").iterdir() if (p / "song.yaml").is_file()]
+    folders = [p for p in (ROOT / "songs").iterdir() if (p / "song.yaml").is_file() and p.name != "hallelujah"]
     if (ROOT / "songs/private").is_dir():
-        folders += [p for p in (ROOT / "songs/private").iterdir() if (p / "song.yaml").is_file()]
+        folders += [p for p in (ROOT / "songs/private").iterdir() if (p / "song.yaml").is_file() and p.name != "hallelujah"]
     syms = set()
     for f in sorted(folders):
         for ch in read_compiled(compile_folder(f)[0])["chords"]:

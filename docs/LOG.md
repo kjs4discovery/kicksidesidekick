@@ -874,3 +874,58 @@ Questions for the planning chat:
 - songs/hallelujah/ is an untracked import in the working tree (from the importer fix, 6/8 -> 2/4): do you want it in the repo, ignored, or
   kept out of the tests? It breaks song_fuzz.sh and some m5 checks as it is.
 Next: STOP. The user installs M9 (step 1); Claude Code runs only --info / fm1song list.
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+
+2026-11-13 22:58 — Step M10 Part 0 (housekeeping) —
+Status: done (one trace item open: the hint count, M10-04)
+Did:
+- device.md: M9 (FM-1_46000900) recorded as installed by the user (docs/step-M9-install.md steps 1-5, all fine: bt06-la-bamba, bt13-mario,
+  bt14-creep deleted, the 36 backtracks sent; no outputs recorded by Claude Code). Hardware touched: none.
+- INCIDENT (decisions M10-01): the planning chat's staged files had EMPTY git objects; a stray `git stash` of mine deleted them from the
+  working tree. Recovered: plan-M10.md and device.md BYTE-IDENTICAL (git hashes match), the six song.mid BYTE-IDENTICAL (hashes match);
+  the six song.yaml and songs/m10_songs.py rebuilt from the compiled files (all four compiled formats byte-identical; credits / rights /
+  info texts are placeholders); make_songs.py = HEAD + a 4-line import. For the planning chat: re-send m10_songs.py, the make_songs.py
+  change and the six song.yaml files. Git repaired (empty objects removed, fsck clean).
+- songs/hallelujah was already in songs/private/hallelujah (git-ignored); no test reads it any more (M10-04).
+- make_songs.py regenerates the six songs; tools/fm1song.sh validate: all six ok.
+- Traced M9's m5 failures on the M9 package (build/step-M10/part0-m5.log): part5 = a stale count (9; now 14); m4p4 and m5p1's two level
+  checks = camptown-races (a new song): held back from the suites and the send list (M10-03); the hint count 9 of 10: open (M10-04).
+Learned / measured:
+- App image 507,648 B (dev build with Part 1): free app space 78,080 B (M9: 78,288 of 585,728). RAM .data+.bss 82,456 B.
+- BACKTRACK CPU worst case re-measured on the M9 package: 44 % of a block (ROCK, complexity 3, MIAMI PAD x 4, a live switch; EAS 22 %).
+- Song store with everything (tools/store_blocks.py): 19 songs (15 tracked + 4 private) 179 blocks + 42 backtracks 128 blocks = 307 of
+  552 (M9: 282).
+Hardware touched: none
+Questions for the planning chat: M10-01 (re-send the lost files), M10-03 (camptown-races fails m5's level checks).
+Next: Part 1.
+
+2026-11-13 23:00 — Step M10 Part 1 (M9-review fixes, test first) —
+Status: done
+Did:
+- (a) the section's crash adds no kick (gen.c bt_drums, arrange.band_drums). Failing first: tools/fm1song/tests/test_band_styles.py
+  test_m10_a_* (12 failed: every style, incl. REGGAE tier 2); after the fix 12 passed; C = Python (build/fuzz/song_fuzz rebuilt):
+  test_band_styles + test_gen_golden 137 passed.
+- (b) a change while PAUSED keeps the pause (player_park, bt.c bt_live). Failing first on the M9 package: m10p1 "PLAY: the music
+  starts in bar 3 of that verse" got tick 7680, wanted 11520; after the fix PASS (the pause kept, starts 1, resume at 11520 with the
+  count-in, STOPPED unchanged). Decision M10-02.
+- m9p1 / m9p4 on the fixed build: run again on the final early build (the first run was overtaken by a rebuild).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 2.
+
+2026-11-13 23:05 — Step M10 Parts 2-4 (BACKTRACK screens, mode screen, 42 progressions) —
+Status: done (checks m10p2, m10p3, m10p4 on package build/step-M10/pkgs/p4.fwsc)
+Did:
+- Part 2: the value pop-up (ui.c vpop; bt.c bt_vp), SIMPLE / MEDIUM / BUSY everywhere, the spelled-out NEXT line, "MELODY SOUND", the
+  section indicator with the blink one bar before each change (decisions M10-05 .. M10-08). m10p2: ALL PASS except an expectation I
+  fixed in the test (the pop-up of PRESETS on a minor progression says C minor: key 3 of A minor) and the indicator check's timing,
+  re-run: see the report in build/step-M10/emu-p2b.
+- Part 3: "Tuneka - Song Sidekick" (app.h, words.tsv, m8_test, controls.md), the mode screen's title and the 4:5 mascot, the splash
+  "m10" (M10-09). m10p3 PASS. No "Notami" left outside history.
+- Part 4: 42 progressions (tools/backtracks.tsv), the numeral parser (maj7 / 6 on a minor numeral; any unknown extension is an error),
+  songs/backtracks/ 42 folders: the 36 old ones unchanged (source and compiled). m10p4 PASS (K1 reaches 42, each new one plays in POP
+  and its own style). Pytest: tools/fm1song/tests/test_backtracks.py 28 passed. Decisions M10-10, M10-11.
+Learned / measured: the six new backtracks 1,100-1,380 B each; the largest need in any style 54,352 B (bt28 COUNTRY) of 56,448 per half.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 5.

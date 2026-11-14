@@ -523,8 +523,8 @@ def band_drums(nbars, bpb, style, pickup, secs, final_bar):
                     if fill and st >= (bpb - 1) * S and row in "KSHO":      # the last beat: kick, snare, hats silent
                         continue
                     out[lv].append((t0 + st * stk, t0 + (st + 1) * stk, note_of[row], 92 if ch == "x" else 70 if ch == "o" else 34))
-            if lv >= 2 and b == first and role != "intro":                   # a crash with the kick on beat 1
-                out[lv] += [(t0, t0 + stk, CRASH, 92), (t0, t0 + stk, KICK, 92)]
+            if lv >= 2 and b == first and role != "intro":                   # a crash (M10: no extra kick; the tier's own)
+                out[lv].append((t0, t0 + stk, CRASH, 92))
             if fill:                                                         # a snare fill; tier 4: a tom
                 for st in range((bpb - 1) * S, nsteps):
                     out[lv].append((t0 + st * stk, t0 + (st + 1) * stk, SNARE, 70 if st == (bpb - 1) * S else 92))

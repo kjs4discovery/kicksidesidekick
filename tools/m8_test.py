@@ -150,7 +150,7 @@ def bar_tick(c, bar, bpb=4):
 def test_m8p1(all_songs, rep):
     lines, st, check = m5.checker("M8 part 1: renames (D050)")
     sp = m5.run("m8p1-splash", 2500, [], mode=None)
-    check(sp["stats"]["ui_view"] >= 16, "the splash: Notami - SongSidekick, m8 (m8p1-splash.png)")
+    check(sp["stats"]["ui_view"] >= 16, "the splash: Tuneka - Song Sidekick, m10 (m8p1-splash.png)")
     a = m5.run("m8p1-mode", 4700, [], mode=None)
     check(a["stats"]["ui_view"] == V_MODE and a["stats"]["mode"] == 0 and a["stats"]["mode_sel"] == 0,
           "after the splash: the mode screen, the cursor on SONG LEARN (m8p1-mode.png)")

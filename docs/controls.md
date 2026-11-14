@@ -855,7 +855,7 @@ half a dB a step).
   **BACKTRACK** (jam over a band), **SYNTH**. The cursor is on SONG LEARN at every power-on and whenever the screen
   opens again (HOME held 2 s from any mode, or Settings > Switch mode). SELECT moves it (it stops at the ends), PLAY or
   EDIT chooses.
-- **The splash**: "Notami - SongSidekick", under it only the milestone, "m8" (the version, 0.8.0-m8, stays in the
+- **The splash**: "Tuneka - Song Sidekick" (M8 named it; M10 renamed it), under it only the milestone, "m10" (the version, stays in the
   help and `--info`). fm1-base's crash and safe-mode screens and the screen reader use the same name. The USB / MIDI
   names, the identity (FM-1_4600xxxx) and the package name are unchanged.
 - **Presets**: E-PIANO, E-GUITAR, E-SITAR are presets 1-3; SYNTH starts on preset 1 (E-PIANO). The rest in M7's order:

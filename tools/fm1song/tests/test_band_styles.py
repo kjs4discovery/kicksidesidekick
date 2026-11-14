@@ -102,3 +102,31 @@ def test_c_and_python_make_the_same_in_every_style_at_every_tier(folder, tmp_pat
         for key, evs in want.items():
             assert got.get(key, []) == [e for e in evs if e[1] in (0x80, 0x90)], (folder.name, name, key)
             assert evs, (folder.name, name, key)             # (every tier plays something)
+
+
+# ------------------------------------------------------------------------------------------- M10 Part 1 (a)
+@pytest.mark.parametrize("style", arr.STYLE_NAMES)
+def test_m10_a_sections_crash_adds_no_kick(style):
+    """M10 (reverses M9-07): at the first bar of a section other than the intro, tiers 2-4 add the crash only; the kick
+    on beat 1 is whatever the tier's pattern has (REGGAE's one-drop has none)"""
+    from fm1song.band_styles_data import BAND_STYLES
+    T = BAND_STYLES[style]
+    bpb = T["beats"]
+    # 12 bars: intro 0-3, chorus 4-7, verse 8-11 (the last bar: the ending kick + crash)
+    secs = [(0, 4, "intro", 3, 0)] * 4 + [(4, 4, "chorus", 3, 1)] * 4 + [(8, 4, "verse", 3, 2)] * 4
+    out = arr.band_drums(12, bpb, style, 0, secs, 11)
+    for lv in (2, 3, 4):
+        t0 = 4 * bpb * 480
+        at0 = [e for e in out[lv] if e[0] == t0]
+        assert [e for e in at0 if e[2] == 49 and e[3] == 92], (style, lv, "the chorus's crash")
+        pat = T["tiers"][lv]["drums"].get("K")
+        want = 0 if pat is None or pat[0][0] == "." else 1     # (the chorus's first bar: alt 0)
+        assert len([e for e in at0 if e[2] == 36]) == want, (style, lv, "the kick is the pattern's own")
+        t1 = 0
+        assert not [e for e in out[lv] if e[0] == t1 and e[2] == 49], (style, lv, "no crash in the intro")
+
+
+def test_m10_a_reggae_tier2_chorus_has_no_kick_on_beat_1():
+    secs = [(0, 4, "intro", 3, 0)] * 4 + [(4, 4, "chorus", 3, 1)] * 4 + [(8, 4, "verse", 3, 2)] * 4
+    out = arr.band_drums(12, 4, "reggae", 0, secs, 11)
+    assert not [e for e in out[2] if e[0] == 4 * 4 * 480 and e[2] == 36]

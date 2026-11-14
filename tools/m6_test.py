@@ -29,7 +29,7 @@ import m5_test as m5                     # noqa: E402
 V_LIST, V_PLAY, V_SETTINGS, V_MODE, V_SYNTH, V_WIPE = 0, 1, 3, 6, 7, 8
 M6_FIELDS = ("mode_switches zoom uke roll_keys jam jam_notes shift fx_reverb fx_crush arp_pattern "
              "arp_rate jam_style jam_level").split()
-PRIV = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
+PRIV = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file() and p.name != "hallelujah") \
     if (ROOT / "songs/private").is_dir() else []
 O = m5.OPEN_MS
 SYNTH = ["4050:e0:2", "4200:PLAY", "4260:PLAY^"]   # the mode screen: SELECT to SYNTH (M8: the third), PLAY

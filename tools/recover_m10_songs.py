@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""ONE-OFF RECOVERY (M10, 2026-11-13). The planning chat's songs/m10_songs.py and the 6 song folders were lost from the
+working tree (an accidental `git stash` of staged files whose git objects were empty). This rebuilds them from the compiled
+files build/fuzz/<slug>.fm1s (compiled earlier the same day from the originals):
+  * song.mid: byte-identical (checked against the staged blob hashes in docs/decisions-M10.md M10-01),
+  * song.yaml: NOT recoverable byte for byte (credits, rights text, chart layout): rebuilt to compile to the same files.
+Replace the outputs with the planning chat's originals as soon as they are re-sent. Licence: TBD (see D017)."""
+import pprint
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "songs"))
+from fm1song import read_compiled          # noqa: E402
+
+PPQ = 480
+INFO = {   # placeholders written by Claude Code (the originals' info lines were lost); <= 38 characters
+    "camptown-races": "Stephen Foster, 1850",
+    "clementine": "Percy Montrose, 1884; American folk song",
+    "auld-lang-syne": "Robert Burns, 1788; traditional Scots tune",
+    "drunken-sailor": "Traditional sea shanty",
+    "blow-the-man-down": "Traditional sea shanty",
+    "michael-row": "Traditional spiritual, 1860s",
+}
+CREDIT = {
+    "camptown-races": "Stephen Foster (1850)",
+    "clementine": "Percy Montrose (1884); American folk song",
+    "auld-lang-syne": "Robert Burns (1788), traditional Scots tune",
+    "drunken-sailor": "Traditional sea shanty",
+    "blow-the-man-down": "Traditional sea shanty",
+    "michael-row": "Traditional spiritual (first printed 1867)",
+}
+NOTE = {0: "C", 1: "C#", 2: "D", 3: "Eb", 4: "E", 5: "F", 6: "F#", 7: "G", 8: "Ab", 9: "A", 10: "Bb", 11: "B"}
+
+
+def pitch_name(p):
+    return f"{NOTE[p % 12]}{p // 12 - 1}"
+
+
+def chord_at(c, tick):
+    cur = None
+    for e in c["chord_events"]:
+        if e["tick"] <= tick:
+            cur = e
+    return c["chords"][cur["chord"]]["symbol"]
+
+
+def bar_text(c, b, bpb):
+    t0 = b * bpb * PPQ
+    evs = {e["tick"]: c["chords"][e["chord"]]["symbol"] for e in c["chord_events"] if t0 <= e["tick"] < t0 + bpb * PPQ}
+    if len(evs) <= 1 and (not evs or list(evs)[0] == t0 or chord_at(c, t0) == list(evs.values())[0]):
+        return chord_at(c, t0) if not evs or list(evs)[0] == t0 else chord_at(c, t0)
+    out, prev = [], None
+    for beat in range(bpb):
+        tk = t0 + beat * PPQ
+        sym = evs.get(tk)
+        out.append(sym if sym and sym != prev else ".")
+        prev = sym or prev
+    if out[0] == ".":
+        out[0] = chord_at(c, t0)
+    return " ".join(out)
+
+
+def rebuild(slug):
+    c = read_compiled((ROOT / f"build/fuzz/{slug}.fm1s").read_bytes())
+    bpb, pick = int(c["time_signature"][0]), c["pickup_beats"]
+    key, _, mode = c["key"].partition(" ")
+    ev = c["layers"]["melody"]["variants"][1]
+    on, notes = {}, []
+    for t, st, p, v in ev:
+        if st == 144 and v > 0:
+            on[p] = t
+        else:
+            notes.append((on.pop(p), t, p))
+    notes.sort()
+    mel, t = [], (bpb - pick) * PPQ if pick else 0
+    for a, e, p in notes:
+        d = e - a + 15 if e - a > 10 else 10 + 15       # (the generator ends a note 15 ticks early; at least 10 long)
+        if a > t:
+            mel.append((None, (a - t) / PPQ))
+        mel.append((pitch_name(p), d / PPQ))
+        t = a + d
+    # the chart: a part per distinct run of bars, named after the section
+    texts, form, parts = [], [], {}
+    first = 1 if pick else 0
+    rows = [bar_text(c, b, bpb) for b in range(c["bar_count"])]
+    for sec in c["sections"]:
+        base = "".join(ch for ch in sec["name"].lower() if ch.isalpha())
+        body = rows[sec["first_bar"]:sec["first_bar"] + sec["bars"]]
+        name = base
+        for k, v in parts.items():
+            if v == body:
+                name = k
+                break
+        else:
+            k = 1
+            while name in parts:
+                k += 1
+                name = f"{base}{k}"
+            parts[name] = body
+        form.append((sec["name"], sec["bars"], name))
+    ending = f"| {rows[-1]} |"
+    last = parts[form[-1][2]]
+    if rows[-1] == last[-1]:
+        ending = None
+    chart = {}
+    if pick:
+        chart["pickup"] = f"| {rows[0]} |"
+    for name, body in parts.items():
+        chart[name] = "\n".join("| " + " | ".join(body[i:i + 4]) + " |" for i in range(0, len(body), 4))
+    if ending:
+        parts[form[-1][2]][-1] = None
+    prog = {k: (c["layers"][k]["program"] or 0) + 1 for k in ("bass", "harmony", "melody")}
+    return dict(category=c["category"], title=c["title"], key=key, mode=mode or None, bpb=bpb, tempo=round(c["tempo_bpm"]),
+                pickup=pick, feel="swing" if c["swing"] else "straight",
+                credits=dict(music=CREDIT[slug], arrangement="FM-1 Accompaniment project (generated by make_songs.py)"),
+                rights=dict(composition="public domain", arrangement_license="TBD"),
+                form=form, chart=chart, ending=ending or "| " + rows[-1] + " |", melody=mel, layers=prog,
+                variants=dict(melody={1: "the tune"}), info=INFO[slug], style=c["style"])
+
+
+def main():
+    out = {s: rebuild(s) for s in INFO}
+    text = ('"""RECOVERED by Claude Code (tools/recover_m10_songs.py, 2026-11-13) from the compiled songs; the planning chat\'s '
+            'original of this file was lost.\nMelodies and chords are exact (the compiled files are identical); credits, '
+            'rights, info and the chart layout are rebuilt. Replace with the original when it is re-sent.\n'
+            'Licence: TBD (see D017)\n"""\n\nNEW_SONGS = ' + pprint.pformat(out, width=118, sort_dicts=False) +
+            "\n\nDROPPED_SONGS = {}     # (the six dropped songs' data was lost with the original file: never generated anyway)\n")
+    (ROOT / "songs/m10_songs.py").write_text(text)
+    print("wrote songs/m10_songs.py")
+
+
+if __name__ == "__main__":
+    main()

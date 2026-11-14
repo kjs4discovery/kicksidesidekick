@@ -68,9 +68,24 @@ M4_PKG = ROOT / "build/step-M4/final/fm1acc-0.5.0-m4.fwsc"
 M4_FLASH = ROOT / "build/step-M4/final/emu/flash/songs.bin"
 
 
+# M10 (decisions-M10.md M10-03, M10-04): songs held back from the suites, and a private song no test may read
+HELD_BACK = {"camptown-races": "fails m5p1's level checks (harmony L4 plays 4-note attacks, level loudness 1.64 > 1.6): the planning "
+                               "chat fixes it; not on the send list"}
+PRIVATE_SKIP = {"hallelujah"}                     # (the user's copyrighted import: no test reads it)
+
+
+def song_dirs():
+    return sorted(p for p in (ROOT / "songs").iterdir() if (p / "song.yaml").is_file() and p.name not in HELD_BACK)
+
+
+def private_dirs():
+    d = ROOT / "songs/private"
+    return sorted(p for p in d.glob("*/") if (p / "song.yaml").is_file() and p.name not in PRIVATE_SKIP) if d.is_dir() else []
+
+
 def songs():
     out = []
-    for f in sorted(p for p in (ROOT / "songs").iterdir() if (p / "song.yaml").is_file()):
+    for f in song_dirs():
         c = read_compiled(compile_folder(f)[0])
         out.append(c)
     out.sort(key=lambda c: c["title"].lower())       # the firmware's list order (tools/songs_to_c.py)
@@ -171,7 +186,7 @@ def prepare_flash():
     subprocess.run([str(EMU), "--fwsc", str(PKG), "--flash", str(empty), "--bench", "1500"],
                    env={**os.environ, "FM1_BENCH_NOKEYS": "1"}, capture_output=True, check=True)
     FLASH["empty"] = empty
-    folders = " ".join(str(f) for f in sorted((ROOT / "songs").iterdir()) if (f / "song.yaml").is_file())
+    folders = " ".join(str(f) for f in song_dirs())
     r = run("send-all", 120000, [], flash="empty", host=f"{SEND} send --emu-pipe {folders}")
     shutil.copy(r["flash"], d / "songs-hint.bin")
     FLASH["songs_hint"] = d / "songs-hint.bin"     # (M5: the controls hint on, as the FM-1 comes)
@@ -1051,15 +1066,16 @@ def test_part4(all_songs, rep):
 
 
 def test_part5(all_songs, rep):
-    """M3 part 5: Happy Birthday (its full run is the per-song test); here the list and the pickup"""
+    """M3 part 5: Happy Birthday (its full run is the per-song test); here the list and the pickup. M10: 14 songs = the 9 older
+    + the 5 new ones sent (camptown-races is held back, HELD_BACK); it was a stale count (9) that failed in M9's untidy run (10)"""
     lines, st, check = checker("Part 5: Happy Birthday")
     slugs = [c["slug"] for c in all_songs]
     i = slugs.index("happy-birthday")
     c = all_songs[i]
     bt = 3 * c["ppq"]
     mel = sorted(e[0] for e in c["layers"]["melody"]["variants"][1] if e[1] == 144)
-    check(len(all_songs) == 9 and c["pickup_beats"] == 1 and mel[:2] == [2 * c["ppq"], 2 * c["ppq"] + c["ppq"] // 2]
-          and c["bar_count"] == 17, f"9 songs; Happy Birthday: 3/4, a one-beat pickup of two eighths (melody at ticks "
+    check(len(all_songs) == 14 and c["pickup_beats"] == 1 and mel[:2] == [2 * c["ppq"], 2 * c["ppq"] + c["ppq"] // 2]
+          and c["bar_count"] == 17, f"14 songs; Happy Birthday: 3/4, a one-beat pickup of two eighths (melody at ticks "
           f"{mel[:2]}), 16 bars + the pickup bar, {own_bpm(c)} BPM")
     r = run("p5-list", 5300, [f"4600:e0:{i}"])
     r2 = run("p5-open", PLAY_MS + 7000, open_song(i) + press(OPEN_MS + 200, "LFO") + press(PLAY_MS, "PLAY"))
@@ -1429,8 +1445,7 @@ def test_m4p5(all_songs, rep):
     """M4 part 5: the import tool's songs (the user's private test songs, songs/private/; never committed): sent on a
     flash of their own (the store holds them, not with all 9 of ours), each played to the end at its top levels"""
     lines, st, check = checker("M4 part 5: imported songs (private)")
-    priv = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
-        if (ROOT / "songs/private").is_dir() else []
+    priv = private_dirs()
     if not priv:
         lines.append("- (no songs/private/: the user's private songs are not on this machine; nothing to test)")
         rep += lines
@@ -1772,10 +1787,9 @@ def test_m5p2(all_songs, rep):
               "the fallback: fm1song send to an M4 FM-1 (its own package) sends 1.3 (every level as events); it "
               "stores and plays it")
     # every song together: ours and (when on this machine) the private ones, whole
-    priv = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
-        if (ROOT / "songs/private").is_dir() else []
+    priv = private_dirs()
     if priv:
-        folders = " ".join(str(f) for f in sorted((ROOT / "songs").iterdir()) if (f / "song.yaml").is_file())
+        folders = " ".join(str(f) for f in song_dirs())
         ra = run("m5p2-all", 300000, [], flash="empty_quiet",
                  host=f"{SEND} send --emu-pipe {folders} " + " ".join(str(f) for f in priv))
         la = run("m5p2-all-list", 30000, [], flash=ra["flash"], host=f"{SEND} list --emu-pipe")

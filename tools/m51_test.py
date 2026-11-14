@@ -33,9 +33,8 @@ GAP_LIMIT_MS = 1000                      # the plan: no stretch over ~1 s withou
 V_LIST, V_MODE, V_WIPE = 0, 6, 8         # ui.c's views (player_stats.ui_view)
 LO, HI = m5.AREA
 SEND = m5.SEND
-OURS = sorted(p for p in (ROOT / "songs").iterdir() if (p / "song.yaml").is_file())
-PRIV = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file()) \
-    if (ROOT / "songs/private").is_dir() else []
+OURS = m5.song_dirs()
+PRIV = m5.private_dirs()
 ALL = OURS + PRIV
 RUNS = []                                # every run's (name, watchdog resets, xip-off reads, longest late gap ms)
 

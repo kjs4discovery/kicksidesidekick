@@ -223,7 +223,30 @@ static struct {
     uint32_t sw_prog, sw_style, sw_structure, sw_cplx, sw_key;   /* what it brings */
     uint32_t sw_ms, sw_bar;              /* the knob time it was made for; the bar line (index) it is asked for */
     uint32_t no_ms;                      /* the knob time for which no boundary was left (the song ends first) */
+    uint32_t ind_sec;                    /* M10: the section indicator: the section it names, blinking, shown (this frame) */
+    uint8_t ind_blink, ind_on;
 } bt;
+
+/* M10 (D057): the VALUE POP-UP: a title and a value in a big font over the screen, for BACKTRACK's knobs (and "SAVED U05").
+ * Separate from D044's NOT IMPLEMENTED pop-up: a press closes it and does its job; it closes by itself 1,500 ms after the
+ * last turn; the music and the lights go on, the screen under it is frozen and drawn again when it closes. */
+#define VPOP_MS 1500u
+#define COL_MINOR RGB(96, 156, 240)        /* the MINOR badge (MAJOR: the amber highlight) */
+static struct {
+    uint8_t open, dirty, badge;          /* badge: 0 none, 1 MAJOR, 2 MINOR */
+    uint32_t until, since;
+    char title[24], value[40], sub[32];
+} vpop;
+static void bt_vp_select(void);          /* (bt.c) */
+static uint32_t bt_ind_update(int st);   /* (bt.c) */
+static void vpop_text(volatile char *d, const char *t, uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i + 1u < n && t[i]; i++)
+        d[i] = t[i];
+    for (; i < n; i++)
+        d[i] = 0;
+}
 
 /* a part's views in EDIT's order (M8: BACKTRACK's melody, the player's: the scale views) */
 static const uint8_t VIEWS_BT_MELODY[3] = {PV_SCALE_KB, PV_SCALE_FB, PV_N};
@@ -445,20 +468,26 @@ static void lcd_done(void)               /* the last blit has reached the LCD (i
 /* -------------------------------------------------------------------------- splash --- */
 /* the logo (logo_gen.h: tools/logo_to_c.py from firmware/assets/tmp-logo.jpg), its name and version under it. Called
  * by the platform at power-on, before anything else of the app runs; the list comes SPLASH_MS after power-on */
-static void draw_logo(int32_t oy)         /* (M5: the mode screen's mascot too) */
+/* the mascot, scaled num / den (nearest neighbour; 1 / 1: as it is), its left edge centred, its top at oy */
+static void draw_logo_s(int32_t oy, uint32_t num, uint32_t den)
 {
     const uint8_t *p = LOGO_RLE, *end = LOGO_RLE + sizeof LOGO_RLE;
-    uint32_t y0 = 0, x = 0, y = 0, band;
-    int32_t ox = (240 - (int32_t)LOGO_W) / 2;
-    while (y0 < LOGO_H) {                /* in bands the canvas can hold */
-        band = LOGO_H - y0 < 112u ? LOGO_H - y0 : 112u;
-        cv_begin(LOGO_W, band, LOGO_BG);
-        while (p < end && y < y0 + band) {
-            uint32_t c = *p >> 4, n = (*p & 15u) + 1u;
+    uint32_t W = LOGO_W * num / den, H = LOGO_H * num / den, y0 = 0, x = 0, y = 0;
+    int32_t ox = (240 - (int32_t)W) / 2;
+    while (y0 < H) {                     /* in bands the canvas can hold */
+        uint32_t band = H - y0 < 112u ? H - y0 : 112u;
+        cv_begin(W, band, LOGO_BG);
+        while (p < end && y * num / den < y0 + band) {
+            uint32_t c = *p >> 4, n = (*p & 15u) + 1u, yo = y * num / den, xa, xb;
             if ((*p & 15u) == 15u)
                 n = 16u + p[1], p++;
             p++;
-            cv_rect((int32_t)x, (int32_t)(y - y0), (int32_t)n, 1, LOGO_PAL[c]);
+            xa = x * num / den;
+            xb = ((x + n) * num + den - 1u) / den;
+            if (xb > W)
+                xb = W;
+            if (xb > xa && yo >= y0)
+                cv_rect((int32_t)xa, (int32_t)(yo - y0), (int32_t)(xb - xa), 1, LOGO_PAL[c]);
             x += n;
             if (x >= LOGO_W)
                 x = 0, y++;
@@ -466,6 +495,11 @@ static void draw_logo(int32_t oy)         /* (M5: the mode screen's mascot too) 
         cv_blit((uint32_t)ox, (uint32_t)oy + y0);
         y0 += band;
     }
+}
+
+static void draw_logo(int32_t oy)         /* (M5: the mode screen's mascot too) */
+{
+    draw_logo_s(oy, 1u, 1u);
 }
 
 void app_splash(void)
@@ -1189,6 +1223,7 @@ static void input_play(uint32_t down, uint32_t now)
             bt.bpm = player_tempo_of();
             bt.bpm_turned = 1;
             vsynth_tempo(bt.bpm < 60u ? 60u : bt.bpm > 200u ? 200u : bt.bpm);
+            bt_vp_select();              /* M10: the pop-up "Tempo" */
         }
     }
     d = bt.on ? 0 : plat_enc(EN_PRESET);   /* (M9: PRESETS is the key, bt.c's) */
@@ -1373,6 +1408,67 @@ static void draw_popup(void)
     cv_blit(20, 88);
 }
 
+/* the value pop-up opened (or its text changed): title, value, an optional second line (FONT_XS) and a MAJOR / MINOR badge */
+static void vpop_show(const char *title, const char *value, const char *sub, uint32_t badge)
+{
+    uint32_t now = plat_ms(), i;
+    if (!vpop.open) {
+        vpop.since = now;
+        player_stats.vp_count++;
+    }
+    vpop.open = 1;
+    vpop.dirty = 1;
+    vpop.badge = (uint8_t)badge;
+    vpop.until = now + VPOP_MS;
+    for (i = 0; i < sizeof vpop.title - 1u && title[i]; i++)
+        vpop.title[i] = title[i];
+    vpop.title[i] = 0;
+    for (i = 0; i < sizeof vpop.value - 1u && value[i]; i++)
+        vpop.value[i] = value[i];
+    vpop.value[i] = 0;
+    for (i = 0; i < sizeof vpop.sub - 1u && sub && sub[i]; i++)
+        vpop.sub[i] = sub[i];
+    vpop.sub[i] = 0;
+    player_stats.vp_open = 1;
+    vpop_text(player_stats.vp_title, vpop.title, sizeof player_stats.vp_title);
+    vpop_text(player_stats.vp_value, vpop.value, sizeof player_stats.vp_value);
+    vpop_text(player_stats.vp_sub, vpop.sub, sizeof player_stats.vp_sub);
+}
+
+static void vpop_close(int by_button)
+{
+    if (!vpop.open)
+        return;
+    vpop.open = 0;
+    player_stats.vp_open = 0;
+    player_stats.vp_close_ms = plat_ms() - vpop.since;
+    player_stats.vp_btn_closed = (uint32_t)by_button;
+    ui.redraw = 1;                       /* (the screen under it is drawn again) */
+    ui.sh_status = 0xFFFFFFFFu;
+}
+
+static void draw_vpop(void)
+{
+    const felucca_font_t *f = text_w(&FONT_M, vpop.value) <= 196 ? &FONT_M : text_w(&FONT_B, vpop.value) <= 196 ? &FONT_B :
+                              &FONT_XS;
+    int32_t y = 10;
+    cv_begin(216, 104, C_BLACK);
+    frame_rect(0, 0, 216, 104, C_AMB);
+    text_in(0, 216, y, &FONT_XS, vpop.title, C_GRAY);
+    y += 22;
+    text_in(0, 216, y, f, vpop.value, C_WHITE);
+    y += f->h + 8;
+    if (vpop.badge) {
+        const char *t = vpop.badge == 2u ? "MINOR" : "MAJOR";
+        int32_t w = text_w(&FONT_XS, t) + 8;
+        cv_rect((216 - w) / 2, y, w, 14, vpop.badge == 2u ? COL_MINOR : C_HI);
+        cv_text((216 - w) / 2 + 4, y + 1, &FONT_XS, t, C_BLACK);
+    }
+    if (vpop.sub[0])
+        text_in(0, 216, 84, &FONT_XS, vpop.sub, C_DIM);
+    cv_blit(12, 68);
+}
+
 #include "synthui.c"
 #include "bt.c"
 
@@ -1436,6 +1532,8 @@ static void input(void)
         lights();
         return;
     }
+    if (vpop.open && (down || (int32_t)(now - vpop.until) >= 0))   /* M10: closed by a press (which then does its job) or by time */
+        vpop_close(down != 0);
     if (ui.view != V_HINT && ui.view != V_WIPE && popup_input(down, ALL_BUTTONS & ~learn_jobs(), now)) {   /* M7 */
         lights();
         return;
@@ -3927,6 +4025,8 @@ static void frame_play(uint32_t now)
               (uint32_t)player_count_in_of() << 27 ^ (uint32_t)st << 28 ^ (uint32_t)(ui.key + 8) << 10 ^
               (ui.keymode_until ? 1u << 31 : 0u) ^ (pi.part + 1u) << 6 ^
               (uint32_t)ui.loop_step << 29 ^ ui.a_bar * 7u ^ ui.b_bar * 131u ^ ui.from_bar * 8191u;
+    if (bt.on)                           /* M10: the section indicator (its name, blinking, phase) */
+        top_key ^= bt_ind_update(st) * 2654435761u;
     if (ui.redraw || top_key != ui.sh_top_key) {
         draw_top(bar, beat, st);
         ui.sh_top_key = top_key;
@@ -4054,6 +4154,12 @@ void app_frame(void)
         if (ui.popup == 1u)
             draw_popup();
         ui.popup = 2;
+        return;
+    }
+    if (vpop.open) {                     /* M10: the value pop-up (the screen under it frozen) */
+        if (vpop.dirty)
+            draw_vpop();
+        vpop.dirty = 0;
         return;
     }
     if (ui.view == V_MODE || ui.view == V_SYNTH) {

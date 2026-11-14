@@ -6,14 +6,13 @@ measured.
 
 ## Currently installed (updated 2026-11-13)
 
-**Milestone M8, FM-1_46000800** (fm1-accompaniment v0.8.0-m8, release build, commit 13c759e, package
-`build/step-M8/fm1acc-0.8.0-m8.fwsc`, sha256 `19e05400…1665f`), installed by the user per
-docs/step-M8-install.md (reported 2026-11-13). All steps run by the user, all fine: the 30 backtracks sent,
-12-Bar Blues and Four Chord Tune resent (the user's report; no outputs recorded by Claude Code). Fallback: M7
-`build/step-M7/fm1acc-0.7.0-m7.fwsc` (sha256 `8478a955…bfdb512`), behind it M6 `build/step-M6/fm1acc-0.6.0-m6.fwsc`
-(sha256 `8944fb02…88abec`), behind it M5.1 `build/step-M5.1/fm1acc-0.5.4-m5p4.fwsc` (sha256 `197b84a5…0a187d`).
-Back to stock any time: `fm1_install.py backups/stock-firmware/FM-1_015.fwsc`. History of writes: docs/LOG.md and
-docs/archive/. (Before: M7 FM-1_46000700, installed 2026-11-12.)
+**Milestone M9, FM-1_46000900** (fm1-accompaniment v0.9.0-m9, release build, commit 755af1a, package
+`build/step-M9/fm1acc-0.9.0-m9.fwsc`, sha256 `8a1c341d28eff7ba112463f8e633bc6828a4e703f7fa1e21313fdc8bcde3cf91`), installed by the
+user per docs/step-M9-install.md steps 1-5 (reported 2026-11-13). All steps run by the user, all fine: the three renamed backtracks
+(bt06-la-bamba, bt13-mario, bt14-creep) deleted, the 36 backtracks sent (no outputs recorded by Claude Code). Fallback: M8
+`build/step-M8/fm1acc-0.8.0-m8.fwsc` (sha256 `19e05400...1665f`), behind it M7 (sha256 `8478a955...bfdb512`), M6 (sha256 `8944fb02...88abec`),
+M5.1 (sha256 `197b84a5...0a187d`). Back to stock any time: `fm1_install.py backups/stock-firmware/FM-1_015.fwsc`. History of writes:
+docs/LOG.md and docs/archive/. (Before: M8 FM-1_46000800.)
 
 ## Stock firmware version
 

@@ -5,10 +5,10 @@
 #include <stdint.h>
 #include "plat.h"
 
-#define APP_NAME "Notami - SongSidekick"   /* M8 (D050): the splash, the help, fm1-base's crash / safe-mode
+#define APP_NAME "Tuneka - Song Sidekick"   /* M8 (D050; M10, D063: Tuneka): the splash, the help, fm1-base's crash / safe-mode
                                                  * screens; NOT the USB / MIDI names or the identity (FM-1_4600xxxx) */
-#define FW_MILESTONE "m9"                /* M8, M9: the splash shows only this under the name */
-#define FW_VERSION "0.9.0-m9"             /* ours (M5 part builds 0.5.N-m5pN; M5.1 0.5.4-m5p4; M6 0.6.0-m6; M7 0.7.0-m7; M8 0.8.0-m8; M9) */
+#define FW_MILESTONE "m10"               /* M8, M9, M10: the splash shows only this under the name */
+#define FW_VERSION "0.10.0-m10"           /* ours (M5 part builds 0.5.N-m5pN; M5.1 0.5.4-m5p4; M6 0.6.0-m6; M7 0.7.0-m7; M8 0.8.0-m8; M9 0.9.0-m9; M10) */
 #define APP_SPLASH_RGB RGB(64, 160, 220)
 #define APP_SPLASH                       /* our splash: the logo (ui.c app_splash; tools/logo_to_c.py) */
 #define APP_BLOCK 256u                   /* frames per audio block: 5.8 ms at 44.1 kHz; one EAS buffer (synth.h) */

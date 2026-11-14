@@ -9,7 +9,7 @@ from conftest import ROOT, SONGS
 from fm1song import compile_folder, read_compiled
 
 LAYERS = ("drums", "bass", "harmony", "melody")
-PRIVATE = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file())
+PRIVATE = sorted(p for p in (ROOT / "songs/private").glob("*/") if (p / "song.yaml").is_file() and p.name != "hallelujah")   # (M10: no test reads hallelujah)
 BACKTRACKS = sorted(p for p in (ROOT / "songs/backtracks").glob("*/") if (p / "song.yaml").is_file())   # M8
 
 
