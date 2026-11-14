@@ -260,7 +260,55 @@ def test_m10p4(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m10p1": test_m10p1, "m10p2": test_m10p2, "m10p3": test_m10p3, "m10p4": test_m10p4}
+# --------------------------------------------------------------------------------------------- part 5
+M9_PKG = ROOT / "build/step-M9/fm1acc-0.9.0-m9.fwsc"
+
+
+def test_m10p5(all_songs, rep):
+    lines, st, check = m5.checker("M10 part 5: the song info line on the Settings screen (D062)")
+    import shutil
+    from concurrent.futures import ThreadPoolExecutor
+    O = m5.OPEN_MS
+    slugs = [c["slug"] for c in all_songs]
+    i_saints = slugs.index("saints")
+    settings = lambda t: P(t, "GLO") + P(t + 400, "GLO")
+    # a copy of saints without its info line, sent alone (a song with no INFO, as a private or imported one)
+    d = m5.OUT / "saints-noinfo" / "saints-noinfo"
+    shutil.rmtree(d.parent, ignore_errors=True)
+    shutil.copytree(ROOT / "songs/saints", d)
+    y = d / "song.yaml"
+    y.write_text("".join(l for l in y.read_text().splitlines(True) if not l.startswith("info:")).replace("slug: saints", "slug: saints-noinfo"))
+    with ThreadPoolExecutor(3) as ex:
+        a = ex.submit(lambda: m5.run("m10p5-info", O + 2600, m5.open_song(i_saints) + settings(O + 1200)))
+        b = ex.submit(lambda: m5.run("m10p5-list", 6600, settings(4600)))
+        c0 = ex.submit(lambda: m5.run("m10p5-noinfo-send", 120000, [], flash="empty_quiet",
+                                       host=f"{m5.SEND} send --emu-pipe {d}"))
+        a, b, c0 = a.result(), b.result(), c0.result()
+        c = ex.submit(lambda: m5.run("m10p5-noinfo", O + 2600, m5.open_song(0) + settings(O + 1200), flash=c0["flash"])).result()
+    A, Bs, C = a["stats"], b["stats"], c["stats"]
+    check(A["ui_view"] == V_SETTINGS and A["info_shown"] == 1 and A["info_text"] == "Traditional spiritual, c. 1896",
+          f"a song with INFO, from its play screen: Settings shows its info line {A['info_text']!r} (m10p5-info.png)")
+    check(C["ui_view"] == V_SETTINGS and C["info_shown"] == 0 and C["info_text"] == "",
+          f"a song without INFO (as a private one): no line (view {C['ui_view']}; m10p5-noinfo.png)")
+    check(Bs["ui_view"] == V_SETTINGS and Bs["info_shown"] == 0,
+          f"Settings opened from the list (no song loaded): no line (m10p5-list.png)")
+    # BACKTRACK and SYNTH: the Settings screens there never show it (BACKTRACK's play screen: GLO GLO)
+    bt = btrun("m10p5-bt", 7000, P(4500, "PLAY") + settings(5600))
+    check(bt["stats"]["info_shown"] == 0, "BACKTRACK: no info line")
+    # the M9 package must open a file that has an INFO chunk (it skips chunks it does not know)
+    if M9_PKG.exists():
+        send = m5.run("m10p5-m9-send", 120000, [], flash="empty_quiet", pkg=M9_PKG,
+                      host=f"{m5.SEND} send --emu-pipe {ROOT}/songs/saints {ROOT}/songs/clementine")
+        play = m5.run("m10p5-m9-play", O + 3500, P(O, "PLAY") + P(O + 800, "PLAY") + P(O + 1600, "PLAY"), flash=send["flash"], pkg=M9_PKG)
+        s = play["stats"]
+        check(not send["halt"] and not play["halt"] and "stored" in send["out"] and s["starts"] >= 1,
+              f"the M9 package: a file with an INFO chunk is accepted, opened and played, no crash (stored: "
+              f"{'stored' in send['out']}, starts {s['starts']})")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m10p1": test_m10p1, "m10p2": test_m10p2, "m10p3": test_m10p3, "m10p4": test_m10p4, "m10p5": test_m10p5}
 
 
 def main():

@@ -17,8 +17,8 @@ from fm1song import read_compiled          # noqa: E402
 PPQ = 480
 INFO = {   # placeholders written by Claude Code (the originals' info lines were lost); <= 38 characters
     "camptown-races": "Stephen Foster, 1850",
-    "clementine": "Percy Montrose, 1884; American folk song",
-    "auld-lang-syne": "Robert Burns, 1788; traditional Scots tune",
+    "clementine": "Percy Montrose, 1884",
+    "auld-lang-syne": "Robert Burns, 1788; Scots tune",
     "drunken-sailor": "Traditional sea shanty",
     "blow-the-man-down": "Traditional sea shanty",
     "michael-row": "Traditional spiritual, 1860s",

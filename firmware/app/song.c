@@ -165,6 +165,22 @@ static int meta(struct song *s)
             return SONG_E_META;
         s->category = (const char *)c;
     }
+    s->info[0] = 0;
+    if (s->fmt2) {                        /* M10: INFO, optional: u8 length (<= 39), that many printable ASCII bytes */
+        const uint8_t *c = chunk(s, fourcc("INFO"), &len);
+        if (c) {
+            uint32_t n, i;
+            if (len < 1u || c[0] > 39u || len != 1u + c[0])
+                return SONG_E_META;
+            n = c[0];
+            for (i = 0; i < n; i++) {
+                if (c[1u + i] < 32u || c[1u + i] > 126u)
+                    return SONG_E_META;
+                s->info[i] = (char)c[1u + i];
+            }
+            s->info[n] = 0;
+        }
+    }
     s->numerals = "";
     s->kind = SONG_KIND_SONG;
     if (s->fmt22) {                       /* M8: FORM: u8 kind, number, scale, 0; u16 sections, 0; char numerals[40];

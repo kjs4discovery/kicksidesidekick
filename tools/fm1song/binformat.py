@@ -41,6 +41,7 @@ HEADER = struct.Struct("<4sBBHII HBB I I HBB")          # 32 bytes
 DIRENT = struct.Struct("<4sII")                          # fourcc, offset, size
 MAX_FILE = 256 * 1024
 MAX_CHUNKS = 24
+INFO_MAX = 39                                            # M10 (D062): the optional INFO chunk: u8 length, that many ASCII bytes (M10-12: 39, not the plan's 38)
 META = struct.Struct("<BBH24s32s16s")                    # 76 bytes
 SECT = struct.Struct("<HHHH16s")                         # 24 bytes
 CHRD = struct.Struct("<8sBBH")                           # 12 bytes
@@ -388,6 +389,9 @@ def compile_song(song, version=None):
             for var in sorted(ly.variants) if ly else []:
                 chunks.append((b"NT" + LAYER_LETTER[li].encode() + str(var).encode(),
                                nt_encode(notes_of(ly.variants[var]), bar_ticks, song.bar_count)))
+    info = getattr(song, "info", "")
+    if version[0] == 2 and info:          # M10: the song's info line, last (so that without it the file is M9's)
+        chunks.append((b"INFO", bytes([len(info)]) + info.encode("ascii")))
     for li, name in enumerate(LAYERS if version[0] == 1 else ()):
         ly = song.layers.get(name)
         for var in sorted(ly.variants)[:nvars(ly)] if ly else []:
@@ -603,6 +607,12 @@ def read_compiled(blob, diag=None):
             if role >= len(ROLES) or en > 2:
                 bad(f"section {k}: role {role}, energy {en} out of range", "FORM")
             sc["role"], sc["energy"] = ROLES[role], en
+    out["info"] = ""
+    if b"INFO" in chunks:                  # M10: the optional song info line (2.x): u8 length, the text
+        ib = chunks[b"INFO"]
+        if not fmt2 or len(ib) < 1 or ib[0] > INFO_MAX or len(ib) != 1 + ib[0] or any(not 32 <= b <= 126 for b in ib[1:]):
+            bad("a length and up to 39 printable ASCII bytes, in a 2.x file", "INFO")
+        out["info"] = ib[1:].decode("ascii")
     out["style"], out["stored"] = style, {}
     layr = chunk(b"LAYR")
     if len(layr) != 4 + len(LAYERS) * LAYR.size or layr[0] != len(LAYERS):
@@ -685,7 +695,7 @@ def read_compiled(blob, diag=None):
         if need > LIMITS["levels_events"]:
             bad(f"{need} events with the largest level of each layer: at most {LIMITS['levels_events']}", "LAYR")
     known = {b"META", b"SECT", b"CHRD", b"CEVT", b"BARS", b"LAYR"} | ({b"CATG"} if vmin >= 2 else set()) | \
-        ({b"STYL"} if fmt2 else set()) | ({b"FORM"} if fmt22 else set())
+        ({b"STYL"} if fmt2 else set()) | ({b"FORM"} if fmt22 else set()) | ({b"INFO"} if fmt2 else set())
     out["unknown_chunks"] = sorted(c.decode("latin-1") for c in chunks
                                    if c not in known and not c.startswith(b"EV") and not c.startswith(b"EZ")
                                    and not (fmt2 and c.startswith(b"NT")))

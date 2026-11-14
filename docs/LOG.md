@@ -929,3 +929,18 @@ Learned / measured: the six new backtracks 1,100-1,380 B each; the largest need 
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 5.
+
+2026-11-13 23:40 — Step M10 Part 5 (the song info line) —
+Status: done
+Did:
+- info= on the 9 older songs (songs/make_songs.py, the plan's texts exact; the 6 new songs' are placeholders, M10-01); song.yaml `info:`;
+  the compiler's optional INFO chunk (last, 2.x only, format unchanged), the Python reader, firmware/app/song.c (info[40]); the Settings
+  screen's last line (ui.c draw_settings). Limit 39 characters (M10-12). docs/song-format.md 2.8.
+- Tests: tools/fm1song/tests/test_info.py (25 passed: each older song's file minus INFO = the M9 file, byte for byte, events identical;
+  damaged INFO refused; 39 limit); m10p5 ALL PASS on build/step-M10/pkgs/p5.fwsc: the line for saints, none for a song without INFO,
+  none with no song loaded, none in BACKTRACK, the M9 package opens and plays a file with INFO (send ok, starts 1, no halt).
+Learned / measured: an M9 FM-1 ignores INFO (song.c looks chunks up by name; MAX_CHUNKS 24 unchanged).
+Hardware touched: none
+Questions for the planning chat: the website's JavaScript port (D036) must read / write INFO (docs/song-format.md 2.8); the plan's
+  amazing-grace info text is 39 characters, the plan's limit 38 (M10-12).
+Next: Part 6 (band kits).

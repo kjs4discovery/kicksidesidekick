@@ -2030,6 +2030,10 @@ static void draw_viewset(void)
 static void draw_settings(void)
 {
     uint32_t i;
+    /* M10 (D062): from a song's play screen the song's info line is the last line (FONT_XS, dimmed): the rows are 2 px
+     * shorter then to make room; nothing when no song is loaded or it has none; never in BACKTRACK or SYNTH */
+    const char *info = !bt.on && ui.back == V_PLAY && ui.s && ui.s->info[0] ? ui.s->info : 0;
+    int32_t rh = info ? SET_ROW_H - 2 : SET_ROW_H;
     cv_begin(240, 32, C_BLACK);
     cv_text(6, 4, &FONT_B, "SETTINGS", C_WHITE);
     cv_text(234 - text_w(&FONT_XS, ui.flash_ok ? "saved when you leave" : "RAM ONLY: not kept"), 6, &FONT_XS,
@@ -2039,15 +2043,18 @@ static void draw_settings(void)
     for (i = ui.set_row >= 8u ? ui.set_row - 7u : 0; i < S_N && i < (ui.set_row >= 8u ? ui.set_row + 1u : 8u); i++) {
         int sel = i == ui.set_row;
         uint32_t row = i - (ui.set_row >= 8u ? ui.set_row - 7u : 0);
-        cv_begin(240, SET_ROW_H, C_BLACK);
+        cv_begin(240, (uint32_t)rh, C_BLACK);
         if (sel)
-            cv_rect(2, 1, 236, SET_ROW_H - 2, C_LINE);
-        cv_text(10, (SET_ROW_H - 16) / 2, &FONT_B, SET_NAME[i], sel ? C_WHITE : C_GRAY);
-        cv_text(230 - text_w(&FONT_B, SET_VAL[i][SV(i)]), (SET_ROW_H - 16) / 2, &FONT_B, SET_VAL[i][SV(i)],
-                sel ? C_HI : C_AMB);
-        cv_blit(0, 32 + row * SET_ROW_H);
+            cv_rect(2, 1, 236, rh - 2, C_LINE);
+        cv_text(10, (rh - 16) / 2, &FONT_B, SET_NAME[i], sel ? C_WHITE : C_GRAY);
+        cv_text(230 - text_w(&FONT_B, SET_VAL[i][SV(i)]), (rh - 16) / 2, &FONT_B, SET_VAL[i][SV(i)], sel ? C_HI : C_AMB);
+        cv_blit(0, 32 + row * (uint32_t)rh);
     }
-    lcd_fill(0, 32 + 8 * SET_ROW_H, 240, 214 - (32 + 8 * SET_ROW_H), C_BLACK);
+    lcd_fill(0, 32 + 8 * rh, 240, 214 - (32 + 8 * rh), C_BLACK);
+    if (info)
+        cv_begin(240, 15, C_BLACK), cv_text(6, 0, &FONT_XS, info, C_DIM), cv_blit(0, (uint32_t)(32 + 8 * rh + 3));
+    player_stats.info_shown = info != 0;
+    vpop_text(player_stats.info_text, info ? info : "", sizeof player_stats.info_text);
     draw_legend(Y_LEGEND, "SELECT row|ALGO change|GLO back");
 }
 

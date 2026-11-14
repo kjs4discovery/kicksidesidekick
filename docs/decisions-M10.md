@@ -118,3 +118,14 @@ Format (docs/plan-M10.md, "Read this first"): one entry per judgment call the pl
 - Also: "its own suggested style" for the new ones (the plan names only JAZZ BLUES: SHUFFLE) in m10p4: PHRYGIAN ROCK, LINE CLICHE
   BALLAD, MINOR CADENCE BALLAD, DESCENT BALLAD, LYDIAN INDIE POP.
 - The largest need among the new six in any style: see LOG (all fit, the overall largest is still bt28 in COUNTRY: 54,352 B).
+
+## M10-12 — the INFO chunk: 39 characters, not 38; the chunk is last; not in 1.x (Part 5)
+- Situation: the plan says `info:` is "<= 38 characters" and gives amazing-grace "Trad. hymn tune, 1830s; words J. Newton", which is
+  39. Also: where the chunk goes, and what an M9 FM-1 does. song.c looks chunks up by name, so it skips INFO: the format stays 2.x.
+- Options: A limit 39 (the text exact); B limit 38 and shorten that text; C a new format version.
+- Chosen: A (the text is the plan's "exactly"; the chunk holds up to 39, the C buffer info[40]; it fits 236 px in FONT_XS:
+  m10p5-info.png). The chunk goes LAST in the directory, so that the file minus INFO is the M9 file. 1.x formats do not get it.
+- The Settings screen: rows are 20 px (not 22) while an info line is shown (the 8 rows then end at y 192, the line at y 195), else
+  unchanged. "A song is loaded" = from its play screen (ui.back == V_PLAY, not BACKTRACK).
+- The six new songs' info lines in songs/m10_songs.py are my placeholders (M10-01). The 9 older songs' are the plan's, exact.
+- Undo: song.c meta(), binformat.py INFO, source.py `info`, ui.c draw_settings.

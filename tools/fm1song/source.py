@@ -206,6 +206,9 @@ def song_from_data(data, midi_bytes, diag=None):
     song.category = _get(diag, data, "category", str, required=False, default="")   # M3, format 1.2: the list's folder
     if song.category:
         _ascii(diag, song.category, "category", 15)
+    song.info = _get(diag, data, "info", str, required=False, default="")    # M10 (D062): the song info line (INFO chunk)
+    if song.info:
+        _ascii(diag, song.info, "info", 39)
     # M8 (format 2.2, D046): a backtrack (BACKTRACK mode lists only these; SONG LEARN only songs)
     song.kind = _get(diag, data, "kind", str, required=False, default="song")
     if song.kind not in KINDS:

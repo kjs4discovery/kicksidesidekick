@@ -78,6 +78,7 @@ struct song {
     uint8_t key_root, key_mode;
     const char *slug, *title, *key;       /* NUL-terminated, printable ASCII, inside the file */
     const char *category;                 /* 1.2: the song's folder in the list ("" none; 1.0, 1.1: "") */
+    char info[40];                        /* M10 (D062): the optional INFO chunk (2.x): the song info line, "" none */
     const uint8_t *sect, *chrd, *cevt, *bars;
     uint32_t nsect, nchrd, ncevt;
     struct song_layer layer[SONG_LAYERS];
