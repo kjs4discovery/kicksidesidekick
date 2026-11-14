@@ -63,7 +63,7 @@ CAMP_V = bars(4,
 CAMP_C = bars(4,
     [("C4", .75), ("C4", .25), ("E4", .5), ("G4", .5), ("C5", 2)],
     [("A4", .75), ("A4", .25), ("C5", .5), ("A4", .5), ("G4", 2)],
-    [("G4", .5), ("G4", .5), ("E4", .5), ("E4", .5), ("G4", .5), ("G4", .5), ("E4", .5), ("E4", .5)],
+    [("G4", .5), ("G4", .5), ("E4", .25), ("E4", .25), ("G4", .25), ("G4", .25), ("A4", .5), ("G4", .5), ("E4", 1)],
     [("D4", .5), ("D4", .5), ("E4", .5), ("D4", .5), ("C4", 2)])
 
 # ------------------------------------------------------------------ Clementine (F, 3/4, pickup "In a")
@@ -156,8 +156,8 @@ BLOW_LAST = bars(3, *_BLOW, [("G4", 3)])
 # ------------------------------------------------------------------ Michael, Row the Boat Ashore (D, pickup "Mi-chael")
 ROW_PICKUP = [("D4", 1), ("F#4", 1)]
 _ROW = [
-    [("A4", 1.5), ("F#4", .5), ("A4", 1), ("B4", 1)], [("A4", 2), ("F#4", 1), ("A4", 1)], [("B4", 2), ("A4", 2)],
-    [(None, 2), ("F#4", 1), ("A4", 1)],
+    [("A4", 1.5), ("F#4", .5), ("A4", 1), ("B4", 1)], [("A4", 2), ("F#4", 1), ("A4", 1)], [("B4", 4)],
+    [("A4", 2), ("F#4", 1), ("A4", 1)],
     [("A4", 1.5), ("F#4", .5), ("G4", 1), ("F#4", 1)], [("E4", 2), ("D4", 1), ("E4", 1)], [("F#4", 2), ("E4", 2)]]
 ROW_MID = bars(4, *_ROW, [("D4", 2), ("D4", 1), ("F#4", 1)])
 ROW_LAST = bars(4, *_ROW, [("D4", 4)])
@@ -215,7 +215,7 @@ NEW_SONGS = {
                      arrangement=ARR),
         rights=_pd("Stephen Foster, 1850"),
         form=[("Verse 1", 8, "verse"), ("Chorus 1", 4, "chorus"), ("Verse 2", 8, "verse"), ("Chorus 2", 4, "chorus")],
-        chart={"verse": "| D | D | D | A7 D |\n| D | D | D | A7 D |", "chorus": "| D | G D | D | A7 D |"},
+        chart={"verse": "| D | A7 | D | A7 D |\n| D | A7 | D | A7 D |", "chorus": "| D | G D | D | A7 D |"},
         ending="| D |",                                    # (M10-03: the last bar one chord, held)
         melody=_up(CAMP_V * 2 + CAMP_C + CAMP_V * 2 + CAMP_C, 2, flats=False),
         layers=dict(bass=33, harmony=22, melody=111),     # acoustic bass, accordion (M10-03: banjo's fast decay made L1 too quiet), fiddle
@@ -323,7 +323,7 @@ NEW_SONGS = {
                            "written from memory; no lyrics", arrangement=ARR),
         rights=_pd("traditional spiritual, 1860s"),
         form=[("Verse 1", 8, "verse"), ("Verse 2", 8, "verse"), ("Verse 3", 8, "verse")],
-        chart={"pickup": "| N.C. |", "verse": "| D | D | G D | D |\n| D | A7 | D A7 | D |"},
+        chart={"pickup": "| N.C. |", "verse": "| D | D | G | D |\n| D | A7 | D A7 | D |"},
         ending=None,
         melody=ROW_PICKUP + ROW_MID * 2 + ROW_LAST,
         layers=dict(bass=33, harmony=1, melody=74),       # acoustic bass, piano, flute

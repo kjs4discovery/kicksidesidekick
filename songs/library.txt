@@ -1,0 +1,65 @@
+# the songs and backtracks a new FM-1 gets; the website will use this list too
+# One path per line, relative to the repository root: the public songs first (every folder in songs/ with a song.yaml,
+# not songs/private/, not the dropped songs), then the 42 backtracks. tools/fresh_install.sh sends them in this order.
+# Lines starting with # and empty lines are ignored.
+
+# songs
+songs/amazing-grace
+songs/auld-lang-syne
+songs/blow-the-man-down
+songs/camptown-races
+songs/clementine
+songs/danny-boy
+songs/drunken-sailor
+songs/four-chords
+songs/greensleeves
+songs/happy-birthday
+songs/michael-row
+songs/oh-susanna
+songs/saints
+songs/scarborough-fair
+songs/twelve-bar-blues
+
+# backtracks
+songs/backtracks/bt01-pop-1
+songs/backtracks/bt02-pop-2
+songs/backtracks/bt03-50s
+songs/backtracks/bt04-pop-3
+songs/backtracks/bt05-pop-4
+songs/backtracks/bt06-fiesta
+songs/backtracks/bt07-folk
+songs/backtracks/bt08-royal-road
+songs/backtracks/bt09-canon
+songs/backtracks/bt10-folk-rock
+songs/backtracks/bt11-mixo
+songs/backtracks/bt12-classic-rock
+songs/backtracks/bt13-heroic
+songs/backtracks/bt14-bittersweet
+songs/backtracks/bt15-minor-pop
+songs/backtracks/bt16-minor-rock
+songs/backtracks/bt17-andalusian
+songs/backtracks/bt18-minor-soul
+songs/backtracks/bt19-dorian
+songs/backtracks/bt20-12-bar-blues
+songs/backtracks/bt21-12-bar-quick
+songs/backtracks/bt22-minor-blues
+songs/backtracks/bt23-ii-v-i
+songs/backtracks/bt24-turnaround
+songs/backtracks/bt25-circle
+songs/backtracks/bt26-funk
+songs/backtracks/bt27-two-chord
+songs/backtracks/bt28-country-8
+songs/backtracks/bt29-bossa
+songs/backtracks/bt30-plagal
+songs/backtracks/bt31-minor-folk
+songs/backtracks/bt32-epic
+songs/backtracks/bt33-aeolian
+songs/backtracks/bt34-harmonic
+songs/backtracks/bt35-minor-2-5-1
+songs/backtracks/bt36-minor-funk
+songs/backtracks/bt37-phrygian
+songs/backtracks/bt38-line-cliche
+songs/backtracks/bt39-minor-cadence
+songs/backtracks/bt40-descent
+songs/backtracks/bt41-lydian
+songs/backtracks/bt42-jazz-blues

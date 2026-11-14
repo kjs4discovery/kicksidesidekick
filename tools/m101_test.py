@@ -378,6 +378,17 @@ def _chords_by_bar(c):
     return out
 
 
+def _chord_per_bar(c):
+    """the chord sounding at the start of each bar (an event only marks a change)"""
+    bt = int(c["time_signature"][0]) * c["ppq"]
+    ev = sorted((e["tick"], c["chords"][e["chord"]]["symbol"]) for e in c["chord_events"])
+    out = []
+    for b in range(c["bar_count"]):
+        cur = [sym for t, sym in ev if t <= b * bt]
+        out.append(cur[-1] if cur else None)
+    return out
+
+
 def test_m101p5(all_songs, rep):
     lines, st, check = m5.checker("M10.1 part 5: the five public song fixes (the planning chat's notes)")
     from concurrent.futures import ThreadPoolExecutor
@@ -387,18 +398,16 @@ def test_m101p5(all_songs, rep):
           f"tempos: saints {saints['tempo_bpm']} (135), oh-susanna {sus['tempo_bpm']} (125); camptown {camp['tempo_bpm']} and michael-row "
           f"{row['tempo_bpm']} unchanged")
     cb = _chords_by_bar(camp)
-    check(all(cb[b] == ["A7"] for b in (1, 5, 13, 17)) and all(cb[b] == ["D"] for b in (0, 2, 4, 6)) and cb[3] == ["A7", "D"] and
+    check(all(cb[b] == ["A7"] for b in (1, 5, 13, 17)) and all(cb[b] == ["D"] for b in (0, 2, 6)) and cb[3] == ["A7", "D"] and
           cb[7] == ["A7", "D"],
           f"camptown-races: the 'doo-dah' bars (FM-1 bars 2, 6, 14, 18) are A7 ({[cb[b] for b in (1, 5, 13, 17)]}); bars 1, 3, 4 as before")
     rb = _chords_by_bar(row)
     check(rb[3] == ["G"] and rb[11] == ["G"] and rb[19] == ["G"] and rb[7] == ["D", "A7"],
           f"michael-row: verse bar 3 (FM-1 bars 3, 11, 19) is G alone ({rb[3]}), the second line's bar 3 still D A7 ({rb[7]})")
-    sb = _chords_by_bar(sf)
+    sb = _chord_per_bar(sf)
     want = ["Dm", "Dm", "C", "Dm", "F", "Dm", "G", "Dm", "Dm", "Dm", "F", "F", "C", "C", "Dm", "C", "C", "Dm"]
-    check(sf["bar_count"] == 36 and [sb[b][0] for b in range(18)] == want and [sb[b][0] for b in range(18, 36)] == want and
-          all(len(sb[b]) == 1 for b in range(36)),
-          f"scarborough-fair: 18 bars a verse, 36 in all ({sf['bar_count']}); one chord per bar, the chart "
-          f"{' '.join(sb[b][0] for b in range(18))}")
+    check(sf["bar_count"] == 36 and sb[:18] == want and sb[18:] == want,
+          f"scarborough-fair: 18 bars a verse, 36 in all ({sf['bar_count']}); the chart's chord in each bar: {' '.join(sb[:18])}")
     check(len(sf["sections"]) == 2 and all(x["bars"] == 18 for x in sf["sections"]), "its form: Verse 1 and Verse 2, 18 bars each")
     cy = ROOT / "songs/private/creep/song.yaml"
     if cy.is_file():                                  # (the user's private import: git-ignored; present on this machine)

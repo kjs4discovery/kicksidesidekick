@@ -123,3 +123,13 @@ Format (docs/plan-M10.1.md, "Read this first"): one entry per judgment call the 
   vsynth_test LEVELS=1: loudest 100 ms 1,167,054 against the median 970,535 (+1.6 dB, inside the 3 dB window); its LEVEL would be 94 to match; NOT changed.
   Nothing in the firmware, the tests or docs/controls.md named HAZE PAD by position; the name is in docs/controls.md's preset list (Part 7).
 - The stats: player_stats.cells_now (an edit page's four values as drawn) lets the test read E-GUITAR's and ZUNJET's pages.
+
+## M10.1-13 — Part 5: the song fixes
+- Typed literally from the plan (songs/m10_songs.py: camptown-races CAMP_C third row and the verse chart; michael-row `_ROW` third and fourth bars and the chart's third
+  bar; songs/make_songs.py: oh-susanna tempo 125 and both SUSANNA_CHORUS rows, saints tempo 135, scarborough-fair's SCARBOROUGH_VERSE (now `bars(3, ...)`, with the
+  `bars()` definition moved above it, nothing else), its form 18 + 18 and the three-line chart (8 + 6 + 4 bars: the chart parser took it as it is), creep's chart lines for
+  bars 8, 16 and 40 (songs/private/creep/song.yaml, git-ignored, edited in place, not committed). make_songs.py was run for the five slugs; `fm1song validate` ok for all six.
+- The other songs: `make_songs.py` run for ALL slugs gives no change in any other song's files (git shows only the five); pytest 298 passed with the five songs' goldens
+  as they are (the goldens are derived from the song folders, so nothing needed updating by hand).
+- songs/README.md: oh-susanna 125 BPM. The previews (two mp3s) of saints, oh-susanna and scarborough-fair were regenerated (`make_songs.py --preview`), as their tempo or
+  length changed; camptown-races and michael-row have none.

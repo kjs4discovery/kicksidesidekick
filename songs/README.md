@@ -12,7 +12,7 @@ Each folder is one song in format `fm1-song/1` (docs/song-format.md): `song.yaml
 | scarborough-fair | Scarborough Fair | Folk | D dorian, 3/4 | `make_songs.py` |
 | greensleeves | Greensleeves (M2) | Folk | A minor, 3/4, 1-beat pickup, 88 BPM | `make_songs.py` |
 | danny-boy | Londonderry Air (Danny Boy) (M2) | Folk | C, 4/4, slow (66 BPM), slash chords (C/E, C/G, D7/F#, G/F) | `make_songs.py` |
-| oh-susanna | Oh! Susanna (M2) | Folk | D, 4/4, fast (150 BPM) | `make_songs.py` |
+| oh-susanna | Oh! Susanna (M2) | Folk | D, 4/4, fast (125 BPM since M10.1) | `make_songs.py` |
 | happy-birthday | Happy Birthday to You (M3) | Celebrations | G, 3/4, 2-eighth pickup, 104 BPM | `make_songs.py` |
 
 **Levels (M4, format 1.3):** every song has harmony 1–5 (held, rhythm, inversions, broken chords, arpeggios), bass

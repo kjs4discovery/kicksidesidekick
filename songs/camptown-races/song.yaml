@@ -61,7 +61,7 @@ layers:
 
 chart:
   verse: |
-    | D | D | D | A7 D |
-    | D | D | D | A7 D |
+    | D | A7 | D | A7 D |
+    | D | A7 | D | A7 D |
   chorus: "| D | G D | D | A7 D |"
   ending: "| D |"                   # replaces the last bar of the song
