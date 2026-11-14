@@ -112,3 +112,44 @@ blow-the-man-down, michael-row); the other 6 stay in songs/m10_songs.py's DROPPE
 The full suite in Part 9 is trimmed and runs in three lanes (plan-M10.md Part 9).
 
 Correction (the user, later): "Tuneka - Song Sidekick" (two words, Song and Sidekick) on every screen, as plan-M10.md says.
+
+---
+
+## 2026-11-14 — from the planning chat — M10 review: the song files re-sent (M10-01), camptown-races fixed (M10-03)
+
+- **M10-01:** the planning chat's original songs/m10_songs.py is back (with DROPPED_SONGS), songs/make_songs.py's hook
+  imports NEW_STYLE_OF from it, and the six song.yaml files were regenerated with make_songs.py: only their texts changed
+  (credits, rights, info, chart layout), plus camptown-races below. Not committed. Delete tools/recover_m10_songs.py.
+- **M10-03, camptown-races (the song changed, not a check):** (1) the 4-note attacks were its last bar: two chords
+  (A7, D), and the held first chord of the final bar is counted by m4p4 / m5p1 (only the last chord is left out). Its
+  ending is now "| D |". (2) The harmony loudness 1.64: the banjo (GM 106) decays fast, so the held L1 was too quiet; the
+  harmony is now accordion (GM 22), as Clementine and Drunken Sailor (both pass). song.mid unchanged.
+- To do: commit; HELD_BACK = {}; on the final package (no firmware change) run m5 --only m4p4,m5p1,part5 (part5's count
+  becomes 15) and camptown-races' own playback group; if they pass, put camptown-races back in docs/step-M10-install.md's
+  send list (six new songs) and in docs/step-M10-early-install.md; record in LOG. If a check still fails: record, keep it
+  held back, do not relax.
+- Reviewed and accepted: M10-02, M10-04 .. M10-14. M10-14's list-index shift in BACKTRACK K4 after a new save goes to the
+  backlog. M10-15: m5p1's hint count (9 of 10) also fails on M9: not an M10 regression; it stays open for a later milestone.
+
+---
+
+## 2026-11-14 (evening) — from the planning chat — Milestone M10.1 planned: docs/plan-M10.1.md
+
+The user installed 0.10.0-m10 and used it (saved a preset ZUNJET in SYNTH). M10.1 = their M10 notes, in parts:
+screens and text (name "KickSide - Your Song SideKick", BACKTRACK first on the mode screen, 6 s hint pages, LOOP in
+BACKTRACK's loop structure, the value pop-up in SONG LEARN and SYNTH); buttons (layer button: first press = your
+part, next presses = volume, no hold; HOME single presses climb to the mode screen; SONG LEARN K4 = melody sound);
+a READ-ONLY preset read-out over USB plus a factory reset; preset order, E-GUITAR, a new EDS (fuzz bass); five
+public song fixes plus Creep (exact notes in the plan, type them literally); a clean-install script and
+songs/library.txt. HAZE PAD -> ZUNJET waits for M10.2 (from the read-out). The coder is Sonnet: judgment calls go
+into docs/decisions-M10.1.md. Light testing by the user's choice: per-part checks and one fast lane (Part 8), no
+full suite. `fm1song.sh presets` (and `--save`) are approved as read-only from Part 3 on; factory-reset and
+tools/fresh_install.sh write and are run by the user only.
+
+Correction (the user, 2026-11-14 16:56; docs/plan-M10.1.md is updated): the mode screen order stays as it is (SONG
+LEARN first); the tagline is "KickSide - Your Musical SideKick"; new: SYNTH's edit page titles name the preset
+("FX 2 - POTATO"); Creep: only bars 8, 16, 40 change, bars 24 and 48 stay "Csus4 Cm7".
+
+Correction 2 (the user, 2026-11-14 17:04; docs/plan-M10.1.md is updated): NO preset read-out in M10.1. ZUNJET replaces
+HAZE PAD in this build, from the values the user read off the unit (the exact table row is in the plan, Part 4).
+Part 3 is now the factory reset only; the clean-install script warns before erasing presets instead of saving them.

@@ -4,7 +4,14 @@ All of these must be filled in before any write to the unit is even proposed
 (see CLAUDE.md, hardware safety rules). Note for each value how and when it was
 measured.
 
-## Currently installed (updated 2026-11-13)
+## Currently installed (updated 2026-11-14)
+
+**Milestone M10, FM-1_46001000** (fm1-accompaniment 0.10.0-m10, package `build/step-M10/fm1acc-0.10.0-m10.fwsc`, sha256
+`27128989d16660ae7f40fee55b4b0c561540fa4c6661fe162d631080dcbf60c8`): installed by the user and used, no problems reported (install
+details not given; reported 2026-11-14). The user saved a user preset named **ZUNJET** in SYNTH (a U slot). Fallback: M9 below.
+M10.1 (0.10.2) is built but NOT installed until the user reports it.
+
+Previous record (M9):
 
 **Milestone M9, FM-1_46000900** (fm1-accompaniment v0.9.0-m9, release build, commit 755af1a, package
 `build/step-M9/fm1acc-0.9.0-m9.fwsc`, sha256 `8a1c341d28eff7ba112463f8e633bc6828a4e703f7fa1e21313fdc8bcde3cf91`), installed by the

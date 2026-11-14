@@ -1006,3 +1006,14 @@ Learned / measured: m5p1's hint count passed this time (10 of 11 openings): flak
 Hardware touched: none
 Questions for the planning chat: none (M10-15 still open).
 Next: STOP. The user installs; Claude Code runs only --info / fm1song list and records.
+
+2026-11-14 17:25 — Step M10.1 Part 0 (record the M10 install, start) —
+Status: done
+Did:
+- The user installed 0.10.0-m10 (FM-1_46001000) and used it: no problems reported (install details not given). They saved a user preset ZUNJET in
+  SYNTH. Recorded in docs/device.md ("Currently installed").
+- Read docs/HANDOFF.md (newest note + both corrections) and docs/plan-M10.1.md; docs/decisions-M10.1.md started.
+Learned / measured: HANDOFF's evening note still says "HAZE PAD -> ZUNJET waits for M10.2"; its Correction 2 and the plan (Part 4.4) override it: ZUNJET goes in now.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 1.
