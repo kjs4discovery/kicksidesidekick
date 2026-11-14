@@ -182,3 +182,17 @@ Format (docs/plan-M10.md, "Read this first"): one entry per judgment call the pl
 - Stale expectations fixed to the exact new behaviour, re-run on the same package: m5 `store` (the damaged-song flip landed in the INFO chunk,
   now in the events), m7 `m7p2` (SAVE has a job in SYNTH), m5 `part5` (14 songs), m9census (SEQ on SETUP). m9sweep trimmed by M9_SWEEP_TRIM=1.
 - OPEN, not relaxed: m5p1's hint count (9 of 10), also on the M9 package; for the planning chat.
+
+## M10-16 — the planning chat's review of 2026-11-14 applied (M10-01, M10-03)
+- Situation: HANDOFF 2026-11-14: songs/m10_songs.py, make_songs.py's hook and the six song.yaml files were re-sent; camptown-races
+  was fixed (ending `| D |`; harmony accordion GM 22; song.mid unchanged).
+- Done: `make_songs.py` for the six slugs: the six song.yaml were byte-identical to the re-sent ones and no song.mid changed;
+  `fm1song validate`: six ok. tools/recover_m10_songs.py deleted. HELD_BACK = {} in tools/m5_test.py; part5's count 14 -> 15
+  (the exact number, as M10-04). Committed e0945ac.
+- Result on the final package (build/step-M10/fm1acc-0.10.0-m10.fwsc, no rebuild), via the test-runner: m5 --only
+  m4p4,m5p1,part5,camptown-races: 30 checks PASS, 0 FAIL (1429 s, build/emu/m5-camptown/report.md). camptown-races' own group 15 PASS
+  (harmony attacks/notes by level (28,4),(172,4),(172,4),(172,1),(172,1); loudness ratio 1.39; the worst song is drunken-sailor 1.53).
+  pytest tools/fm1song: 298 passed. So camptown-races is on the send lists of both install checklists (six new songs).
+- Note for M10-15: m5p1's hint count PASSED in this run ("shown 10 times in 11 openings"); it failed in the earlier lane run and on M9.
+  So it is flaky (timing), not a fixed regression; still open, not relaxed.
+- Undo: HELD_BACK = {"camptown-races": ...}.

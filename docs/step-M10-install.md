@@ -54,7 +54,7 @@ through a change; see the early checklist), and:
 | RAM pool (of 344,064) | 291,464 | 291,464 |
 | BACKTRACK CPU, the worst case (emulated; FULL, BUSY in a chorus, MIAMI PAD x 4, a live switch) | 44 % | STUDIO 44 %, ACOUSTIC 41 %, ELECTRO 57 %, CHIP 47 % (limit 60 %): see results |
 | The preset object | — | 1,928 B (an 8-byte header + 30 x 64-byte records; the store's limit 3,840 B); 30 slots; a save is 10 flash operations |
-| The song store (552 blocks) | 13 songs + 36 backtracks: 282 | 13 songs + 5 new + 42 backtracks: about **304 blocks**, 248 free (tools/store_blocks.py) |
+| The song store (552 blocks) | 13 songs + 36 backtracks: 282 | 13 songs + 6 new + 42 backtracks: about 304 blocks measured with 5 new songs, camptown-races adds a few more (well under 552; tools/store_blocks.py: the 15 public songs 46 blocks, the 42 backtracks 128) (tools/store_blocks.py) |
 | Longest stretch without a watchdog feed (timed emulator) | 79 ms | see results (30 preset saves in a row: 34 ms; goal under 1000 ms) |
 
 ## Test results (the full suite, once, on this package: plan Part 9, trimmed, D064)
@@ -87,7 +87,7 @@ load-sensitive; the plan's fallback), times in build/step-M10/times.txt, reports
 
 ## Known
 
-- **camptown-races is NOT in the send list** (it fails two older checks, decisions M10-03); its files are committed unchanged.
+- **camptown-races is in the send list** (the planning chat fixed the song, M10-03; the checks it failed before pass on this package).
 - **The six new songs' credits, rights text and info lines are placeholders** (decisions M10-01: the planning chat's source files were lost
   and rebuilt from the compiled files; every note and chord, the form, the style and the tempo are exact, the song.mid files are
   byte-identical). Replace them when the planning chat re-sends the originals.
@@ -129,15 +129,15 @@ step 3 (nothing here changed since).
    tools/fm1song.sh send songs/backtracks/bt37-phrygian songs/backtracks/bt38-line-cliche songs/backtracks/bt39-minor-cadence songs/backtracks/bt40-descent songs/backtracks/bt41-lydian songs/backtracks/bt42-jazz-blues
    ```
    Six lines `stored`.
-2. The five new songs (camptown-races is held back):
+2. The six new songs:
    ```bash
-   tools/fm1song.sh send songs/clementine songs/auld-lang-syne songs/drunken-sailor songs/blow-the-man-down songs/michael-row
+   tools/fm1song.sh send songs/camptown-races songs/clementine songs/auld-lang-syne songs/drunken-sailor songs/blow-the-man-down songs/michael-row
    ```
 3. Optional (the info line on the older songs; each file is the old one plus one chunk):
    ```bash
    tools/fm1song.sh send songs/amazing-grace songs/twelve-bar-blues songs/saints songs/four-chords songs/scarborough-fair songs/greensleeves songs/happy-birthday songs/danny-boy songs/oh-susanna
    ```
-4. Claude Code runs `fm1song list`: 13 + 5 songs and 42 backtracks, each `ok` (no song is `UNREADABLE` or `DAMAGED`).
+4. Claude Code runs `fm1song list`: 13 + 6 songs and 42 backtracks, each `ok` (no song is `UNREADABLE` or `DAMAGED`).
 
 (The store may answer "making room" once: send again, as M5.1 taught.)
 

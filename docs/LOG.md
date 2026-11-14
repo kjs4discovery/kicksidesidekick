@@ -993,3 +993,16 @@ Hardware touched: none
 Questions for the planning chat: decisions M10-01 (re-send the lost song files), M10-03 (camptown-races), M10-12 (info limit 39), M10-15 (m5p1 hint count);
   review docs/step-M10-install.md.
 Next: STOP. The user installs; Claude Code runs only --info / fm1song list and records.
+
+2026-11-14 08:50 — Step M10 review (the planning chat's re-sent song files, camptown-races) —
+Status: done
+Did:
+- make_songs.py for the six new slugs: yaml byte-identical to the re-sent ones, no song.mid changed, validate ok; tools/recover_m10_songs.py deleted;
+  HELD_BACK = {}; part5 counts 15; committed e0945ac.
+- On build/step-M10/fm1acc-0.10.0-m10.fwsc (no rebuild), via the test-runner: m5 --only m4p4,m5p1,part5,camptown-races 30 PASS / 0 FAIL (camptown-races'
+  own group 15 PASS; harmony loudness 1.39); pytest tools/fm1song 298 passed (no test expects the old song files).
+- camptown-races added to the send lists of docs/step-M10-install.md and docs/step-M10-early-install.md (six new songs).
+Learned / measured: m5p1's hint count passed this time (10 of 11 openings): flaky, M10-15 stays open. decisions M10-16.
+Hardware touched: none
+Questions for the planning chat: none (M10-15 still open).
+Next: STOP. The user installs; Claude Code runs only --info / fm1song list and records.

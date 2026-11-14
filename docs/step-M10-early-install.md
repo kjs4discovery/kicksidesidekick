@@ -59,7 +59,7 @@ store by `send` / `delete`). The final package (0.10.0-m10, with user presets) h
 | App image (slot 585,728 B) | 507,440 B (78,288 free) | 511,412 B: **74,316 B free** |
 | RAM .data+.bss (of 98,304) | 82,456 | 83,048 |
 | BACKTRACK CPU, worst case (emulated; FULL, BUSY chorus, MIAMI PAD x 4, a live switch) | 44 % | STUDIO 44 %, ACOUSTIC 41 %, **ELECTRO 57 %**, CHIP 47 % (limit 60 %) |
-| The song store (552 blocks) | 13 songs + 36 backtracks: 282 | 13 songs + 5 new + 42 backtracks: about 305 blocks (tools/store_blocks.py counts 19 songs + 42 backtracks as 307) |
+| The song store (552 blocks) | 13 songs + 36 backtracks: 282 | 13 songs + 6 new + 42 backtracks: about 304 blocks measured with 5 new songs, camptown-races adds a few more (well under 552; tools/store_blocks.py: the 15 public songs 46 blocks, the 42 backtracks 128) |
 
 ## Test results (build/step-M10/early/)
 
@@ -74,8 +74,7 @@ Run once on this package, build/step-M10/early/ (reports in emu-m10/ and emu-m9/
 
 ## Known
 
-- **camptown-races is NOT in the send list.** It fails two of the older suite's checks (its harmony level 4 plays 4-note attacks;
-  harmony level loudness 1.64x > 1.6): decisions M10-03. The planning chat decides. The other five new songs are fine.
+- **camptown-races is in the send list** (fixed by the planning chat, M10-03; it passes m4p4, m5p1 and its own group on the final package; the early package has the same song checks by construction, the song is data).
 - **The six new songs' credits, rights and info lines are placeholders** (decisions M10-01: the planning chat's source files were
   lost and rebuilt; the notes and chords are exact).
 - **ELECTRO is the heaviest kit** (57 % of a block): if you hear dropouts with a heavy melody sound, say so.
@@ -111,17 +110,17 @@ Switch the FM-1 off and on and choose **SONG LEARN** first (BACKTRACK and SYNTH 
    tools/fm1song.sh send songs/backtracks/bt37-phrygian songs/backtracks/bt38-line-cliche songs/backtracks/bt39-minor-cadence songs/backtracks/bt40-descent songs/backtracks/bt41-lydian songs/backtracks/bt42-jazz-blues
    ```
    Six lines `stored`.
-2. The five new songs (camptown-races is held back, M10-03):
+2. The six new songs:
    ```bash
-   tools/fm1song.sh send songs/clementine songs/auld-lang-syne songs/drunken-sailor songs/blow-the-man-down songs/michael-row
+   tools/fm1song.sh send songs/camptown-races songs/clementine songs/auld-lang-syne songs/drunken-sailor songs/blow-the-man-down songs/michael-row
    ```
-   Five lines `stored`.
+   Six lines `stored`.
 3. Optional, to see the info line on the older songs (each file changed by one INFO chunk; nothing else): resend them. The
    store replaces a song by its slug.
    ```bash
    tools/fm1song.sh send songs/amazing-grace songs/twelve-bar-blues songs/saints songs/four-chords songs/scarborough-fair songs/greensleeves songs/happy-birthday songs/danny-boy songs/oh-susanna
    ```
-4. Claude Code runs `fm1song list`: 13 + 5 songs and 42 backtracks, each `ok`.
+4. Claude Code runs `fm1song list`: 13 + 6 songs and 42 backtracks, each `ok`.
 
 (The store may answer "making room" once: send again, as M5.1 taught.)
 
@@ -139,7 +138,7 @@ Switch the FM-1 off and on and choose **SONG LEARN** first (BACKTRACK and SYNTH 
 ### Step 4 — SONG LEARN
 
 Open a song you sent again (saints): GLO, GLO: the Settings screen's last line says "Traditional spiritual, c. 1896". A private
-song shows no line. Open one of the five new songs and play it with the layers.
+song shows no line. Open one of the six new songs and play it with the layers.
 
 ## If anything goes wrong
 
