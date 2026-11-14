@@ -413,17 +413,21 @@ def test_m9sweep(all_songs, rep):
     progression change in each run: to its end (FULL) or a loop round, no crash, no block over its time, no count-in"""
     lines, st, check = m5.checker("M9: every style x structure x complexity x 4 progressions, with live changes")
     from concurrent.futures import ThreadPoolExecutor
-    jobs = [(p, sty, stc, cx) for p in SAMPLE_PROGS for sty in range(11) for stc in range(3) for cx in (1, 2, 3)]
     import os
+    progs, cxs = SAMPLE_PROGS, (1, 2, 3)
+    if os.environ.get("M9_SWEEP_TRIM"):          # M10 (plan Part 9, D064): trimmed to complexity 1 and 3, progressions 1 and 42:
+        progs, cxs = (1, 42), (1, 3)             # 11 styles x 3 structures x 2 x 2 = 132 runs instead of 396
+    jobs = [(p, sty, stc, cx) for p in progs for sty in range(11) for stc in range(3) for cx in cxs]
     if os.environ.get("M9_SWEEP_ONLY"):          # (a re-run of some runs: "style,structure")
         sty_, stc_ = map(int, os.environ["M9_SWEEP_ONLY"].split(","))
         jobs = [j for j in jobs if j[1] == sty_ and j[2] == stc_]
-    bars_of = {p: compiled_bt(p)["bar_count"] for p in SAMPLE_PROGS + tuple(p + 1 for p in SAMPLE_PROGS)}
+    nxt = lambda p: p % len(BTS) + 1             # (the live K1 +1 wraps after the last backtrack)
+    bars_of = {p: compiled_bt(p)["bar_count"] for p in set(progs) | {nxt(p) for p in progs}}
 
     def one(j):
         p, sty, stc, cx = j
         bpb = 3 if sty == 6 else 4
-        bars = max(bars_of[p], bars_of[p + 1])
+        bars = max(bars_of[p], bars_of[nxt(p)])
         # (the style change at 6.5 s may take WALTZ to a 4/4 style: the run is timed for 4 beats a bar then)
         ms = int(5600 + (bars + 2) * 4 * 60000 / 250 + 3000) if stc == 2 else 17500
         sc = ([f"4300:e2:{p - 1}"] if p > 1 else []) + ([f"4350:e3:{sty}"] if sty else []) + \
@@ -439,7 +443,7 @@ def test_m9sweep(all_songs, rep):
         res = list(ex.map(one, jobs))
     bad = [(j, round(l, 2), e, lp, sw) for j, ok, l, e, lp, sw in res if not ok]
     worst = max(l for _, _, l, _, _, _ in res)
-    check(not bad, f"{len(res)} runs (11 styles x LOOP, VERSE/CHORUS, FULL x complexity 1-3 x progressions {SAMPLE_PROGS}, 250 "
+    check(not bad, f"{len(res)} runs (11 styles x LOOP, VERSE/CHORUS, FULL x complexity {cxs} x progressions {progs}, 250 "
                    f"BPM, a style and a progression change in each): each reached its end or looped, switched, no crash, no "
                    f"count-in, no block over its time (worst {worst * 100:.0f} %) {bad[:5] or ''}")
     rep += lines
