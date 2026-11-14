@@ -1017,3 +1017,82 @@ Learned / measured: HANDOFF's evening note still says "HAZE PAD -> ZUNJET waits 
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 1.
+
+(The entries for Parts 1-7 of M10.1 were written together when Part 7 was done, from the commits and the test logs of each part: 9fd953a, e1c568e, f7d67f1, fd6d7d8, 3f4afe5, c17c62f, db81fa8.)
+
+2026-11-14 20:10 — Step M10.1 Part 1 (screens and text) —
+Status: done
+Did:
+- The name "KickSide - Your Musical SideKick" (app.h, words.tsv, so the generated words list too; FW_VERSION 0.10.2-m10.1, milestone m10.1); SYNTH's edit page titles name the preset
+  ("FX 2 - POTATO", "ENVELOPE - U05 ZUNJET"; font B, then XS, then T, never cut); HINT_PAGE_MS 6000u (one constant, ui.c / synthui.c); LOOP indicator in BACKTRACK; the
+  value pop-up in SONG LEARN (K1-K3, SELECT, PRESETS, ALGO) and SYNTH (PRESET, SELECT, K1-K4 on the main screen).
+- tools/m101_test.py (new, copy of m10_test's structure): m101p1 ALL PASS on the dev package (13 checks incl. hint pages 5.9 s / 6.1 s / 8.9 s / 9.1 s, the long title, a pop-up per control).
+  Two stale m10_test expectations updated (the name and milestone, LOOP says LOOP): decisions M10.1-02.
+Learned / measured: the name is about 222 px in the larger type (fits 232); the long-name title (12 W's) needs the next smaller type (24 px gap to "1/9").
+Hardware touched: none
+Questions for the planning chat: decisions M10.1-02 .. M10.1-06.
+Next: Part 2.
+
+2026-11-14 20:11 — Step M10.1 Part 2 (buttons) —
+Status: done
+Did:
+- Layer buttons (D066): a press on a non-selected layer = your part (volume unchanged), on your part cycles FULL / QUIET / MUTED; no hold; the same code in BACKTRACK (the melody button only selects). HOME acts on RELEASE
+  (a tap under 2 s; a 2 s hold goes straight to the mode screen without acting first) and climbs: play -> list -> folders -> mode screen; BACKTRACK: stop -> SETUP -> mode screen; SYNTH page -> main -> mode screen.
+  HOME no longer opens the NOT IMPLEMENTED pop-up anywhere. SONG LEARN's K4 = Melody Sound (SONG, then the preset list; the melody layer plays on vsynth, EAS under it; a reference, reset when a song opens).
+  BACKTRACK's K4 keeps a reference too (M10-14 closed).
+- m101p2 ALL PASS (incl. HOME climbs and holds, REPLACE + HOME writes nothing (10 flash operations), K4 cycles, melody note-ons identical with a preset (7 vs 7), BACKTRACK reference U20 stays U20 after a save).
+Learned / measured: CPU (EAS render + vsynth render, each at its own maximum) with the melody on MIAMI PAD at levels 3 / 4 / 5: worst public song **35 %** of a block (limit 60 %); the same with SONG: 14 %. A sweep of all 30
+  stock presets on twelve-bar-blues at the busiest levels (build/emu/m101sweep): MIAMI PAD 34 % (EAS 12 + synth 22) is the heaviest, NEON BELLS 31 %, POTATO 31 %, the rest 28-30 %. Every public and private song has exactly one melody level
+  (K4 is free everywhere). Zombie (private, 172 KB of level buffers) does not fit beside the synth's 84 KB: K4 keeps SONG there. RAM .data+.bss +112 B.
+Hardware touched: none
+Questions for the planning chat: decisions M10.1-07 .. M10.1-10 (HOME on release; BACKTRACK melody button).
+Next: Part 3.
+
+2026-11-14 20:12 — Step M10.1 Part 3 (FACTORY RESET) —
+Status: done
+Did:
+- SysEx 0x78 + `fm1song factory-reset --yes`: song store (lib_wipe), both preset sectors, settings saved as "none yet" (its defaults); refused in SYNTH / BACKTRACK (result 9); the DONE screen
+  "FACTORY RESET DONE / SWITCH OFF AND ON" (view V_RESET) reads nothing more. m101p3 ALL PASS; tools/m101_flash_test.py (timed emulator): the reset is 5 flash operations on the test image, a power cut at each, then a boot in
+  SONG LEARN and in SYNTH: always boots, no watchdog reset, nothing came back after the complete reset. ALL PASS.
+Learned / measured: there is no existing settings-reset command or rescue combination (reused nothing); an erase of 0xFC000 is outside the platform's data windows, so the settings are reset by saving a record that is not ours.
+Hardware touched: none (emulator only; the command is for the user)
+Questions for the planning chat: decision M10.1-11.
+Next: Part 4.
+
+2026-11-14 20:13 — Step M10.1 Part 4 (preset sounds) —
+Status: done
+Did:
+- The list order (E-PIANO, E-GUITAR, E-SITAR, PARKER, POTATO, EDS, STAB 84, then the rest), E-GUITAR attack 12 / fuzz 35, EDS (new fuzz bass), ZUNJET in HAZE PAD's place (the plan's row, value for value); vsynth_test names its two presets by name.
+  m101p4 ALL PASS (27 of the old rows byte for byte; the screen shows E-GUITAR's 12 and 35 and ZUNJET's nine pages as the user read them).
+Learned / measured (vsynth_test LEVELS=1, median loudest 100 ms 970,535): **E-GUITAR 806,299 (-1.6 dB; its LEVEL 100 would be 103 to match)**; **ZUNJET 1,167,054 (+1.6 dB; its LEVEL 97 would be 94)**; EDS 985,424 with LEVEL 94 (peak 6.1 M of 8.39 M); all within the test's 3 dB, rc 0.
+  Neither E-GUITAR's nor ZUNJET's LEVEL was changed (the user's words).
+Hardware touched: none
+Questions for the planning chat: decision M10.1-12 (EDS's final values; judged by numbers, not by ear).
+Next: Part 5.
+
+2026-11-14 20:14 — Step M10.1 Part 5 (song fixes) —
+Status: done
+Did:
+- The five public songs typed from the plan (camptown-races, michael-row, oh-susanna 125, saints 135, scarborough-fair 18-bar verse) + creep's three bars (private, git-ignored, not committed); make_songs.py run for the five; validate ok for all six;
+  make_songs.py for ALL slugs changes no other song; pytest 298 passed. m101p5 ALL PASS (the chords and tempos from the compiled files, each of the five opened and played to its end at level 1, no halt, creep's lines).
+Learned / measured: songs/make_songs.py: bars() moved above SCARBOROUGH_VERSE (nothing else). Previews of saints, oh-susanna and scarborough-fair regenerated.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 6.
+
+2026-11-14 20:15 — Step M10.1 Part 6 (clean install) —
+Status: done
+Did:
+- songs/library.txt (15 public songs, 42 backtracks, the header the plan gave) and tools/fresh_install.sh (the user runs it; y/n before each write; stops at the first failure with the fallback line).
+  m101p6 ALL PASS: the whole script once on the emulator (no install step, no power cycle): reset done, 57 of 57 entries sent and listed ok, no private song; a boot after it: 15 songs, 42 backtracks, no presets.
+Hardware touched: none (the script was never run against the unit)
+Questions for the planning chat: decision M10.1-14.
+Next: Parts 7 and 8.
+
+2026-11-14 20:16 — Step M10.1 Part 7 (docs) —
+Status: done
+Did:
+- docs/controls.md "M10.1" with the emulator screenshots (docs/step-M10.1/, 24 files); song-format.md unchanged (the format did not change); NOTICE unchanged (no new third-party file); songs/README.md: oh-susanna 125 BPM.
+Hardware touched: none
+Questions for the planning chat: none
+Next: the release build and the fast lane (Part 8).
