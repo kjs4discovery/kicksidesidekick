@@ -146,3 +146,13 @@ Format (docs/plan-M10.1.md, "Read this first"): one entry per judgment call the 
 - Emulator mode (FM1_FRESH_EMU=1, used only by tools/m101_test.py): no install, no power-cycle prompt, y/n answered, every fm1song command gets --emu-pipe and its output
   stays on stderr (the pipe is stdout). m101p6 ran the whole script once against the emulator: reset done, 57 entries sent and listed ok, no private song, and a boot
   after it finds 15 songs, 42 backtracks, no presets. The script was NOT run against the unit and never will be by Claude Code.
+
+## M10.1-15 — The release build's version string and the test additions
+- `firmware/build.sh --release` takes `X.Y[.Z][-suffix]` with up to two digits each and no dot in the suffix, so "0.10.2-m10.1" is refused. The package was built with
+  `--release 0.10.2-m101` (identity FM-1_46001002, as the plan expects) and copied to the plan's name build/step-M10.1/fm1acc-0.10.2-m10.1.fwsc. The app's own strings
+  (FW_VERSION "0.10.2-m10.1", the splash's "m10.1", the settings screen's "v0.10.2-m10.1") are in app.h and say m10.1 as the plan names it; only the platform's APP_VERSION
+  define (not shown anywhere we draw) says m101.
+- The fast lane (build/step-M10.1/run_lanes.sh) = the plan's list (pytest, store, upreset, vsynth LEVELS=1, m10, m10_flash, m101) + m51 (the user asked for it) + m101_flash
+  (the timed power-cut test of Part 3, a part of "m101 (all parts)"). Lanes as in M10: host tools and m10 / m101 at once, the timed emulator after them.
+- tools/m101_test.py and m101_flash_test.py are new; tools/m10_test.py got the two expectation updates of M10.1-02; tools/m7_test.py's OLD list says ZUNJET where HAZE PAD was
+  (the test is not in this lane; it only needs its names to exist); tools/vsynth_test.c names two presets instead of numbering them (M10.1-12).
