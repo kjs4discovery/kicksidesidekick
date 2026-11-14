@@ -185,7 +185,8 @@ struct player_stats {
                                            * layers' volumes, 2 bits each (drums low): 0 FULL, 1 QUIET, 2 MUTED */
     char vp_title[24], vp_value[40], vp_sub[32], next_text[48], ind_name[16], info_text[40], preset_name[16];
     /* M10.1 (tools/m101_test.py): after the M10 texts */
-    char title_now[48], legend_now[64];   /* the SYNTH screen's title as drawn last; the bottom instruction row's text as drawn last */
+    char title_now[48], legend_now[64], cells_now[48];   /* the SYNTH screen's title as drawn last; the bottom instruction row's text as
+                                           * drawn last; an edit page's four values as drawn, space-separated ("12 70 50 30") */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

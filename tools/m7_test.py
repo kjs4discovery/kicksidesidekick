@@ -35,7 +35,7 @@ SYNTH = m6.SYNTH
 PI = {l.split('"')[1]: k for k, l in enumerate(l for l in (ROOT / "firmware/app/vsynth.c").read_text().splitlines()
                                              if l.strip().startswith('PR("'))}
 OLD = ["NEON PAD", "DUSK STRINGS", "OCT BOUNCE", "SUNSET LEAD", "SYNC SCREAM", "CHROME BRASS", "GLASS PLUCK",
-       "VAPOR KEYS", "RISER", "CHIP BLIP", "DRIVE BASS", "HAZE PAD", "LASER ARP", "NIGHT DRIVE", "SAW STRINGS",
+       "VAPOR KEYS", "RISER", "CHIP BLIP", "DRIVE BASS", "ZUNJET", "LASER ARP", "NIGHT DRIVE", "SAW STRINGS",
        "HORIZON PWM", "TAPE CHOIR", "STAB 84", "GRID PULSE", "E-PIANO", "E-GUITAR", "E-SITAR", "POTATO", "PARKER",
        "EDS", "OUTRUN BASS", "MIAMI PAD", "CHROME ARP", "NEON BELLS", "VHS STRINGS"]
 
@@ -309,7 +309,7 @@ def test_m7p4(all_songs, rep):
 def test_m7p5(all_songs, rep):
     lines, st, check = m5.checker("M7 part 5: engines and the 30 presets")
     ch4 = ["5000:C4", "5000:E4", "5000:G4", "5000:B4", "7100:C4^", "7100:E4^", "7100:G4^", "7100:B4^"]   # (held
-    # 2.1 s: as the laptop's level matching, which measures 2 s; slow attacks such as HAZE PAD's peak after 1.8 s)
+    # 2.1 s: as the laptop's level matching, which measures 2 s; slow attacks such as HAZE PAD's (M10.1: ZUNJET's place) peak after 1.8 s)
     every = os.environ.get("M7_ALL_PRESETS") is not None
     bad, out, eng = [], [], {}
     for i in [PI[OLD[j]] for j in range(0, 30, 1 if every else 3)]:   # (M8: the presets M7 sampled)

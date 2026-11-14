@@ -61,12 +61,23 @@ static void check(int ok, const char *what)
     }
 }
 
-/* the effect test's dry sound: NEON PAD (M8: preset 4, D050; M7: 0) with every effect at 0 */
+/* a stock preset by name (M10.1: the order changed; a test that means one sound names it) */
+static const struct vs_preset *named(const char *name)
+{
+    uint32_t p;
+    for (p = 0; p < vsynth_presets(); p++)
+        if (!strncmp(vsynth_stock(p)->name, name, VS_NAME))
+            return vsynth_stock(p);
+    fprintf(stderr, "no preset %s\n", name);
+    exit(2);
+}
+
+/* the effect test's dry sound: NEON PAD (M8: preset 4, D050; M7: 0; M10.1: by name) with every effect at 0 */
 static void dry(void)
 {
     static const uint8_t FX0[] = {VP_CHO_MIX, VP_TREM_DEPTH, VP_PHA_MIX, VP_CRUSH, VP_DLY_MIX, VP_FUZZ, VP_REV_MIX};
     uint32_t k;
-    vsynth_load(vsynth_stock(3));
+    vsynth_load(named("NEON PAD"));
     vsynth_set(VP_ARP_ON, 0);
     for (k = 0; k < sizeof FX0; k++)
         vsynth_set(FX0[k], 0);
@@ -201,7 +212,7 @@ int main(void)
         static const uint32_t RATE_STEPS[RATES] = {8, 16, 24, 32};   /* in 4 s at 120 BPM */
         double r;
         uint32_t pk, st0, rt, n;
-        vsynth_load(vsynth_stock(12));    /* CHIP BLIP: short (M8: 13th) */
+        vsynth_load(named("CHIP BLIP"));    /* CHIP BLIP: short (M8: 13th; M10.1: by name) */
         for (rt = 0; rt < RATES; rt++) {
             vsynth_key(60, 1);
             vsynth_key(64, 1);

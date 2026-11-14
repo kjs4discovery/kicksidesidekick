@@ -102,3 +102,24 @@ Format (docs/plan-M10.1.md, "Read this first"): one entry per judgment call the 
   (1 song-sector erase, 2 preset-sector erases, the settings' save: erase + page write); a cut at each of the 5, then a boot in SONG LEARN and in SYNTH: always
   boots, no watchdog reset, no XIP read with a flash command running; after the complete reset nothing is left. A fuller store has more erases of the
   same existing kind (M5.1's WIPE, already cut-tested).
+
+## M10.1-12 — Part 4: the preset list, E-GUITAR, EDS, ZUNJET
+- Order (vsynth.c): E-PIANO, E-GUITAR, E-SITAR, PARKER, POTATO, EDS, STAB 84, then the others in today's order (NEON PAD ... VHS STRINGS, 30 in all).
+  Positions that named a stock preset: SYNTH starts on position 0 and BACKTRACK's default melody sound is position 0 (both E-PIANO, still first),
+  `vsynth_load(&PRESETS[0])` at start-up is E-PIANO too; the kits name no preset; tools/vsynth_test.c named two presets by position (NEON PAD at 3, CHIP
+  BLIP at 12): now by name (a small `named()` helper); tools/m7_test.py's OLD list (M7's order, used to find the sounds it sampled) says ZUNJET
+  where HAZE PAD was. The user's saved presets (U slots) are records, not positions, and are untouched.
+- E-GUITAR: attack 0 -> 12, fuzz 90 -> 35; the screen shows both as raw numbers (ATTACK and FUZZ are plain 0..127 parameters, SHOW_NUM), so the table
+  value IS the screen value. Nothing else changed, LEVEL 100 too. vsynth_test LEVELS=1: E-GUITAR now 806,299 against the median 964,933 (-1.6 dB;
+  within the 3 dB window, so the test passes). Its LEVEL would be 103 to match: NOT changed (the user's words); for the user.
+- EDS (new fuzz bass; a record in the table, ANALOG, ARP off): ATTACK 1, DECAY 60, SUSTAIN 90, RELEASE 14 | CUTOFF 40, RESONANCE 50, ENV AMOUNT +6 (70),
+  TYPE LP | WAVE SUB (a saw plus a square an octave below), DTN 12 cents (the warble: the sub drifts against the saw's octave), SUB level 110 (strong),
+  NOISE 0, DRIVE 30, KEY TRACK 20 (low: the filter stays dark up the keyboard), LFO RATE 0, PWM 0 | ARP defaults (off) | CHORUS 0 (depth 64, mix 0), TREM 0,
+  PHASER 0, CRUSH 0 | DELAY mix 0 (time 1/8D, feedback 64) | FUZZ 100 | REVERB size 64, damping 64, mix 8 | LEVEL 94. There is no pitch-LFO depth in the
+  engine, so the warble is the detune (the plan's first suggestion). It cannot play an octave lower than the key; the SUB oscillator is the low end
+  (the OCT- buttons take it further). Judged by the numbers, not by ear (I cannot listen): the loudest 100 ms of the test chord is 954,965 against the
+  median 964,933 (-0.1 dB), peak 6.1 M of 8.39 M (no clipping), every voice ends. LEVEL 94 is what vsynth_test LEVELS=1 names for it.
+- ZUNJET: the row of the plan, typed as given (checked by tools/m101_test.py against the plan's text), in HAZE PAD's place. Its LEVEL 97 is the user's:
+  vsynth_test LEVELS=1: loudest 100 ms 1,167,054 against the median 964,933 (+1.7 dB, inside the 3 dB window); its LEVEL would be 94 to match; NOT changed.
+  Nothing in the firmware, the tests or docs/controls.md named HAZE PAD by position; the name is in docs/controls.md's preset list (Part 7).
+- The stats: player_stats.cells_now (an edit page's four values as drawn) lets the test read E-GUITAR's and ZUNJET's pages.

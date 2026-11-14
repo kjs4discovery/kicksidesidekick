@@ -653,9 +653,19 @@ static void draw_synth_page(uint32_t now)
         text_cat(ti, lab);
         synth_top(ti, t);
     }
-    for (p = 0; p < VP_N && k < 4u; p++)
-        if (vsynth_param(p)->page == sy.page)
-            synth_cell(k++, p, 0);
+    {
+        char cells[48] = "", v[16];
+        for (p = 0; p < VP_N && k < 4u; p++)
+            if (vsynth_param(p)->page == sy.page) {
+                synth_cell(k++, p, 0);
+                v[0] = 0;
+                vsynth_value_text(v, p, vsynth_get(p));
+                if (cells[0])
+                    text_cat(cells, " ");
+                text_cat(cells, v);
+            }
+        vpop_text(player_stats.cells_now, cells, sizeof player_stats.cells_now);   /* (for the tests) */
+    }
     synth_drum_line(now, 184);
     draw_legend(Y_LEGEND, "K1-K4 set|EDIT next|ALGO pages|HOME main");
 }

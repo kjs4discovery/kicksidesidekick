@@ -39,7 +39,7 @@ def stats101(ram):
     base = i + m5.STATS.size + m5.STATS4.size + 128 + (18 + 14) * 4
     s["mel_sound"], s["vols"] = s["pad0"], s["pad1"]       # (player.h: M10.1 named the two spare words)
     at = base + 4 * len(m10.M10_FIELDS) + sum(n for _, n in m10.M10_STRINGS)
-    for name, n in (("title_now", 48), ("legend_now", 64)):
+    for name, n in (("title_now", 48), ("legend_now", 64), ("cells_now", 48)):
         s[name] = ram[at:at + n].split(b"\0")[0].decode("latin-1")
         at += n
     return s
@@ -487,7 +487,91 @@ def test_m101p3(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m101p1": test_m101p1, "m101p2": test_m101p2, "m101p3": test_m101p3, "m101p5": test_m101p5}
+# --------------------------------------------------------------------------------------------- part 4
+M10_COMMIT = "8d2f517"      # the tree M10.1 started from (the M10 package's source plus the review commits)
+ORDER = ["E-PIANO", "E-GUITAR", "E-SITAR", "PARKER", "POTATO", "EDS", "STAB 84", "NEON PAD", "DUSK STRINGS", "OCT BOUNCE", "SUNSET LEAD",
+         "SYNC SCREAM", "CHROME BRASS", "GLASS PLUCK", "VAPOR KEYS", "RISER", "CHIP BLIP", "DRIVE BASS", "ZUNJET", "LASER ARP",
+         "NIGHT DRIVE", "SAW STRINGS", "HORIZON PWM", "TAPE CHOIR", "GRID PULSE", "OUTRUN BASS", "MIAMI PAD", "CHROME ARP", "NEON BELLS",
+         "VHS STRINGS"]
+ZUNJET_ROW = """PR("ZUNJET", AN, 4, 70, 105, 40, 92, 26, 78, 0, 5, 80, 72, 52, 24, 64, 36, 0, ARP_UP, RATE_8, 0, 64,
+      64, 40, 0, 0, 0, 0, 0, 0, 3, 64, 16, 0, 64, 64, 30, 97, 0),"""
+
+
+def preset_rows(text):
+    import re
+    rows = {}
+    for m in re.finditer(r'PR\("([^"]+)",(.*?)\),\n', text, flags=re.S):
+        rows[m.group(1)] = " ".join(m.group(2).split())
+    return rows
+
+
+def test_m101p4(all_songs, rep):
+    lines, st, check = m5.checker("M10.1 part 4: preset order, E-GUITAR, EDS, ZUNJET in HAZE PAD's place")
+    from concurrent.futures import ThreadPoolExecutor
+    new = (ROOT / "firmware/app/vsynth.c").read_text()
+    try:
+        old = subprocess.run(["git", "show", f"{M10_COMMIT}:firmware/app/vsynth.c"], cwd=ROOT, capture_output=True, text=True,
+                             check=True).stdout
+    except subprocess.CalledProcessError:
+        old = None
+    rn = preset_rows(new)
+    check(list(rn) == ORDER and m8.PRESETS == ORDER,
+          f"the stock list in vsynth.c is E-PIANO, E-GUITAR, E-SITAR, PARKER, POTATO, EDS, STAB 84, then NEON PAD ... VHS STRINGS in today's order "
+          f"(30 presets, ZUNJET where HAZE PAD was: after DRIVE BASS, before LASER ARP)")
+    if old:
+        ro = preset_rows(old)
+        same = [n for n in rn if n in ro and rn[n] == ro[n]]
+        changed = sorted(n for n in rn if n not in same)
+        check(changed == ["E-GUITAR", "EDS", "ZUNJET"],
+              f"only E-GUITAR, EDS and ZUNJET differ from M10's table (the other 27 rows byte for byte): changed {changed}")
+        eg_old = [x.strip() for x in ro["E-GUITAR"].split(",")]
+        eg_new = [x.strip() for x in rn["E-GUITAR"].split(",")]
+        diff = [(a, b) for a, b in zip(eg_old, eg_new) if a != b]
+        check(len(eg_old) == len(eg_new) and diff == [("0", "12"), ("90", "35")],
+              f"E-GUITAR: attack 0 -> 12 and fuzz 90 -> 35, every other value (LEVEL too) unchanged: {diff}")
+    exp = " ".join(ZUNJET_ROW.split())
+    exp = exp[exp.index('",') + 2:].rstrip(",").rstrip(")").strip()
+    check(rn.get("ZUNJET", "").strip() == exp, "ZUNJET's row is the one typed in the plan, value for value (LEVEL 97 as the user has it)")
+    # on the screen: the list and the pages
+    jobs = {"start": lambda: synth_run("m101p4-start", 5200, []), "back": lambda: synth_run("m101p4-back", 5200, ["5000:e6:-1"])}
+    for k in (1, 3, 4, 5, 6, 7, 17, 18, 19, 25, 29):
+        jobs[f"at{k}"] = (lambda k: lambda: synth_run(f"m101p4-at{k}", 5300, [f"5000:e6:{k}"]))(k)
+    edit = lambda n: [x for i in range(n) for x in P(5000 + 300 * i, "EDIT")]
+    jobs["eg-env"] = lambda: synth_run("m101p4-eg-env", 5700, ["4700:e6:1"] + edit(1))
+    jobs["eg-fx3"] = lambda: synth_run("m101p4-eg-fx3", 5700, ["4700:e6:1"] + P(5000, "FX") + P(5300, "FX") + P(5600, "FX"))
+    for i, nm in enumerate(("env", "filter", "sound-a", "sound-b", "arp", "fx1", "fx2", "fx3", "fx4")):
+        jobs[f"zj-{nm}"] = (lambda i, nm: lambda: synth_run(f"m101p4-zj-{nm}", 5500 + 300 * i, ["4700:e6:18"] + edit(i + 1)))(i, nm)
+    jobs["bt"] = lambda: btrun("m101p4-bt", 5200, [])
+    jobs["eds"] = lambda: synth_run("m101p4-eds", 7000, ["4700:e6:5", "5000:C4", "5000:E4", "5000:G4", "6500:C4^", "6500:E4^", "6500:G4^"])
+    jobs["eds-low"] = lambda: synth_run("m101p4-eds-low", 7000, ["4700:e6:5", "4800:OCTDN!", "4900:OCTDN!", "5000:C4", "6500:C4^"])
+    with ThreadPoolExecutor(3) as ex:
+        futs = {k: ex.submit(f) for k, f in jobs.items()}
+        R = {k: f.result() for k, f in futs.items()}
+    S = {k: r["stats"] for k, r in R.items()}
+    got = {k: S[f"at{k}"]["preset_name"] for k in (1, 3, 4, 5, 6, 7, 17, 18, 19, 25, 29)}
+    check(S["start"]["preset_name"] == "E-PIANO" and S["start"]["synth_preset"] == 0 and S["back"]["preset_name"] == "VHS STRINGS" and
+          all(got[k] == ORDER[k] for k in got),
+          f"on the screen (PRESET knob): the list in that order {got}; SYNTH starts on E-PIANO (position 0 as in M10), one back wraps to "
+          f"{S['back']['preset_name']!r} (m101p4-at5.png)")
+    check(S["bt"]["bt_sound"] == 0 and S["bt"]["ui_view"] == V_SETUP,
+          f"BACKTRACK's default melody sound is E-PIANO as in M10 (list position {S['bt']['bt_sound']}); the kits name no preset")
+    check(S["eg-env"]["cells_now"] == "12 70 50 30" and S["eg-fx3"]["cells_now"].split()[-1] == "35" and S["eg-fx3"]["title_now"] == "FX 3 - E-GUITAR",
+          f"E-GUITAR on its pages: ENVELOPE {S['eg-env']['cells_now']!r} (attack 12), FX 3 {S['eg-fx3']['cells_now']!r} (fuzz 35; m101p4-eg-env.png)")
+    want = {"env": "4 70 105 40", "filter": "92 26 +14 LP", "sound-a": "SYNC 80 72 52", "sound-b": "24 64 36 0", "arp": "UP 1/8 1 64",
+            "fx1": "64 40 0 0", "fx2": "0 0 0 0", "fx3": "1/8D 64 16 0", "fx4": "64 64 30 97"}
+    bad = {k: S[f"zj-{k}"]["cells_now"] for k, v in want.items() if S[f"zj-{k}"]["cells_now"] != v}
+    check(not bad, f"ZUNJET on its nine pages shows the user's values (FILTER ENV AMOUNT +14, TYPE LP, WAVE SYNC, ARP UP 1/8 octaves 1, DELAY "
+                   f"TIME 1/8D, LEVEL 97): {[S['zj-' + k]['cells_now'] for k in want]} {bad or ''} (m101p4-zj-filter.png)")
+    e = S["eds"]
+    rms = m5.rms(R["eds"]["left"][int(5.2 * m5.RATE):int(6.4 * m5.RATE)])
+    check(e["synth_preset"] == 5 and e["synth_engine"] == 0 and e["synth_notes"] == 3 and rms > 300 and e["synth_peak"] < 8388607 and
+          e["arp_pattern"] == 0,
+          f"EDS renders: ANALOG, ARP off, 3 voices, rms {rms:.0f}, peak {e['synth_peak']} (below 8,388,607: no clipping)")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m101p1": test_m101p1, "m101p2": test_m101p2, "m101p3": test_m101p3, "m101p4": test_m101p4, "m101p5": test_m101p5}
 
 
 def main():
