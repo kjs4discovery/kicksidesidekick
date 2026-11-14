@@ -445,7 +445,7 @@ def test_store(all_songs, sent, rep):
     f = bytearray(FLASH["songs"].read_bytes())
     off, n = recs[0]
     victim = read_compiled(bytes(f[off + 32:off + 32 + n]))["slug"]
-    f[off + 32 + n - 40] ^= 0x10
+    f[off + 32 + n // 2] ^= 0x10       # (M10: the file ends with the INFO chunk: a flip there fails the list's peek, not the open)
     dmg.write_bytes(f)
     vi = slugs.index(victim)
     other = (vi + 1) % len(slugs)

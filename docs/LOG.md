@@ -976,3 +976,20 @@ Learned / measured: RAM +3.9 KB (the object buffers). A save is 10 flash operati
 Hardware touched: none
 Questions for the planning chat: decisions M10-14 (SAVE screen details; BACKTRACK keeps its sound as a list index).
 Next: Part 8 (docs, NOTICE), then Part 9.
+
+2026-11-14 04:00 — Step M10 Parts 8-9 (docs, NOTICE, the suite on the final package, install checklist) —
+Status: done (prepared; not installed). STOPPED for review.
+Did:
+- NOTICE, docs/controls.md "M10" with screenshots in docs/step-M10/, song-format.md.
+- Release build build/step-M10/fm1acc-0.10.0-m10.fwsc, FM-1_46001000, sha256 27128989d16660ae7f40fee55b4b0c561540fa4c6661fe162d631080dcbf60c8, commit f9fcc40
+  (only the untracked user folder import/ beside it), reproducible (two builds). Early package: build/step-M10/early/fm1acc-0.10.1-m10a.fwsc, sha256 832c0bcf...a03a.
+- The trimmed suite once, in lanes, via the test-runner subagent (times in build/step-M10/times.txt): pytest 298 passed, fuzz 600 s clean, store / upreset /
+  vsynth / guitar rc 0, m6 21/0, m8 37/0, m9 39/0, m10 38/0, m51 17/0, m10_flash 6/0; m5 and m7 had three failures: two stale expectations
+  (fixed, re-run on the same package: pass), and m5p1's hint count 9 of 10 (open, also on M9; M10-15).
+- docs/step-M10-install.md written (install over M9 or M10a, sends, the SAVE test by hand, fallbacks; a preset object is ignored by M9 and M10a).
+Learned / measured: app 516,036 B, 69,692 B free (rule >= 16 KB); RAM .data+.bss 88,928; preset object 1,928 B; store about 304 of 552 blocks; CPU per kit
+  44 / 41 / 57 / 47 %; longest unfed stretch 34 ms (30 saves).
+Hardware touched: none
+Questions for the planning chat: decisions M10-01 (re-send the lost song files), M10-03 (camptown-races), M10-12 (info limit 39), M10-15 (m5p1 hint count);
+  review docs/step-M10-install.md.
+Next: STOP. The user installs; Claude Code runs only --info / fm1song list and records.

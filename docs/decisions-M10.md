@@ -176,3 +176,9 @@ Format (docs/plan-M10.md, "Read this first"): one entry per judgment call the pl
   Host: tools/upreset_test.c (ASan/UBSan, `make upreset-test`): junk, bad CRC / length / magic, 30 saves, a cut at every operation
   over three saves (both copies): old or new, never mixed; no flash operation outside 0xDE000..0xDFFFF.
 - Undo: app.h OBJ_PRESETS and the map, fm1.toml's o2 (upreset.c), upreset.c / upreset.h, synthui.c (SY_SAVE and the list), bt.c (pl_*).
+
+## M10-15 — the suite run: lanes, stale expectations, one open failure (Part 9)
+- Lanes A and B ran at once and C after B ("serial": the plan's overload fallback, chosen up front because the timed emulator is load-sensitive).
+- Stale expectations fixed to the exact new behaviour, re-run on the same package: m5 `store` (the damaged-song flip landed in the INFO chunk,
+  now in the events), m7 `m7p2` (SAVE has a job in SYNTH), m5 `part5` (14 songs), m9census (SEQ on SETUP). m9sweep trimmed by M9_SWEEP_TRIM=1.
+- OPEN, not relaxed: m5p1's hint count (9 of 10), also on the M9 package; for the planning chat.

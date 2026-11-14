@@ -203,11 +203,11 @@ def test_m7p2(all_songs, rep):
     check(ar["stats"]["arp_pattern"] == 1 and ar["stats"]["arp_steps"] >= 6, f"ARP: the arpeggiator on (UP 1/8: "
           f"{ar['stats']['arp_steps']} steps in 1.8 s at 120 BPM)")
     bad = []
-    for n in ("LFO", "SCL", "SAVE", "REC"):
+    for n in ("LFO", "SCL", "REC"):                  # (M10: SAVE has its job in SYNTH)
         r = syrun(f"m7p2-free-{n}", 5000, m5.press_raw(4600, n))
         if not (r["stats"]["popup_open"] == 1 and r["stats"]["popup_btn"] == B[n]):
             bad.append(n)
-    check(not bad, f"LFO, SCL, SAVE, REC: the NOT IMPLEMENTED pop-up (m7p2-free-SAVE.png) {bad or ''}")
+    check(not bad, f"LFO, SCL, REC: the NOT IMPLEMENTED pop-up (m7p2-free-SAVE.png) {bad or ''}")
     k = syrun("m7p2-keys", 6400, ["5000:C4", "5000:E4", "5000:G4", "6200:C4^", "6200:E4^", "6200:G4^"])
     snd = m5.rms(k["left"][int(5.2 * m5.RATE):int(6.1 * m5.RATE)])
     check(k["stats"]["synth_notes"] == 3 and snd > 300 and k["stats"]["synth_peak"] < 8388607,
