@@ -427,7 +427,67 @@ def test_m101p5(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m101p1": test_m101p1, "m101p2": test_m101p2, "m101p5": test_m101p5}
+# --------------------------------------------------------------------------------------------- part 3
+BT_PRE = m8.BT
+
+
+def prep_images(rep_lines=None):
+    """a flash with two songs, two saved presets (U05, U20) and a changed setting (ZOOM): -> (path, the settings word of its boot)"""
+    send = m5.run("m101p3-prep-send", 120000, [], flash="empty_quiet",
+                  host=f"{m5.SEND} send --emu-pipe {ROOT}/songs/saints {ROOT}/songs/camptown-races")
+    settings = P(4600, "GLO") + P(4800, "GLO") + ["5000:e0:4", "5300:e1:1"] + P(5800, "GLO")
+    st = m5.run("m101p3-prep-settings", 6600, settings, flash=send["flash"])
+    img = m10.obj_image(st["flash"], [(5, 1, "FIVE", 0xFF), (20, 1, "TWENTY", 0xFF)])
+    out = m5.OUT / "flash" / "factory-before.bin"
+    out.write_bytes(Path(img).read_bytes())
+    return out
+
+
+def test_m101p3(all_songs, rep):
+    lines, st, check = m5.checker("M10.1 part 3: FACTORY RESET (writes: the user runs it; here the emulator only)")
+    from concurrent.futures import ThreadPoolExecutor
+    before = prep_images()
+    boot0 = m5.run("m101p3-boot-before", 5200, [], flash=str(before))
+    B0 = boot0["stats"]
+    B0["preset_used"] = synth_run("m101p3-boot-before-sy", 5200, [], flash=str(before))["stats"]["preset_used"]   # (counted in SYNTH)
+    check(B0["list_n"] == 2 and B0["preset_used"] == 2 and (B0["settings"] >> 16) & 15 == 1,
+          f"the image before: {B0['list_n']} songs, {B0['preset_used']} saved presets, ZOOM changed (settings {B0['settings']:#x})")
+    default = m5.run("m101p3-boot-default", 5200, [], flash="empty")["stats"]
+    host = f"{m5.SEND} factory-reset --emu-pipe --yes"
+    rs = m5.run("m101p3-reset", 40000, [], flash=str(before), host=host)
+    flash = Path(rs["flash"]).read_bytes()
+    store_blank = all(b == 0xFF for b in flash[m5.AREA[0]:m5.AREA[1]])
+    pre_blank = all(b == 0xFF for b in flash[0xDE000:0xE0000])
+    check("factory reset done" in rs["out"] and rs["stats"]["ui_view"] == 10 and not rs["halt"],
+          f"fm1song factory-reset --yes answers 'factory reset done: switch the FM-1 off and on' and the unit shows the DONE screen "
+          f"(view {rs['stats']['ui_view']}; m101p3-reset.png)")
+    check(store_blank and pre_blank and flash[0xDC000:0xDE000] == Path(before).read_bytes()[0xDC000:0xDE000],
+          f"the song store (0x97000..0xDBFFF) and the preset object (0xDE000..0xDFFFF, both sectors) are blank; the panel calibration "
+          f"(0xDC000) and the firmware are untouched (flash operations {rs['ops']})")
+    boot = m5.run("m101p3-boot-after", 5200, [], flash=str(rs["flash"]))
+    B = boot["stats"]
+    B["preset_used"] = synth_run("m101p3-boot-after-sy", 5200, [], flash=str(rs["flash"]))["stats"]["preset_used"]
+    check(B["list_n"] == 0 and B["preset_used"] == 0 and (B["settings"]) == default["settings"] and B["ui_view"] == V_LIST and not boot["halt"],
+          f"after a power cycle: no songs ({B['list_n']}), no presets ({B['preset_used']}), the settings are the defaults "
+          f"({B['settings']:#x} = {default['settings']:#x}), a normal boot")
+    # refused in SYNTH and BACKTRACK (as sends are: result 9); nothing written
+    before_bytes = Path(before).read_bytes()
+    hostd = f"sleep 4; {host}"          # (wall-clock seconds: the emulator runs about 1.5 x real time)
+    sy = m5.run("m101p3-refused-synth", 12000, SYNTH_PRE, mode=None, flash=str(before), host=hostd)
+    bt = m5.run("m101p3-refused-bt", 12000, BT_PRE, mode=None, flash=str(before), host=hostd)
+    same = [Path(x["flash"]).read_bytes() == before_bytes for x in (sy, bt)]
+    check(all(same) and all("NOT reset" in x["out"] and "SYNTH or BACKTRACK" in x["out"] for x in (sy, bt)) and sy["ops"] == bt["ops"] == 0,
+          f"refused in SYNTH and in BACKTRACK (result 9), nothing written ({sy['ops']} / {bt['ops']} flash operations, the flash image "
+          f"byte for byte the same: {same})")
+    # without --yes: nothing is sent at all
+    no = m5.run("m101p3-no-yes", 7000, [], flash=str(before), host=f"{m5.SEND} factory-reset --emu-pipe")
+    check("ERASES EVERY SONG" in no["out"] and no["ops"] == 0 and Path(no["flash"]).read_bytes() == before_bytes,
+          "fm1song factory-reset without --yes only explains what it would erase (no frame sent)")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m101p1": test_m101p1, "m101p2": test_m101p2, "m101p3": test_m101p3, "m101p5": test_m101p5}
 
 
 def main():

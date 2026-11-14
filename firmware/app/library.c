@@ -41,6 +41,7 @@
 #define SC_DELETE 0x74u
 #define SC_RESULT 0x7Fu
 #define SC_WIPE 0x75u
+#define SC_FACTORY 0x78u                 /* M10.1: FACTORY RESET (fm1song factory-reset): songs, saved presets, settings */
 enum { SR_OK, SR_NO_FLASH, SR_SIZE, SR_TRANSFER, SR_CRC, SR_INVALID, SR_STORE, SR_NOT_FOUND, SR_BAD,
        SR_SYNTH,                         /* M5: in SYNTH mode (the song buffer is the synth's): restart in LEARN */
        SR_BUSY };                        /* M5.1: making room (compacting from the main loop): send again soon */
@@ -324,6 +325,33 @@ static int lib_wipe(void)
     return r;
 }
 
+/* M10.1: FACTORY RESET: the song store erased (lib_wipe), the preset object's two sectors erased (a blank one is left), the settings saved
+ * as "none yet" (settings_factory). Each part starts on junk or an empty area at the next boot, so a power cut at any flash operation
+ * leaves a unit that boots with each part old or empty; the panel calibration (0xDC000) and the firmware are never touched -> 0 or the first
+ * error (a store error is negative, the platform's erase result positive) */
+static int lib_factory_reset(void)
+{
+    int r = lib_wipe(), e;
+    uint32_t o, k;
+    for (o = UP_FLASH_LO; o < UP_FLASH_LO + UP_FLASH_SECTORS * 4096u; o += 4096u) {
+        const uint8_t *p = plat_data(o);
+        int blank = p != 0;
+        for (k = 0; blank && k < 4096u; k++)
+            blank = p[k] == 0xFFu;
+        if (!blank) {
+            e = plat_data_erase(o);
+            if (e && !r)
+                r = e;
+        }
+        store_yield();
+    }
+    upreset_clear_ram();
+    e = settings_factory();
+    if (e && !r)
+        r = e;
+    return r;
+}
+
 /* ------------------------------------------------------------------- USB commands --- */
 #ifndef PLAT_HOST
 #define APP_HAS_USB_CMD 1
@@ -520,6 +548,32 @@ static void sc_wipe(const uint8_t *body, uint32_t n)
     app_say(r == STORE_OK ? "SONG STORE WIPED" : "NOT WIPED", r == STORE_OK ? "no songs now" : store_error_name(r));
 }
 
+static void sc_factory(const uint8_t *body, uint32_t n)
+{
+    int r;
+    if (n != 5u || body[0] != 'R' || body[1] != 'E' || body[2] != 'S' || body[3] != 'E' || body[4] != 'T') {
+        sc_result(SC_FACTORY, SR_BAD, 0);
+        return;
+    }
+    if (lm_active())                     /* (SONG LEARN's melody synth gives the buffer back first, as for a send) */
+        lm_off();
+    if (vsynth_active()) {               /* SYNTH and BACKTRACK: refused as a send is (result 9) */
+        sc_result(SC_FACTORY, SR_SYNTH, 0);
+        return;
+    }
+    if (lib_state < 0 || (!lib_state && store_open() < 0)) {
+        sc_result(SC_FACTORY, SR_NO_FLASH, STORE_E_NO_FLASH);
+        return;
+    }
+    r = lib_factory_reset();
+    sc_result(SC_FACTORY, r == 0 ? SR_OK : SR_STORE, r);
+    if (r == 0) {
+        ui_reset_done();
+    } else {
+        app_say("NOT RESET", "see fm1song");
+    }
+}
+
 void app_usb_cmd(const uint8_t *d, uint32_t n)
 {
     uint32_t len = (uint32_t)d[3] | (uint32_t)d[4] << 8 | (uint32_t)d[5] << 16;
@@ -537,6 +591,9 @@ void app_usb_cmd(const uint8_t *d, uint32_t n)
         break;
     case SC_WIPE:
         sc_wipe(d + 6, len);
+        break;
+    case SC_FACTORY:
+        sc_factory(d + 6, len);
         break;
     default:
         break;

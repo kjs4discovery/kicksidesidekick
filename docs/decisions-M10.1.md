@@ -85,3 +85,20 @@ Format (docs/plan-M10.1.md, "Read this first"): one entry per judgment call the 
 - Stats for the tests: player_stats.mel_sound and .vols (the two spare words m10_pad[2], same offsets); the part and volume stats are set at the press
   because the frame (which normally sets them) does not run under the value pop-up.
 - The pop-up's value for K4 when the song has no room for the synth: "SONG" with the second line "no room: keeps SONG".
+
+## M10.1-11 — Part 3: FACTORY RESET
+- Command: SysEx 0x78 (SC_FACTORY; 0x76 / 0x77 were not used either, 0x78 is the plan's choice and was free: the list is 0x70..0x75, 0x7F), confirmation word "RESET"
+  (5 bytes, as WIPE's is "WIPE"); laptop: `tools/fm1song.sh factory-reset --yes` (without --yes it only explains and sends nothing). Result codes as a
+  send's (0 ok, 9 SYNTH / BACKTRACK, 1 no flash, 6 a flash error with its code).
+- What it does, in this order (library.c lib_factory_reset): (1) the song store erased by the existing lib_wipe (M5.1; unchanged; a blank sector is left),
+  (2) the preset object's two sectors (0xDE000, 0xDF000) erased by plat_data_erase (a blank sector is left), the RAM slots emptied, (3) the settings:
+  there is NO existing command or rescue combination that resets the settings, so a record that is not ours (all zero) is saved with the normal store
+  save and settings_load() reads it back as "none yet" = the code's own defaults (no second copy of the defaults), applied at once. The panel
+  calibration (0xDC000) and the firmware are never touched. If the unit is in SONG LEARN with a melody synth on, that is switched off first, as a send does.
+- Afterwards the screen shows "FACTORY RESET DONE" / "SWITCH OFF AND ON" (the new view V_RESET): the buttons and encoders are no longer read, and the
+  frame draws nothing else, until the power is cycled. (The two lines are one centred title and one subtitle; the plan's text with " - " between them.)
+- Power cut: every part is either old or empty at the next boot (each already boots from junk or an empty area); proved on the timed emulator
+  (tools/m101_flash_test.py, `m101f`): the image has two songs (one sector), two saved presets and a changed setting: the reset is 5 flash operations
+  (1 song-sector erase, 2 preset-sector erases, the settings' save: erase + page write); a cut at each of the 5, then a boot in SONG LEARN and in SYNTH: always
+  boots, no watchdog reset, no XIP read with a flash command running; after the complete reset nothing is left. A fuller store has more erases of the
+  same existing kind (M5.1's WIPE, already cut-tested).

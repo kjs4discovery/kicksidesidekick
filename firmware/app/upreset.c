@@ -80,6 +80,8 @@ int upreset_save(uint32_t slot, const struct vs_preset *p)
     return e;
 }
 
+void upreset_clear_ram(void) { up_empty(slots); }
+
 int upreset_used(uint32_t slot) { return slot < UP_SLOTS && slots[slot][0] != 0; }
 
 uint32_t upreset_count(void)

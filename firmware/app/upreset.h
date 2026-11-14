@@ -29,6 +29,9 @@ int up_unpack(uint8_t slots[UP_SLOTS][UP_REC], const uint8_t *src, int32_t n);  
 void upreset_boot(void);                   /* read the object (never writes): the slots in RAM */
 int upreset_save(uint32_t slot, const struct vs_preset *p);   /* the slot's record, then the object (0 ok, else the store's error);
                                                                 * the RAM copy changes only when the write succeeded */
+#define UP_FLASH_LO 0xDE000u               /* M10.1: the object's two sectors (an A/B pair): 0xDE000, 0xDF000 (app.h APP_STORE_MAP) */
+#define UP_FLASH_SECTORS 2u
+void upreset_clear_ram(void);              /* M10.1: FACTORY RESET erased the object: all 30 slots empty in RAM (writes nothing) */
 int upreset_used(uint32_t slot);           /* 1: the slot holds a preset */
 uint32_t upreset_count(void);              /* slots in use */
 void upreset_name(uint32_t slot, char *d); /* its name (>= 13 bytes), "" for an empty slot */

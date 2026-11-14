@@ -316,6 +316,21 @@ def cmd_wipe(args):
     return 0 if ok else 1
 
 
+def cmd_factory_reset(args):
+    """M10.1: FACTORY RESET from the laptop (WRITES: erases every song and every saved preset, settings back to the defaults). --yes"""
+    if not args.yes:
+        print("fm1song factory-reset ERASES EVERY SONG (0x97000..0xDBFFF), EVERY SAVED PRESET (U01-U30, 0xDE000..0xDFFFF) and puts the "
+              "settings back to their defaults; the firmware and the panel calibration stay. Refused while the FM-1 is in SYNTH or "
+              "BACKTRACK. Run it again with --yes to do it; then switch the FM-1 off and on.", file=args.out)
+        return 2
+    device, dev = _device(args)
+    r = device.factory_reset(dev)
+    ok = r["result"] == 0
+    print(f"{'factory reset done: switch the FM-1 off and on' if ok else 'NOT reset: ' + device.explain(r)} "
+          f"({r['songs']} song(s) on the FM-1)", file=args.out)
+    return 0 if ok else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="fm1song", description="FM-1 Accompaniment song compiler (fm1-song/1)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -362,7 +377,8 @@ def main(argv=None):
     for name, fn, what in (("list", cmd_list, "the songs on the FM-1"),
                            ("send", cmd_send, "store songs on the FM-1 (writes its song area)"),
                            ("delete", cmd_delete, "remove songs from the FM-1 (writes its song area)"),
-                           ("wipe", cmd_wipe, "erase every song on the FM-1 (writes its song area; asks for --yes)")):
+                           ("wipe", cmd_wipe, "erase every song on the FM-1 (writes its song area; asks for --yes)"),
+                           ("factory-reset", cmd_factory_reset, "erase songs, saved presets and settings (writes; asks for --yes)")):
         p = sub.add_parser(name, help=what)
         if name == "send":
             p.add_argument("songs", nargs="+", metavar="SONG_DIR|FILE.fm1s")
@@ -370,8 +386,8 @@ def main(argv=None):
                            help="send the files as they are, unchecked (only for testing the FM-1's own check)")
         elif name == "delete":
             p.add_argument("slugs", nargs="+", metavar="SLUG")
-        elif name == "wipe":
-            p.add_argument("--yes", action="store_true", help="really erase every song on the FM-1")
+        elif name in ("wipe", "factory-reset"):
+            p.add_argument("--yes", action="store_true", help="really erase it on the FM-1")
         p.add_argument("--port", metavar="NAME", help="the MIDI port to use (part of its name)")
         p.add_argument("--emu-pipe", action="store_true", help=argparse.SUPPRESS)   # fm1-live FM1_USB_HOST
         p.set_defaults(fn=fn)

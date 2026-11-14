@@ -22,12 +22,13 @@ import fm1_install as I  # noqa: E402
 OURS = "FM-1_46"                       # our firmware's identity prefix (firmware/app/fm1.toml id_prefix)
 SC_LIST, SC_ENTRY, SC_END, SC_SEND, SC_DELETE, SC_RESULT = 0x70, 0x71, 0x72, 0x73, 0x74, 0x7F
 SC_WIPE = 0x75                         # M5.1: every song erased (the whole song store)
+SC_FACTORY = 0x78                      # M10.1: FACTORY RESET: the song store, the saved presets and the settings, all erased / defaults
 BUSY = 10                              # M5.1: "making room": the FM-1 compacts from its main loop; send again
 RESULTS = {0: "ok", 1: "the FM-1's flash is not usable (RAM ONLY): it cannot keep songs",
            2: "the file is too big for the FM-1 (M5: 256 KiB at most; M4: 64 KiB)", 3: "the transfer stopped (USB)",
            4: "the file arrived damaged (CRC)", 5: "the FM-1 refused the song", 6: "the FM-1 could not store it",
            7: "no such song on the FM-1", 8: "the FM-1 did not understand the request (an older firmware?)",
-           9: "the FM-1 is in SYNTH or BACKTRACK mode: switch it off and on, choose SONG LEARN, then send",
+           9: "the FM-1 is in SYNTH or BACKTRACK mode: switch it off and on, choose SONG LEARN, then send (or reset)",
            10: "the FM-1 is still making room (try again in a minute)"}
 SONG_ERRORS = {-1: "SHORT", -2: "MAGIC", -3: "VERSION", -4: "SIZE", -5: "CRC", -6: "HEADER", -7: "DIRECTORY",
                -8: "MISSING", -9: "META", -10: "SECTIONS", -11: "CHORDS", -12: "CHANGES", -13: "BARS", -14: "LAYERS",
@@ -227,6 +228,14 @@ def song_wipe(dev):
     dev.link.drain()
     dev.link.send(I.frame(SC_WIPE, b"WIPE"))
     return _wait(dev.link, _result(SC_WIPE), first=60.0)
+
+
+def factory_reset(dev):
+    """M10.1: FACTORY RESET (WRITES: erases the song store and the preset object, puts the settings back to their defaults)
+    -> the result dict. The FM-1 then shows FACTORY RESET DONE - SWITCH OFF AND ON"""
+    dev.link.drain()
+    dev.link.send(I.frame(SC_FACTORY, b"RESET"))
+    return _wait(dev.link, _result(SC_FACTORY), first=120.0)
 
 
 def song_delete(dev, slug):

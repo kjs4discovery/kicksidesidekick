@@ -25,6 +25,8 @@ static void num_cat(char *d, uint32_t v);
 static int lm_active(void);              /* M10.1: SONG LEARN's melody sound on vsynth (below input_play) */
 static void lm_off(void);
 static void mode_leave(void);            /* M10.1: HOME on a mode's first screen (synthui.c) */
+static int settings_factory(void);       /* M10.1: FACTORY RESET puts the settings back */
+static void ui_reset_done(void);         /* M10.1: and shows FACTORY RESET DONE */
 #include "library.c"
 
 #define KEY_LOW 53                       /* key 0 is F3 (plat.h) */
@@ -68,7 +70,8 @@ static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 18
 
 enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH,   /* (M5: the mode screen, SYNTH) */
        V_WIPE,                           /* M5.1: WIPE SONG STORE, asked first */
-       V_SETUP };                        /* M8: BACKTRACK's setup (bt.c) */
+       V_SETUP,                          /* M8: BACKTRACK's setup (bt.c) */
+       V_RESET };                        /* M10.1: FACTORY RESET DONE - SWITCH OFF AND ON: nothing more is drawn or read */
 #define WIPE_HOLD_MS 2000u               /* PLAY held this long on the WIPE screen: the songs are erased */
 static void wipe_open(int back);
 /* the play screen's views (EDIT); PV_CHORD: the part's main view (the chord, or your part's note or hit) */
@@ -349,6 +352,23 @@ static void settings_save(void)
     ui.set_dirty = 0;
     if (ui.flash_ok && plat_store_save(OBJ_SETTINGS, &ui.set, sizeof ui.set) == 0)
         player_stats.settings_saves++;
+}
+
+/* M10.1: FACTORY RESET's settings: a record that is not ours is saved (an A/B store save: old or new, torn-write safe); reading it back is
+ * "none yet", so settings_load's own defaults apply (and are applied); 0 ok */
+static int settings_factory(void)
+{
+    struct settings z;
+    uint32_t i;
+    int e = 0;
+    for (i = 0; i < sizeof z; i++)
+        ((uint8_t *)&z)[i] = 0;
+    if (ui.flash_ok)
+        e = plat_store_save(OBJ_SETTINGS, &z, sizeof z);
+    if (e == 0)
+        settings_load();
+    ui.set_dirty = 0;
+    return e;
 }
 
 /* -------------------------------------------------------------- the platform's calls --- */
@@ -1616,6 +1636,8 @@ static uint32_t held_ms(uint32_t t, uint32_t now)
 static void input(void)
 {
     uint32_t keys = plat_keys(), btn = plat_buttons(), down = btn & ~ui.buttons, k, now = plat_ms();
+    if (ui.view == V_RESET)              /* M10.1: after a FACTORY RESET: switch off and on (nothing is read) */
+        return;
     ui.seen_up |= ~btn & ALL_BUTTONS;    /* M7: a button held since power-on never opens the pop-up */
     /* M10.1: HOME acts when it is RELEASED, as a tap (under 2 s): a press that starts the 2 s hold never acts as a single press first */
     if (down >> B_HOME & 1u) {
@@ -4226,6 +4248,12 @@ static void frame_play(uint32_t now)
 }
 
 /* a message over the whole screen, drawn now (the main loop is busy: a song arriving over USB) */
+static void ui_reset_done(void)
+{
+    ui_busy("FACTORY RESET DONE", "SWITCH OFF AND ON");
+    ui.view = V_RESET;                   /* (input() and app_frame() then do nothing more) */
+}
+
 static void ui_busy(const char *a, const char *b)
 {
     lcd_fill(0, 0, 240, 240, C_BLACK);
@@ -4292,6 +4320,10 @@ void app_frame(void)
     }
     if (lib_poll()) {                    /* M5.1: room being made (a step at a time; the screen shows it) */
         ui.redraw = 1;
+        return;
+    }
+    if (ui.view == V_RESET) {            /* M10.1: FACTORY RESET DONE stays on the screen */
+        player_stats.ui_view = (uint32_t)V_RESET;
         return;
     }
     if (ui.lib_seen != lib_changes && ui.view != V_MODE && ui.view != V_SYNTH && ui.view != V_WIPE) {   /* songs sent or deleted: back to
