@@ -1085,3 +1085,61 @@ STORE, sends and deletes never touch it, and it never touches them.
 
 SETUP: PLAY, GLO, OCT-/OCT+ and now **SEQ** (the band kit) have jobs; every other button shows the "not implemented" pop-up. The play screen as in M9.
 SYNTH: SAVE has a job (it was "not yet").
+
+## M10.1 (0.10.2-m10.1: the user's notes on M10; docs/plan-M10.1.md; decisions docs/decisions-M10.1.md)
+
+Version 0.10.2-m10.1 (identity FM-1_46001002), the splash's second line "m10.1". Screenshots: docs/step-M10.1/ (the emulator; the file names below).
+
+### Part 1: screens and text
+
+- **The name** is "KickSide - Your Musical SideKick" on the splash (`m101p1-splash.png`), across the top of the mode screen (`m101p1-mode.png`), in the help and in
+  fm1-base's crash and safe-mode screens; one line in the larger type (the screen reader says "KickSide, your musical sidekick"). The mode order is unchanged:
+  SONG LEARN, BACKTRACK, SYNTH.
+- **SYNTH's edit pages name the preset**: "ENVELOPE - E-PIANO", "FX 2 - POTATO", "ENVELOPE - U05 ZUNJET" (`m101p1-t-env.png`); a title that does not fit
+  beside the page number ("3/9") is drawn in the next smaller type, never cut (`m101p1-t-user.png`: the longest name, 12 characters).
+- **The bottom instruction row** keeps each of its pages **6 s** (it was 3 s) in SONG LEARN, BACKTRACK and SYNTH (`m101p1-h-le-59.png`, `m101p1-h-le-61.png`: the two
+  pages of a stopped song; the second says "FX-LFO: pick part | again: volume").
+- **BACKTRACK, structure LOOP**: the section indicator says **LOOP** (never VERSE) and never blinks (`m101p1-loop.png`). VERSE/CHORUS and FULL as before.
+- **The value pop-up in SONG LEARN and SYNTH** (the BACKTRACK one of M10, same look and timing): SONG LEARN K1-K3 "Drums Level" / "Bass Level" / "Harmony Level" with
+  "2 of 3", SELECT "Tempo" "123 BPM", PRESETS "Start" with the section's name, ALGO "Start" "BAR 3" (`m101p1-vp-le-K1.png`, `m101p1-vp-le-PRE.png`); SYNTH's PRESET knob
+  "Preset" with the name, SELECT "Tempo", K1-K4 on the main screen the parameter's name and value ("CUTOFF 127": `m101p1-vp-sy-K1.png`, `m101p1-vp-sy-PRE.png`). The
+  main screen's bottom row no longer shows the turned value; the edit pages show their four values and open no pop-up for K1-K4.
+
+### Part 2: buttons
+
+- **The layer buttons (FX, SEL, ENV, LFO)**: a press on a layer that is **not your part makes it your part** (`m101p2-s-fx.png`: pop-up "Your Part" "Drums"; its volume does
+  not change); a press on **your part** cycles its volume FULL -> QUIET -> MUTED -> FULL (`m101p2-s-fx2.png`: "Drums Volume" "QUIET"). Holding does nothing special any more
+  (a hold is one press, acted on at once). Each layer keeps its own volume when your part moves; harmony is your part when a song opens. The same rule in BACKTRACK
+  (`m101p2-bt-fx2.png`); there the melody button only selects the melody (it is the keys: no volume).
+- **HOME**: one press goes up one level, as before, and from a mode's first screen (SONG LEARN's folders, BACKTRACK's SETUP, SYNTH's main screen) to the **mode screen**, so repeated
+  presses always end there (`m101p2-h-le3.png`). HOME acts when it is **released** (a tap, under 2 s); held 2 s it still goes straight to the mode screen, and a hold never acts as a
+  press first. In a yes/no question HOME is still "no", and on SYNTH's SAVE screen it still goes back one step. HOME no longer opens the "not implemented" pop-up anywhere.
+- **SONG LEARN's K4 = Melody Sound** (`m101p2-k4-first.png`): K4 steps **SONG** (the song's own instrument: the default when a song opens) and then the presets (the list below,
+  then your saved ones). A preset plays the melody layer on the synth (the notes are the song's; the other layers stay on the song player). Kept until a song is opened. A song whose
+  levels leave no room for the synth keeps SONG ("no room: keeps SONG"; only the private Zombie today). CPU, EAS + synth, the heaviest preset (MIAMI PAD) at the busiest levels of every
+  public song: 35 % of a block (limit 60 %). BACKTRACK's K4 now keeps its choice as a reference to the sound (a stock id or a user slot), not a list position: saving a preset in SYNTH
+  cannot shift it (M10-14).
+
+### Part 3: FACTORY RESET (writes: you run it)
+
+`tools/fm1song.sh factory-reset --yes` (without --yes it only explains): erases the song store, both preset sectors (U01-U30) and puts the settings back to their defaults. The FM-1 then shows
+"FACTORY RESET DONE / SWITCH OFF AND ON" (`m101p3-reset.png`) and reads nothing until it is switched off and on. Refused in SYNTH and BACKTRACK (as a send is). The firmware and the panel calibration
+stay. A power cut at any flash operation of it leaves a unit that boots (tools/m101_flash_test.py). `tools/fresh_install.sh PACKAGE` does the install, the reset and the library in one go (Part 6).
+
+### Part 4: the presets
+
+The list (SYNTH's PRESET knob, BACKTRACK's and SONG LEARN's K4): 1 E-PIANO, 2 E-GUITAR, 3 E-SITAR, 4 PARKER, 5 POTATO, 6 EDS, 7 STAB 84, 8 NEON PAD, 9 DUSK STRINGS, 10 OCT BOUNCE, 11 SUNSET LEAD,
+12 SYNC SCREAM, 13 CHROME BRASS, 14 GLASS PLUCK, 15 VAPOR KEYS, 16 RISER, 17 CHIP BLIP, 18 DRIVE BASS, 19 **ZUNJET**, 20 LASER ARP, 21 NIGHT DRIVE, 22 SAW STRINGS, 23 HORIZON PWM, 24 TAPE CHOIR, 25 GRID PULSE,
+26 OUTRUN BASS, 27 MIAMI PAD, 28 CHROME ARP, 29 NEON BELLS, 30 VHS STRINGS (then U01.. your saved ones). **E-GUITAR**: attack 12, fuzz 35 (the screen's numbers; everything else as before). **EDS** is a new fuzz bass
+(saw + a strong sub oscillator, a little detune for the warble, dark filter, fuzz 100; `m101p4-eds.png`). **ZUNJET** (your sound, read off the unit) replaces HAZE PAD in its place; its values are yours, LEVEL 97
+included (`m101p4-zj-filter.png`, `m101p4-zj-sound-a.png`). Loudness (vsynth_test LEVELS=1): E-GUITAR 1.6 dB below the median and ZUNJET 1.6 dB above it, both within the test's 3 dB; their LEVELs were not touched
+(103 and 94 would match them). EDS's LEVEL is 94.
+
+### Part 5: the songs
+
+camptown-races (chorus bar 3's rhythm; the "doo-dah" bars are A7), michael-row (the A4 of verse bar 3 moved to the next bar; the chart's third bar is G), oh-susanna (the "oh don't you cry for me" rhythm; 125 BPM),
+saints (135 BPM), scarborough-fair (the traditional rhythm, an 18-bar verse: 36 bars in all; the chart changed with it). Creep (private): bars 8, 16 and 40 are Cm all the way. Nothing else in any other song.
+
+### The census (M10.1)
+
+SETUP: **HOME** now has a job (the mode screen); SONG LEARN's folder list: HOME too. No screen opens the "not implemented" pop-up for HOME any more.
