@@ -580,7 +580,51 @@ def test_m101p4(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m101p1": test_m101p1, "m101p2": test_m101p2, "m101p3": test_m101p3, "m101p4": test_m101p4, "m101p5": test_m101p5}
+# --------------------------------------------------------------------------------------------- part 6
+def library_paths():
+    return [l.strip() for l in (ROOT / "songs/library.txt").read_text().splitlines() if l.strip() and not l.lstrip().startswith("#")]
+
+
+def test_m101p6(all_songs, rep):
+    lines, st, check = m5.checker("M10.1 part 6: songs/library.txt and tools/fresh_install.sh (the whole script on the emulator; never the unit)")
+    lib = library_paths()
+    songs = [p for p in lib if not p.startswith("songs/backtracks/")]
+    bts = [p for p in lib if p.startswith("songs/backtracks/")]
+    folders = sorted(f"songs/{p.name}" for p in m5.song_dirs())
+    check(songs == folders and len(bts) == 42 and all((ROOT / p / "song.yaml").is_file() for p in lib) and not any("private" in p for p in lib) and
+          bts == sorted(f"songs/backtracks/{p.name}" for p in (ROOT / "songs/backtracks").iterdir() if (p / "song.yaml").is_file()),
+          f"songs/library.txt: {len(songs)} public songs (every folder of songs/ but private/) and {len(bts)} backtracks, songs first, no private path")
+    check((ROOT / "songs/library.txt").read_text().startswith("# the songs and backtracks a new FM-1 gets; the website will use this list too"),
+          "its header comment says what it is")
+    before = prep_images()
+    host = f"env FM1_FRESH_EMU=1 {ROOT}/tools/fresh_install.sh"
+    r = m5.run("m101p6-fresh", 600000, [], flash=str(before), host=host)
+    out = r["out"]
+    listed = re.findall(r"^  (\S+)\s+\d+ bytes\s+\d+ blocks\s+(\S+)$", out, flags=re.M)
+    want = {Path(p).name for p in lib}
+    slugs = {m5.read_compiled(m5.compile_folder(ROOT / p)[0])["slug"] for p in lib}
+    check("factory reset done" in out and f"DONE: {len(lib)} of {len(lib)} entries" in out and not r["halt"],
+          f"the whole script on the emulator (no install step, no power cycle): the reset ran, {len(lib)} entries sent, the check says "
+          f"{re.findall(r'DONE: [^\n]*', out)[:1]}")
+    check(len(listed) == len(lib) and all(s == "ok" for _, s in listed) and {n for n, _ in listed} == slugs and "private" not in out and
+          "creep" not in {n for n, _ in listed},
+          f"fm1song list afterwards: {len(listed)} entries, every one 'ok', exactly the library's ({len(slugs - {n for n, _ in listed})} missing), "
+          f"no private song")
+    boot = m5.run("m101p6-boot", 5200, [], flash=str(r["flash"]))
+    sy = synth_run("m101p6-boot-sy", 5200, [], flash=str(r["flash"]))
+    bt = m5.run("m101p6-boot-bt", 5200, m8.BT, mode=None, flash=str(r["flash"]))
+    check(boot["stats"]["list_n"] == len(songs) and bt["stats"]["bt_n"] == len(bts) and sy["stats"]["preset_used"] == 0 and not boot["halt"],
+          f"after a power cycle: {boot['stats']['list_n']} songs in SONG LEARN, {bt['stats']['bt_n']} backtracks in BACKTRACK, "
+          f"{sy['stats']['preset_used']} saved presets (the old ones were erased)")
+    # the script refuses to go on when a step fails, and says how to go back
+    sh = (ROOT / "tools/fresh_install.sh").read_text()
+    check("Fallback: install the last good firmware again" in sh and "ask()" in sh and sh.count('ask "') >= 3 and "factory-reset --yes" in sh,
+          "the script asks y/n before each write, stops at the first failure and prints the fallback line")
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m101p1": test_m101p1, "m101p2": test_m101p2, "m101p3": test_m101p3, "m101p4": test_m101p4, "m101p5": test_m101p5, "m101p6": test_m101p6}
 
 
 def main():

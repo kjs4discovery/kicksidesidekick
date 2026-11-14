@@ -133,3 +133,16 @@ Format (docs/plan-M10.1.md, "Read this first"): one entry per judgment call the 
   as they are (the goldens are derived from the song folders, so nothing needed updating by hand).
 - songs/README.md: oh-susanna 125 BPM. The previews (two mp3s) of saints, oh-susanna and scarborough-fair were regenerated (`make_songs.py --preview`), as their tempo or
   length changed; camptown-races and michael-row have none.
+
+## M10.1-14 — Part 6: songs/library.txt and tools/fresh_install.sh
+- library.txt: one repository-relative path per line, comment lines start with #, the header the plan gave; first the 15 public song folders (every folder of
+  songs/ with a song.yaml but private/ and backtracks/; the six dropped songs are not generated), then the 42 backtracks (songs/backtracks/btNN-name): every file
+  step-M10-install.md sends today (its sends cover bt01-bt42 over the early and M10 lists). The checks in m101p6 recompute the list from the folders.
+- fresh_install.sh asks y/n at the three writing points (the install, the erase, the send); factory-reset itself carries --yes because the script's own y/n came
+  just before. Step 3 waits up to 90 s for the package's own identity (read from the package file with fm1_install.py's product_of, e.g. FM-1_46001002 for a release
+  build) in `fm1_install.py --info`. Step 6 only prints and waits for Enter. The sends are two `fm1song send` commands (songs, then backtracks), each stops
+  the script on a failure (the sender itself already answers "making room" by asking again, as M5.1 taught). Step 8 counts the 'ok' lines of `fm1song list` against the
+  library's entries and refuses UNREADABLE / DAMAGED. A failure anywhere prints "STOPPED at step N" and the fallback command (the M10 package) and exits 1.
+- Emulator mode (FM1_FRESH_EMU=1, used only by tools/m101_test.py): no install, no power-cycle prompt, y/n answered, every fm1song command gets --emu-pipe and its output
+  stays on stderr (the pipe is stdout). m101p6 ran the whole script once against the emulator: reset done, 57 entries sent and listed ok, no private song, and a boot
+  after it finds 15 songs, 42 backtracks, no presets. The script was NOT run against the unit and never will be by Claude Code.
