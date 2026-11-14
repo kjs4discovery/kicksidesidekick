@@ -63,8 +63,14 @@ store by `send` / `delete`). The final package (0.10.0-m10, with user presets) h
 
 ## Test results (build/step-M10/early/)
 
-See the report files below; filled in by Claude Code after the runs (LOG, 2026-11-14): m10p1..p6, m9p1, m9p4, m9census, pytest.
-The full suite (every older group, the timed flash tests) is the FINAL package's, once (Part 9).
+Run once on this package, build/step-M10/early/ (reports in emu-m10/ and emu-m9/; logs, times.txt):
+
+| Item | Result |
+|---|---|
+| m10 (tools/m10_test.py: m10p1 to m10p6) | **ALL PASS**, 29 checks, 816 s: the pause kept (starts 1, resume at bar 3 of the verse), the crash without a kick, the pop-up (titles, values, the 1.5 s close, a press that acts), NEXT, the indicator's blink within 2 frames of the line, the mode screen and splash, K1 to 42, the INFO line (the M9 package opens a file with INFO), every kit in all 11 styles at FULL, BUSY (notes identical across kits), CPU per kit |
+| m9 (m9p1, m9p4, m9census) | **ALL PASS**, 34 checks, 466 s (the count-in rules, the knob map and its boundaries, the button census with SEQ's new job on SETUP) |
+| pytest (tools/fm1song, C = Python for 42 backtracks x 11 styles x 4 tiers, the INFO goldens, the parser tests) | **298 passed**, 292 s |
+| the full suite, the timed-flash tests, the flash-ID check | the FINAL package's, once (Part 9) |
 
 ## Known
 
