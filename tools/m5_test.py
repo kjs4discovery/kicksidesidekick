@@ -69,8 +69,7 @@ M4_FLASH = ROOT / "build/step-M4/final/emu/flash/songs.bin"
 
 
 # M10 (decisions-M10.md M10-03, M10-04): songs held back from the suites, and a private song no test may read
-HELD_BACK = {"camptown-races": "fails m5p1's level checks (harmony L4 plays 4-note attacks, level loudness 1.64 > 1.6): the planning "
-                               "chat fixes it; not on the send list"}
+HELD_BACK = {}                                    # M10-03: camptown-races is fixed (the planning chat, 2026-11-14); none held back
 PRIVATE_SKIP = {"hallelujah"}                     # (the user's copyrighted import: no test reads it)
 
 
@@ -1066,16 +1065,16 @@ def test_part4(all_songs, rep):
 
 
 def test_part5(all_songs, rep):
-    """M3 part 5: Happy Birthday (its full run is the per-song test); here the list and the pickup. M10: 14 songs = the 9 older
-    + the 5 new ones sent (camptown-races is held back, HELD_BACK); it was a stale count (9) that failed in M9's untidy run (10)"""
+    """M3 part 5: Happy Birthday (its full run is the per-song test); here the list and the pickup. M10: 15 songs = the 9 older
+    + the 6 new ones; it was a stale count (9) that failed in M9's untidy run (10)"""
     lines, st, check = checker("Part 5: Happy Birthday")
     slugs = [c["slug"] for c in all_songs]
     i = slugs.index("happy-birthday")
     c = all_songs[i]
     bt = 3 * c["ppq"]
     mel = sorted(e[0] for e in c["layers"]["melody"]["variants"][1] if e[1] == 144)
-    check(len(all_songs) == 14 and c["pickup_beats"] == 1 and mel[:2] == [2 * c["ppq"], 2 * c["ppq"] + c["ppq"] // 2]
-          and c["bar_count"] == 17, f"14 songs; Happy Birthday: 3/4, a one-beat pickup of two eighths (melody at ticks "
+    check(len(all_songs) == 15 and c["pickup_beats"] == 1 and mel[:2] == [2 * c["ppq"], 2 * c["ppq"] + c["ppq"] // 2]
+          and c["bar_count"] == 17, f"15 songs; Happy Birthday: 3/4, a one-beat pickup of two eighths (melody at ticks "
           f"{mel[:2]}), 16 bars + the pickup bar, {own_bpm(c)} BPM")
     r = run("p5-list", 5300, [f"4600:e0:{i}"])
     r2 = run("p5-open", PLAY_MS + 7000, open_song(i) + press(OPEN_MS + 200, "LFO") + press(PLAY_MS, "PLAY"))

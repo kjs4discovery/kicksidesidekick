@@ -320,9 +320,9 @@ STYLE_OF = {"twelve-bar-blues": "shuffle", "saints": "march", "four-chords": "po
 
 # M10 (D059): the planning chat's six new songs (songs/m10_songs.py: melody, chart, credits, info line)
 sys.path.insert(0, str(HERE))
-from m10_songs import NEW_SONGS                                       # noqa: E402
+from m10_songs import NEW_SONGS, NEW_STYLE_OF                         # noqa: E402
 SONGS.update(NEW_SONGS)
-STYLE_OF.update({k: v["style"] for k, v in NEW_SONGS.items()})
+STYLE_OF.update(NEW_STYLE_OF)
 
 
 def arrange(s):
