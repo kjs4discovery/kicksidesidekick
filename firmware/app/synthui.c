@@ -18,7 +18,7 @@
  * Every screen is drawn from the parameter table (vsynth.h, vsynth_param): names, ranges and values. */
 #include "vsynth.h"
 
-enum { SY_MAIN, SY_PAGE, SY_MENU, SY_HELP, SY_SET };
+enum { SY_MAIN, SY_PAGE, SY_MENU, SY_HELP, SY_SET, SY_SAVE };   /* (M10: SY_SAVE) */
 enum { M_LEARN, M_BACKTRACK, M_SYNTH, MODES };   /* M8: the mode screen's choices, in order */
 #define QUICK_MS 1200u                   /* the bottom row shows a quick knob's value this long */
 #define SY_SET_ROWS 2u                   /* SYNTH's settings: drum volume, drum kit */
@@ -38,6 +38,8 @@ static struct {
     uint32_t shown;                      /* what the screen shows (a hash): redrawn when it changes */
     uint32_t drawn_scr;                  /* the screen last drawn (another one: cleared first) */
     uint32_t say_until;
+    uint32_t sv_slot, sv_cursor, sv_confirm, sv_back;   /* M10: the SAVE screen: the slot, the name's cursor, the REPLACE question */
+    char sv_name[VS_NAME + 1];
 } sy = {.bpm = 120};
 
 static void synth_load(uint32_t i);
@@ -152,9 +154,9 @@ static void mode_input(uint32_t keys, uint32_t btn, uint32_t down)
 /* -------------------------------------------------------------------- SYNTH mode --- */
 static void synth_load(uint32_t i)
 {
-    uint32_t n = vsynth_presets();
+    uint32_t n = pl_count();             /* M10: the stock presets, then the saved ones (upreset.h) */
     sy.preset = i < n ? i : 0;
-    vsynth_load(vsynth_stock(sy.preset));   /* (its arpeggio on, when the preset has one) */
+    vsynth_load(pl_get(sy.preset));   /* (its arpeggio on, when the preset has one) */
     player_stats.synth_preset = sy.preset;
 }
 
@@ -175,8 +177,10 @@ static uint32_t synth_jobs(void)
         return ALL_BUTTONS;
     case SY_SET:                         /* PLAY / EDIT change, GLO / HOME back */
         return oct | 1u << B_PLAY | 1u << B_EDIT | 1u << B_GLO | 1u << B_HOME;
-    default:                             /* the main screen and the pages: all but LFO, SCL, SAVE, REC */
-        return ALL_BUTTONS & ~(1u << B_LFO | 1u << B_SEL | 1u << B_SAVE | 1u << B_REC);
+    case SY_SAVE:                        /* M10: SAVE saves (twice if the slot is taken), HOME goes back */
+        return oct | 1u << B_SAVE | 1u << B_HOME;
+    default:                             /* the main screen and the pages: all but LFO, SCL, REC (M10: SAVE has its job) */
+        return ALL_BUTTONS & ~(1u << B_LFO | 1u << B_SEL | 1u << B_REC);
     }
 }
 
@@ -202,6 +206,108 @@ static void synth_page(uint32_t scr, uint32_t page)
     sy.page = page;
     sy.acc[0] = sy.acc[1] = sy.acc[2] = sy.acc[3] = 0;
     sy.quick_until = 0;
+}
+
+/* ------------------------------------------------------------------ M10 (D062): SAVE --- */
+static const char SV_CHARS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -";
+#define SV_NCH (sizeof SV_CHARS - 1u)
+
+static uint32_t sv_index(char c)
+{
+    uint32_t i;
+    if (c >= 'a' && c <= 'z')
+        c = (char)(c - 32);
+    for (i = 0; i < SV_NCH; i++)
+        if (SV_CHARS[i] == c)
+            return i;
+    return SV_NCH - 2u;                  /* (a character the editor has not: a space) */
+}
+
+static void save_open(void)
+{
+    const struct vs_preset *r = vsynth_now();
+    int32_t cur = pl_slot(sy.preset);
+    uint32_t k, first = UP_SLOTS;
+    for (k = 0; k < VS_NAME; k++)        /* the current preset's name, to start with (padded with spaces) */
+        sy.sv_name[k] = r->name[k] ? SV_CHARS[sv_index(r->name[k])] : ' ';
+    sy.sv_name[VS_NAME] = 0;
+    for (k = 0; k < UP_SLOTS && first == UP_SLOTS; k++)
+        if (!upreset_used(k))
+            first = k;
+    sy.sv_slot = cur >= 0 ? (uint32_t)cur : first < UP_SLOTS ? first : 0;   /* a saved preset: its slot; else the first empty */
+    sy.sv_cursor = 0;
+    sy.sv_confirm = 0;
+    sy.sv_back = sy.scr;
+    sy.scr = SY_SAVE;
+}
+
+static void save_do(void)
+{
+    struct vs_preset p = *vsynth_now();  /* (the sound as it is now, with every edit: in RAM) */
+    char t[24] = "";
+    uint32_t k, n = VS_NAME;
+    int e = -1;
+    while (n && sy.sv_name[n - 1u] == ' ')
+        n--;                             /* trailing spaces are not stored */
+    for (k = 0; k < VS_NAME; k++)
+        p.name[k] = k < n ? sy.sv_name[k] : 0;
+    if (!n)
+        for (k = 0; k < 6u; k++)
+            p.name[k] = "PRESET"[k];
+    p.version = VS_REC_VERSION;
+    if (ui.flash_ok) {
+        uint32_t t0 = plat_ms();
+        synth_mute(1);                   /* a fade out (one block), the flash write, a fade in: no click */
+        while (!synth_muted() && plat_ms() - t0 < 50u)
+            ;
+        e = upreset_save(sy.sv_slot, &p);
+        synth_mute(0);
+    }
+    t[0] = 'U';
+    t[1] = (char)('0' + (sy.sv_slot + 1u) / 10u);
+    t[2] = (char)('0' + (sy.sv_slot + 1u) % 10u);
+    if (e == 0) {
+        char ti[24] = "SAVED ";
+        text_cat(ti, t);
+        player_stats.preset_saves++;
+        synth_load(pl_index_of_slot(sy.sv_slot));   /* the sound goes on as the saved preset, now selected as U05 */
+        sy.scr = sy.sv_back;
+        sy.say_until = 0;
+        vpop_show(ti, vsynth_now()->name, "", 0);
+    } else {
+        sy.scr = sy.sv_back;
+        vpop_show("NOT SAVED", ui.flash_ok ? "the flash refused" : "no flash (RAM only)", "", 0);
+    }
+    sy.sv_confirm = 0;
+}
+
+/* the SAVE screen's input: SELECT the slot, K1 the name's cursor, K2 its character, SAVE saves (twice when the slot is taken),
+ * HOME goes back with nothing written */
+static void save_input(uint32_t down)
+{
+    int32_t d = plat_enc(EN_SELECT);
+    if (d && !sy.sv_confirm)
+        sy.sv_slot = (uint32_t)clamp((int32_t)sy.sv_slot + d, 0, (int32_t)UP_SLOTS - 1);
+    d = plat_enc(EN_K1);
+    if (d && !sy.sv_confirm)
+        sy.sv_cursor = (uint32_t)clamp((int32_t)sy.sv_cursor + d, 0, (int32_t)VS_NAME - 1);
+    d = plat_enc(EN_K2);
+    if (d && !sy.sv_confirm) {
+        int32_t i = (int32_t)sv_index(sy.sv_name[sy.sv_cursor]);
+        i = ((i + d) % (int32_t)SV_NCH + (int32_t)SV_NCH) % (int32_t)SV_NCH;
+        sy.sv_name[sy.sv_cursor] = SV_CHARS[i];
+    }
+    (void)plat_enc(EN_K3), (void)plat_enc(EN_K4), (void)plat_enc(EN_PRESET), (void)plat_enc(EN_ALGO);
+    if (down & 1u << B_HOME) {           /* cancel: nothing written */
+        sy.scr = sy.sv_back;
+        sy.sv_confirm = 0;
+        ui.redraw = 1;
+    } else if (down & 1u << B_SAVE) {
+        if (upreset_used(sy.sv_slot) && !sy.sv_confirm)
+            sy.sv_confirm = 1;           /* "REPLACE U05 <name>?" */
+        else
+            save_do();
+    }
 }
 
 static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now)
@@ -260,6 +366,9 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
             sy.scr = sy.back;
         }
         goto stats;
+    case SY_SAVE:                        /* M10: SAVE TO Unn */
+        save_input(down);
+        goto stats;
     case SY_MENU:                        /* the drum patterns: SELECT; SEQ chooses, PLAY chooses and plays; HOME back */
         d = plat_enc(EN_SELECT);
         if (d)
@@ -280,7 +389,7 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
     /* the main screen and the edit pages */
     d = plat_enc(EN_PRESET);
     if (d) {
-        int32_t n = (int32_t)vsynth_presets();
+        int32_t n = (int32_t)pl_count();   /* (M10: the stock presets, then the saved ones) */
         synth_load((uint32_t)((((int32_t)sy.preset + d) % n + n) % n));
     }
     d = plat_enc(EN_SELECT);
@@ -331,6 +440,8 @@ static void synth_input(uint32_t keys, uint32_t btn, uint32_t down, uint32_t now
                 param_turn(p, d, &sy.acc[k]);
         }
     }
+    if (down & 1u << B_SAVE)             /* M10: save this sound as a user preset */
+        save_open();
     if (down & 1u << B_SEQ) {            /* the drum pattern menu */
         sy.back = sy.scr;
         sy.menu_sel = synth_drum_pattern_of();
@@ -365,6 +476,17 @@ stats:
         player_stats.synth_engine = vsynth_now()->engine;
         player_stats.synth_bpm = sy.bpm;
         player_stats.synth_level = (uint32_t)vsynth_get(VP_LEVEL);
+        player_stats.preset_used = upreset_count();
+        player_stats.preset_sel = sy.preset;
+        player_stats.save_screen = sy.scr == SY_SAVE ? 1u + sy.sv_confirm : 0;
+        player_stats.save_slot = sy.sv_slot;
+        {
+            char lab[24];
+            pl_label(sy.preset, lab);
+            vpop_text(player_stats.preset_name, lab, sizeof player_stats.preset_name);
+            vpop_text(player_stats.next_text, sy.scr == SY_SAVE ? sy.sv_name : "", sizeof player_stats.next_text);   /* (the name
+                                          * being edited, for the tests) */
+        }
     }
     if (vsynth_get(VP_ARP_ON))
         lit |= 1u << B_ARP;
@@ -382,6 +504,11 @@ static uint32_t synth_hash(uint32_t now)
     h = h * 31u + sy.bpm * 1031u + (uint32_t)(ui.oct + 8) * 65537u + sy.menu_sel * 17u + sy.set_row * 3u;
     h = h * 31u + (uint32_t)synth_drums_on() * 5u + synth_drum_pattern_of() * 257u + synth_drum_beat() * 11u;
     h = h * 31u + drum_vol_set() * 13u + drum_kit_set() * 101u + (now < sy.quick_until ? sy.quick + 1u : 0) * 999u;
+    if (sy.scr == SY_SAVE) {             /* M10 */
+        h = h * 31u + sy.sv_slot * 7u + sy.sv_cursor * 13u + sy.sv_confirm * 17u;
+        for (k = 0; k < VS_NAME; k++)
+            h = h * 31u + (uint8_t)sy.sv_name[k];
+    }
     if (sy.scr == SY_HELP)
         h += now / 500u;                 /* (the CPU line) */
     return h ^ (now < sy.say_until ? 0x5A5A5A5Au : 0);
@@ -454,9 +581,16 @@ static void draw_synth_main(uint32_t now)
     for (k = 0; k < VS_NAME; k++)
         name[k] = r->name[k];
     name[VS_NAME] = 0;
-    num_cat(t, sy.preset + 1u);
-    text_cat(t, " / ");
-    num_cat(t, vsynth_presets());
+    if (pl_slot(sy.preset) >= 0) {       /* M10: a saved preset: "U05" */
+        char lab[24];
+        pl_label(sy.preset, lab);
+        lab[3] = 0;
+        text_cat(t, lab);
+    } else {
+        num_cat(t, sy.preset + 1u);
+        text_cat(t, " / ");
+        num_cat(t, vsynth_presets());
+    }
     text_cat(t, "  ");
     text_cat(t, vsynth_engine_name(r->engine));
     synth_top("SYNTH", t);
@@ -532,7 +666,7 @@ static void draw_synth_help(void)
     static const char *const R[10][2] = {{"EDIT", "next page"}, {"ENV", "envelope"}, {"FX", "effect pages"},
                                          {"ARP", "arp on/off"}, {"PLAY", "drums"}, {"SEQ", "pattern"},
                                          {"HOME", "main / mode"}, {"GLO", "again: settings"},
-                                         {"LFO SCL", "not yet"}, {"SAVE REC", "not yet"}};
+                                         {"SAVE", "save sound"}, {"LFO SCL REC", "not yet"}};
     uint32_t r, band;
     char t[32] = "CPU ";
     synth_top("SYNTH CONTROLS", "any button: back");
@@ -576,6 +710,65 @@ static void draw_synth_set(void)
     draw_legend(Y_LEGEND, "SELECT row|ALGO change|GLO back");
 }
 
+/* the SAVE screen (M10): five slots around the chosen one, the name with its cursor, or the REPLACE question */
+static void draw_synth_save(void)
+{
+    uint32_t i, top = sy.sv_slot >= 2u ? sy.sv_slot - 2u : 0;
+    char t[16] = "SAVE TO U", nm[VS_NAME + 1];
+    if (top > UP_SLOTS - 5u)
+        top = UP_SLOTS - 5u;
+    t[9] = (char)('0' + (sy.sv_slot + 1u) / 10u);
+    t[10] = (char)('0' + (sy.sv_slot + 1u) % 10u);
+    t[11] = 0;
+    synth_top(t, sy.sv_confirm ? "SAVE = yes   HOME = no" : "SELECT: slot");
+    for (i = 0; i < 5u; i++) {
+        uint32_t s = top + i;
+        char u[8] = "U", name[VS_NAME + 1];
+        int sel = s == sy.sv_slot;
+        u[1] = (char)('0' + (s + 1u) / 10u);
+        u[2] = (char)('0' + (s + 1u) % 10u);
+        u[3] = 0;
+        upreset_name(s, name);
+        cv_begin(240, 20, C_BLACK);
+        if (sel)
+            cv_rect(2, 1, 236, 18, C_LINE);
+        cv_text(10, 2, &FONT_XS, u, sel ? C_HI : C_GRAY);
+        cv_text(48, 2, &FONT_XS, name[0] ? name : "EMPTY", name[0] ? (sel ? C_WHITE : C_GRAY) : C_DIM);
+        cv_blit(0, 34u + i * 20u);
+    }
+    cv_begin(240, 76, C_BLACK);
+    if (sy.sv_confirm) {                 /* the slot holds a preset: replace it? */
+        char q[40] = "REPLACE U", name[VS_NAME + 1];
+        q[9] = (char)('0' + (sy.sv_slot + 1u) / 10u);
+        q[10] = (char)('0' + (sy.sv_slot + 1u) % 10u);
+        q[11] = 0;
+        upreset_name(sy.sv_slot, name);
+        text_cat(q, " ");
+        text_cat(q, name);
+        text_cat(q, "?");
+        text_in(0, 240, 8, &FONT_B, q, C_WHITE);
+        text_in(0, 240, 40, &FONT_XS, "SAVE = yes    HOME = no", C_AMB);
+    } else {
+        uint32_t k;
+        int32_t x = 14, cx = 14, cw = 10;
+        for (k = 0; k < VS_NAME; k++)
+            nm[k] = sy.sv_name[k];
+        nm[VS_NAME] = 0;
+        cv_text(10, 2, &FONT_XS, "NAME", C_GRAY);
+        for (k = 0; k < VS_NAME; k++) {  /* a character at a time: the cursor under one */
+            char c[2] = {nm[k], 0};
+            int32_t w = text_w(&FONT_M, c[0] == ' ' ? "-" : c);
+            if (k == sy.sv_cursor)
+                cx = x, cw = w;
+            cv_text(x, 20, &FONT_M, c[0] == ' ' ? " " : c, C_WHITE);
+            x += w + 2;
+        }
+        cv_rect(cx, 48, cw, 3, C_HI);
+    }
+    cv_blit(0, 138);
+    draw_legend(Y_LEGEND, sy.sv_confirm ? "SAVE yes|HOME no" : "K1 cursor|K2 letter|SAVE save|HOME back");
+}
+
 static void draw_synth(void)
 {
     uint32_t now = plat_ms();
@@ -595,6 +788,9 @@ static void draw_synth(void)
         break;
     case SY_SET:
         draw_synth_set();
+        break;
+    case SY_SAVE:
+        draw_synth_save();
         break;
     default:
         draw_synth_main(now);

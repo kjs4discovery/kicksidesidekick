@@ -173,7 +173,7 @@ static void bt_row(int32_t y, const char *k, const char *label, const char *valu
 static void draw_setup(void)
 {
     const struct lib_item *it = bt_item(bt.prog);
-    char t[48] = "", kn[24] = "", ch[48] = "";
+    char t[48] = "", kn[24] = "", ch[48] = "", lab[24];
     uint32_t band;
     for (band = 0; band < 2u; band++) {
         int32_t y0 = (int32_t)band * 120;
@@ -202,7 +202,8 @@ static void draw_setup(void)
             /* (M10: the KIT row under TEMPO: the rows from STYLE on are 2 px closer, 18 px apart, KEY's chord line 14 under it) */
             bt_row(78 - y0, "K2", "STYLE", bt.style == BT_WALTZ ? "WALTZ (3/4)" : BT_STYLE_NAME[bt.style], "");
             bt_row(96 - y0, "K3", "COMPLEXITY", BT_CPLX_NAME[bt.cplx], "");
-            bt_row(114 - y0, "K4", "MELODY SOUND", vsynth_stock(bt.sound)->name, "");
+            pl_label(bt.sound % pl_count(), lab);
+            bt_row(114 - y0, "K4", "MELODY SOUND", lab, "");
             kn[0] = 0;
             bt_key_name(kn, it, bt.key, 1);
             ch[0] = 0;
@@ -241,8 +242,8 @@ static void bt_style_bpm(void)
 
 static void bt_sound(uint32_t i)
 {
-    bt.sound = i % vsynth_presets();
-    vsynth_load(vsynth_stock(bt.sound));
+    bt.sound = i % pl_count();          /* (M10: the stock presets, then the saved ones) */
+    vsynth_load(pl_get(bt.sound));
     vsynth_set(VP_ARP_ON, 0);            /* (the melody: the notes played, not an arpeggio) */
     player_stats.synth_preset = bt.sound;
 }
@@ -891,7 +892,7 @@ static void bt_vp(uint32_t k)
         break;
     case VK_SOUND:
         title = "Melody Sound";
-        text_cat(v, vsynth_stock(bt.sound)->name);
+        pl_label(bt.sound % pl_count(), v);
         break;
     case VK_KEY:
         title = "Key";
@@ -932,7 +933,7 @@ static void bt_setup_input(uint32_t down)
     if (d3)
         bt.cplx = (uint32_t)clamp((int32_t)bt.cplx + d3, 1, 3);
     if (d4)
-        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)vsynth_presets()));
+        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)pl_count()));
     if (dp)
         bt.key = (uint32_t)bt_wrap((int32_t)bt.key + dp, 12);
     if (da)
@@ -997,7 +998,7 @@ static void bt_play_input(uint32_t down)
     if (da)
         bt_vp(VK_STRUCT);
     if (d4) {
-        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)vsynth_presets()));
+        bt_sound((uint32_t)bt_wrap((int32_t)bt.sound + d4, (int32_t)pl_count()));
         bt_vp(VK_SOUND);
         bt.sound_until = now + 1500u;
     }

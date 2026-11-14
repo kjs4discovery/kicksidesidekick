@@ -1,6 +1,6 @@
 # Licence: TBD (see D017)
 # Everything here runs on the laptop and in the emulator only; nothing writes to the FM-1.
-.PHONY: firmware emu shot patches m2-test store-test fuzz hello songs song-test m51-test
+.PHONY: firmware emu shot patches m2-test store-test fuzz hello songs song-test m51-test upreset-test
 
 firmware:            ## build firmware/app/build/fm1acc.fwsc
 	firmware/build.sh
@@ -33,3 +33,5 @@ song-test:           ## M1a: the song compiler's tests (pytest, incl. fuzzing; ~
 	cd tools/fm1song && ../../.venv/bin/python -m pytest -q
 m51-test: firmware   ## M5.1: the song store on the TIMED emulator (flash timing, XIP-off reads, watchdog) -> build/emu/m51/report.md
 	.venv/bin/python -I tools/m51_test.py
+upreset-test:        ## M10: the user presets' object on a simulated flash, a power cut at every operation (ASan/UBSan)
+	tools/upreset_test.sh

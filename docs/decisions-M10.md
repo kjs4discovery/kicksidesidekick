@@ -148,3 +148,31 @@ Format (docs/plan-M10.md, "Read this first"): one entry per judgment call the pl
 - Measured: CPU with FULL, BUSY in a chorus, MIAMI PAD x 4 voices, a live switch, POP / ROCK / FUNK: STUDIO 44 %, ACOUSTIC 41 %,
   ELECTRO 57 %, CHIP 47 % of a block (limit 60 %): all four kits are kept. ELECTRO is the heaviest (the 808's noise voices).
 - Undo: player.c player_kit / kit_hit; bt.c BT_KIT_* and bt_kit_apply; the SETUP rows.
+
+## M10-14 — user presets: object, list, SAVE screen (Part 7)
+- Flash addresses: grep of every flash address in firmware/app and fm1-base (device/, include/, host/) finds nothing at 0xDE000 /
+  0xDF000 (store.h: the song store ends at 0xDBFFF, the panel pair is 0xDC000, the update staging area starts at 0xE0000; our unit's
+  dump has 0xFF there). OBJ_PRESETS joins app.h's object map: 0xDE000 (an A/B pair, copy A 0xDE000, B 0xDF000).
+- Object: 8-byte header ("UPRS", container version 1, 30 slots) + 30 x 64-byte M7 records = 1,928 B (<= 3,840). A slot is empty when
+  its record's version byte is 0. A record that vsynth_record refuses (bad version / engine) is an empty slot; one with parameters out
+  of range (an older version's missing ones) loads with the defaults (vsynth_record's rule; there is only version 1 today). Built in
+  RAM (upreset.c static buffers, .bss: +3.9 KB), never from a const table; start-up only reads (upreset_boot); a save writes through
+  plat_store_save, the same path as the settings object.
+- The list: pl_count / pl_get / pl_label / pl_slot (upreset.c): stock 1..30, then used slots in slot order, "U05 <name>". BACKTRACK
+  keeps its sound as a LIST INDEX until power-off: saving a preset in SYNTH (a new slot before it) shifts the user entries by one;
+  a K4 turn fixes it. Not handled further.
+- SAVE screen (synthui.c): five slot rows around the chosen one, "EMPTY" or the name, the name (the current preset's, upper-cased,
+  padded with spaces) in FONT_M with a cursor bar; characters A-Z, 0-9, space, '-' (K2); K1 the cursor (clamped 1..12); SELECT the slot
+  (clamped U01..U30, no wrap); the start slot: the current preset's slot if it is a saved one, else the first empty (else U01); SAVE
+  on a taken slot asks first ("REPLACE U05 <name>?  SAVE = yes  HOME = no"; the title says it too), HOME cancels at either point,
+  nothing written. The name's trailing spaces are not stored; an all-space name is stored as "PRESET". After the write: "SAVED U05"
+  (the value pop-up, 1,500 ms; a press closes it and does its job), the sound goes on as the saved preset, selected as U05. Other
+  buttons on the SAVE screen show the NOT IMPLEMENTED pop-up like on every screen. SAVE with the flash not ready (RAM ONLY): "NOT
+  SAVED". SAVE's help line on SYNTH's help screen.
+- The save moment: synth_mute (synth.c): the output fades to silence over one block (a linear ramp), the main loop waits for it (at
+  most 50 ms), writes, and fades back in over one block. No delete (overwrite only: backlog).
+- Measured: a save = 1 sector erase + 9 page programs (10 flash operations); on the timed emulator the longest stretch without a
+  watchdog feed over 48 runs incl. 30 saves in a row is 34 ms (limit 1,000); 0 watchdog resets, 0 XIP reads with a flash command running.
+  Host: tools/upreset_test.c (ASan/UBSan, `make upreset-test`): junk, bad CRC / length / magic, 30 saves, a cut at every operation
+  over three saves (both copies): old or new, never mixed; no flash operation outside 0xDE000..0xDFFFF.
+- Undo: app.h OBJ_PRESETS and the map, fm1.toml's o2 (upreset.c), upreset.c / upreset.h, synthui.c (SY_SAVE and the list), bt.c (pl_*).

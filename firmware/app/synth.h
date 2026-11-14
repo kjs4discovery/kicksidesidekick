@@ -28,6 +28,8 @@ uint32_t synth_drum_beat(void);           /* the beat playing in its bar (0..), 
 uint32_t synth_drum_hits(void);           /* hits played since start-up, every kit */
 void synth_midi(uint8_t status, uint8_t d1, uint8_t d2);   /* main loop: queue a channel message */
 void synth_send_now(uint8_t status, uint8_t d1, uint8_t d2);   /* audio interrupt only: to EAS, now */
+void synth_mute(int on);                  /* M10: fade the output out / in over one block (the preset save) */
+int synth_muted(void);                    /* the output is silent */
 void synth_panic(void);                   /* any context: all notes off, now */
 void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12);   /* audio interrupt: n stereo frames, 24-bit */
 uint32_t synth_pool_used(void);           /* EAS's memory in use, and the pool's size (bytes) */

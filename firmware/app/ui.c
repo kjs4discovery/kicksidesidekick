@@ -17,6 +17,7 @@
 #include "logo_gen.h"
 #include "guitar.h"
 #include "ukulele.h"
+#include "upreset.h"
 
 static void ui_busy(const char *a, const char *b);
 static void text_cat(char *d, const char *s);
@@ -1500,6 +1501,8 @@ static void input(void)
         return;
     }
     if (!ui.splash && (ui.view == V_MODE || ui.view == V_SYNTH)) {   /* M5: the mode screen, SYNTH mode */
+        if (vpop.open && (down || (int32_t)(now - vpop.until) >= 0))   /* (M10: "SAVED U05" closes like BACKTRACK's) */
+            vpop_close(down != 0);
         ui.released = ui.buttons & ~btn;
         if (ui.view == V_MODE)
             mode_input(keys, btn, down);
@@ -4093,6 +4096,7 @@ void app_ui_init(void)
 {
     ui.flash_ok = plat_data(PLAT_DATA_LO) != 0;   /* 0: the platform refused the chip (fm1-base main_fm1.c) */
     settings_load();
+    upreset_boot();                      /* M10: the user presets (a read; never a write at start-up) */
     ui.splash = plat_ms() < SPLASH_MS;   /* (after a restore or a resource install: no splash, straight back) */
     ui.view = ui.splash ? V_MODE : V_LIST;   /* M5: after the splash, LEARN or SYNTH (no splash: learning, as before) */
     player_stats.mode = ui.splash ? 0 : 1u;

@@ -114,7 +114,37 @@ static void eas_block(int32_t *lr, uint32_t n, uint32_t master_q12)
     player_after(plat_ticks24() - t0, eas->pVoiceMgr ? (uint32_t)eas->pVoiceMgr->activeVoices : 0u);
 }
 
+/* M10 (D062): a mute for the moment a preset is saved (the flash erase stalls the audio): the output fades to silence over one
+ * block and back over one, so there is no click. Main loop: synth_mute(1), wait for synth_muted(), save, synth_mute(0). */
+static volatile uint8_t mute_want;
+static int32_t mute_cur = 4096;           /* the gain now, Q12 (the interrupt's) */
+static volatile uint8_t mute_done;        /* the gain is 0 */
+void synth_mute(int on) { mute_want = (uint8_t)(on != 0); }
+int synth_muted(void) { return mute_done; }
+
+static void mute_apply(int32_t *lr, uint32_t n)
+{
+    int32_t target = mute_want ? 0 : 4096, a = mute_cur, i;
+    if (a == 4096 && target == 4096)
+        return;
+    for (i = 0; i < (int32_t)n; i++) {
+        int32_t g = a + (target - a) * i / (int32_t)n;
+        lr[2 * i] = ((lr[2 * i] >> 6) * g) >> 6;
+        lr[2 * i + 1] = ((lr[2 * i + 1] >> 6) * g) >> 6;
+    }
+    mute_cur = target;
+    mute_done = target == 0;
+}
+
+static void synth_render_inner(int32_t *lr, uint32_t n, uint32_t master_q12);
+
 void synth_render(int32_t *lr, uint32_t n, uint32_t master_q12)
+{
+    synth_render_inner(lr, n, master_q12);
+    mute_apply(lr, n);
+}
+
+static void synth_render_inner(int32_t *lr, uint32_t n, uint32_t master_q12)
 {
     uint32_t i, t;
     uint32_t t0;

@@ -958,3 +958,21 @@ Learned / measured: ELECTRO is the heaviest kit (57 %): little room left under 6
 Hardware touched: none
 Questions for the planning chat: decisions M10-13.
 Next: the early install point (0.10.1-m10a), then Part 7.
+
+2026-11-14 02:10 — Step M10 Part 7 (saving user presets, D040) —
+Status: done
+Did:
+- OBJ_PRESETS at 0xDE000 (an A/B pair; nothing else uses it: grep of every flash address, M10-14), firmware/app/upreset.c / .h (the object:
+  header + 30 x 64-byte records = 1,928 B; the list; start-up reads only), SYNTH's SAVE screen (slot, name editor, REPLACE question, "SAVED U05"),
+  the PRESET knob and BACKTRACK's K4 on the stock + saved list, synth_mute around the write.
+- Tests: tools/upreset_test.c (host, ASan/UBSan; `make upreset-test`, tools/upreset_test.sh): all ok, a cut at every flash operation over
+  three saves (a save = 10 operations): old or new, never mixed. m10p7 (tools/m10_test.py) ALL PASS on build/step-M10/pkgs/p7.fwsc: the
+  SAVE flow, the REPLACE question and HOME, the list, BACKTRACK's K4, a power cycle, junk at boot (no preset, no flash operation), a
+  hand-made record with parameters out of range loads with the defaults. tools/m10_flash_test.py (timed emulator) ALL PASS: 30 saves in a
+  run (object read back, 0 watchdog resets, 0 XIP reads, longest unfed stretch 34 ms, the song store and the settings sector byte for
+  byte unchanged), a power cut at each of the 20 flash operations of two saves (both copies) with a boot after each: always a whole
+  object, junk at boot, the object untouched by a send, a delete and WIPE, 30 presets after a power cycle.
+Learned / measured: RAM +3.9 KB (the object buffers). A save is 10 flash operations.
+Hardware touched: none
+Questions for the planning chat: decisions M10-14 (SAVE screen details; BACKTRACK keeps its sound as a list index).
+Next: Part 8 (docs, NOTICE), then Part 9.

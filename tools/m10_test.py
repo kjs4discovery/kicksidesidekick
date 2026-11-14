@@ -384,8 +384,113 @@ def test_m10p6(all_songs, rep):
     return st["ok"]
 
 
+# --------------------------------------------------------------------------------------------- part 7
+SYNTH_PRE = ["4050:e0:2", "4200:PLAY", "4260:PLAY^"]       # the mode screen: SELECT to SYNTH, PLAY
+
+
+def synth_run(name, ms, script, **kw):
+    return m5.run(name, ms, SYNTH_PRE + script, mode=None, **kw)
+
+
+def test_m10p7(all_songs, rep):
+    lines, st, check = m5.checker("M10 part 7: saving user presets (D040, D062)")
+    from concurrent.futures import ThreadPoolExecutor
+    K1, K2 = "e2", "e3"
+    with ThreadPoolExecutor(3) as ex:
+        o = ex.submit(lambda: synth_run("m10p7-open", 5600, P(5000, "SAVE")))
+        e = ex.submit(lambda: synth_run("m10p7-edit", 6400, P(5000, "SAVE") + [f"5400:{K1}:2", f"5450:{K2}:1", f"5500:e0:4"]))
+        sv = ex.submit(lambda: synth_run("m10p7-save", 7600, P(5000, "SAVE") + [f"5400:{K1}:2", f"5450:{K2}:1", f"5500:e0:4"] +
+                                         P(6000, "SAVE")))
+        o, e, sv = o.result(), e.result(), sv.result()
+    O, E, S = o["stats"], e["stats"], sv["stats"]
+    check(O["save_screen"] == 1 and O["save_slot"] == 0 and O["next_text"] == "E-PIANO       "[:7].strip().ljust(12) or O["next_text"].startswith("E-PIANO"),
+          f"SAVE opens the SAVE screen at the first empty slot (U01) with the current preset's name {O['next_text']!r} "
+          f"(m10p7-open.png)")
+    check(E["next_text"].startswith("E-QIANO") and E["save_slot"] == 4 and E["save_screen"] == 1,
+          f"K1 moves the cursor, K2 changes the character (E-PIANO -> {E['next_text']!r}); SELECT chose slot U05 "
+          f"(slot index {E['save_slot']}; m10p7-edit.png)")
+    check(S["preset_saves"] == 1 and S["preset_used"] == 1 and S["preset_name"] == "U05 E-QIANO" and S["vp_title"] == "SAVED U05"
+          and S["save_screen"] == 0 and sv["ops"] == 10,
+          f"SAVE again saves: the pop-up {S['vp_title']!r}, the sound goes on as U05 ({S['preset_name']!r}), one erase and 9 "
+          f"page writes ({sv['ops']} flash operations; m10p7-save.png)")
+    # replace: the slot is taken: SAVE, SAVE (the question), HOME (cancel: nothing written), then SAVE, SAVE, SAVE (replaced)
+    base = P(5000, "SAVE") + [f"5400:{K1}:2", f"5450:{K2}:1", "5500:e0:4"] + P(6000, "SAVE")
+    with ThreadPoolExecutor(3) as ex:
+        q = ex.submit(lambda: synth_run("m10p7-ask", 9000, base + P(7800, "SAVE") + P(8100, "SAVE"), flash="songs"))
+        c = ex.submit(lambda: synth_run("m10p7-cancel", 9800, base + P(7800, "SAVE") + P(8100, "SAVE") + P(8400, "HOME"),
+                                         flash="songs"))
+        r2 = ex.submit(lambda: synth_run("m10p7-replace", 10600, base + P(7800, "SAVE") + [f"8000:{K2}:1"] + P(8100, "SAVE") +
+                                          P(8400, "SAVE") + P(8700, "SAVE"), flash="songs"))
+        q, c, r2 = q.result(), c.result(), r2.result()
+    Q, C, R2 = q["stats"], c["stats"], r2["stats"]
+    check(Q["save_screen"] == 2 and Q["preset_saves"] == 1,
+          "a taken slot: the second SAVE asks \"REPLACE U05 <name>?  SAVE = yes  HOME = no\" (m10p7-ask.png)")
+    check(C["save_screen"] == 0 and C["preset_saves"] == 1 and c["ops"] == q["ops"] == 10 and C["ui_view"] == V_SYNTH,
+          f"HOME = no: back, nothing written (flash operations {c['ops']}, saves {C['preset_saves']})")
+    check(R2["preset_saves"] == 2 and r2["ops"] == 20 and R2["preset_used"] == 1,
+          f"yes: the slot is replaced ({R2['preset_saves']} saves, {r2['ops']} flash operations, still {R2['preset_used']} "
+          f"preset; the other copy of the A/B pair)")
+    # the preset list: PRESET knob (e6): 30 stock, then the saved ones; BACKTRACK's K4 the same (a flash with the preset in it)
+    fl = sv["flash"]
+    with ThreadPoolExecutor(3) as ex:
+        a = ex.submit(lambda: synth_run("m10p7-list", 5500, [f"5000:e6:30"], flash=fl))
+        b = ex.submit(lambda: synth_run("m10p7-list-wrap", 5500, [f"5000:e6:31"], flash=fl))
+        bt = ex.submit(lambda: m5.run("m10p7-bt-k4", 5600, ["4050:e0:1", "4200:PLAY", "4260:PLAY^", "4500:e5:30"], mode=None, flash=fl))
+        boot = ex.submit(lambda: synth_run("m10p7-boot", 5200, [], flash=fl))
+        a, b, bt, boot = a.result(), b.result(), bt.result(), boot.result()
+    check(a["stats"]["preset_name"] == "U05 E-QIANO" and b["stats"]["preset_name"] == "E-PIANO" and
+          boot["stats"]["preset_used"] == 1,
+          f"after a power cycle the preset is there; PRESET +30 reaches {a['stats']['preset_name']!r}, one more wraps to "
+          f"{b['stats']['preset_name']!r}")
+    check(bt["stats"]["vp_value"] == "U05 E-QIANO" and bt["stats"]["vp_title"] == "Melody Sound",
+          f"BACKTRACK's K4 goes through the same list: {bt['stats']['vp_value']!r}")
+    # junk in the object's place at boot: all empty, no flash operation, no crash; a hand-made old record loads with defaults
+    import random
+    import zlib
+    flash = bytearray(Path(m5.FLASH["songs"]).read_bytes())
+    rnd = random.Random(5)
+    flash[0xDE000:0xE0000] = bytes(rnd.randrange(256) for _ in range(0x2000))
+    junk = m5.OUT / "flash" / "junk-presets.bin"
+    junk.write_bytes(flash)
+    jb = synth_run("m10p7-junk", 5200, [], flash=str(junk))
+    check(jb["stats"]["preset_used"] == 0 and jb["ops"] == 0 and not jb["halt"] and jb["stats"]["ui_view"] == V_SYNTH,
+          f"junk in 0xDE000..0xDFFFF at boot: no preset, no crash, no flash operation ({jb['ops']})")
+    old = obj_image(m5.FLASH["songs"], [(1, 1, "OLD ONE", 0xFF)])
+    ob = synth_run("m10p7-old", 5600, ["5000:e6:30"], flash=str(old))
+    check(ob["stats"]["preset_used"] == 1 and ob["stats"]["preset_name"] == "U01 OLD ONE" and ob["stats"]["synth_level"] == 100,
+          f"a record with parameters out of range (an older version's missing ones) loads with the defaults: the LEVEL "
+          f"{ob['stats']['synth_level']} (default 100)")
+    rep += lines
+    return st["ok"]
+
+
+def obj_image(base_flash, recs):
+    """a flash image with a user-preset object (fm1-base's store format: a header with the commit record, the payload at +256)
+    in copy A of 0xDE000; recs: [(slot, engine, name, level byte)] for slots 0..: the record's version 1, parameters = the
+    level byte last (0xFF: out of range: the default)"""
+    import struct
+    import zlib
+    flash = bytearray(Path(base_flash).read_bytes())
+    slots = [bytearray(64) for _ in range(30)]
+    for slot, eng, name, level in recs:
+        r = slots[slot - 1]
+        r[0], r[1] = 1, eng
+        r[2:2 + len(name)] = name.encode()
+        for k in range(37):
+            r[14 + k] = 64 if k != 35 else level
+    payload = struct.pack("<IBBH", 0x53525055, 1, 30, 0) + b"".join(bytes(s) for s in slots)
+    hdr = struct.pack("<IHHIII2I", 0x30583058, 2, 0, 1, len(payload), zlib.crc32(payload), 0, 0)
+    hdr += struct.pack("<I", zlib.crc32(hdr))
+    flash[0xDE000:0xE0000] = b"\xff" * 0x2000
+    flash[0xDE000:0xDE000 + len(hdr)] = hdr
+    flash[0xDE000 + 256:0xDE000 + 256 + len(payload)] = payload
+    out = m5.OUT / "flash" / "old-presets.bin"
+    out.write_bytes(flash)
+    return out
+
+
 PARTS = {"m10p1": test_m10p1, "m10p2": test_m10p2, "m10p3": test_m10p3, "m10p4": test_m10p4, "m10p5": test_m10p5,
-         "m10p6": test_m10p6}
+         "m10p6": test_m10p6, "m10p7": test_m10p7}
 
 
 def main():

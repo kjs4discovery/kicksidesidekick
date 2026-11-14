@@ -14,8 +14,9 @@
 #define APP_BLOCK 256u                   /* frames per audio block: 5.8 ms at 44.1 kHz; one EAS buffer (synth.h) */
 
 /* the store: our settings (none yet) and the panel calibration (the platform's), and their flash offsets */
-enum { OBJ_SETTINGS, OBJ_PANEL, OBJ_NOBJ };
-#define APP_STORE_MAP {0xFC000u, 0xDC000u}
+enum { OBJ_SETTINGS, OBJ_PANEL, OBJ_PRESETS, OBJ_NOBJ };   /* M10 (D040): OBJ_PRESETS, the user presets (upreset.c) */
+#define APP_STORE_MAP {0xFC000u, 0xDC000u, 0xDE000u}   /* (0xDE000..0xDFFFF: nothing else uses it; the update staging area
+                                                          * starts at 0xE0000; the song store ends at 0xDBFFF) */
 
 /* the contract: the platform calls these */
 void app_init(void);                     /* boot: the synth */
