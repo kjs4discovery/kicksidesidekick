@@ -308,7 +308,84 @@ def test_m10p5(all_songs, rep):
     return st["ok"]
 
 
-PARTS = {"m10p1": test_m10p1, "m10p2": test_m10p2, "m10p3": test_m10p3, "m10p4": test_m10p4, "m10p5": test_m10p5}
+# --------------------------------------------------------------------------------------------- part 6
+KITS = ("STUDIO", "ACOUSTIC", "ELECTRO", "CHIP")
+KIT_PROGS = {0: (0xFF, 0xFF), 1: (32, 24), 2: (38, 89), 3: (38, 4)}      # bass, harmony (GM counted from 0)
+
+
+def seqs(n, t0=4280):
+    """n SEQ presses on SETUP (130 ms apart, short: BACKTRACK's SETUP is up from 4.2 s; PLAY is at 4.7 s)"""
+    return [x for k in range(n) for x in (f"{t0 + 130 * k}:SEQ!", f"{t0 + 130 * k + 50}:SEQ^!")]
+
+
+def test_m10p6(all_songs, rep):
+    lines, st, check = m5.checker("M10 part 6: band kits for BACKTRACK (D062)")
+    from concurrent.futures import ThreadPoolExecutor
+    heavy = m8.PRESETS.index("MIAMI PAD")
+    jobs = {}
+    for n in range(0, 5):                                           # SEQ pressed n times on SETUP
+        jobs[f"seq{n}"] = (lambda n: lambda: btrun(f"m10p6-seq{n}", 4500 + 300 * n + 500,
+                                                   [x for k in range(n) for x in P(4500 + 300 * k, "SEQ")]))(n)
+    jobs["play-seq"] = lambda: named("p6-play-seq", P(7000, "SEQ"), 7800)                  # SEQ on the play screen: the pop-up
+    # every kit in every style, FULL, BUSY (complexity 3): hits per kit, the notes identical across kits
+    for sty in range(11):
+        for kit in range(4):
+            sc = (["4300:e4:1", "4350:e1:2"] + ([f"4380:e3:{sty}"] if sty else []) +
+                  seqs(kit))
+            jobs[(sty, kit)] = (lambda sc, sty, kit: lambda: named(f"p6-{sty}-{kit}", [], 9500, setup=sc))(sc, sty, kit)
+    # the CPU with each kit: the M9 worst case (FULL, BUSY, a chorus, MIAMI PAD x 4 voices, a live switch)
+    for sty in (0, 1, 9):
+        for kit in range(4):
+            sc = ["4300:e4:1"] + ([f"4350:e3:{sty}"] if sty else []) + ["4400:e1:2", "4450:e0:150"] + \
+                seqs(kit) + P(4700, "PLAY") + \
+                [f"5300:e5:{heavy}", "17000:e3:1"] + [f"17600:{k}" for k in m9.KEYS4] + [f"24500:{k}^" for k in m9.KEYS4]
+            jobs[("cpu", sty, kit)] = (lambda sc, sty, kit: lambda: btrun(f"m10p6-cpu-{sty}-{kit}", 25000, sc))(sc, sty, kit)
+    with ThreadPoolExecutor(3) as ex:
+        futs = {k: ex.submit(f) for k, f in jobs.items()}
+        R = {k: f.result() for k, f in futs.items()}
+    S = {k: v["stats"] for k, v in R.items()}
+    seq = [(S[f"seq{n}"]["kit"], S[f"seq{n}"]["vp_title"], S[f"seq{n}"]["vp_value"]) for n in range(5)]
+    check([x[0] for x in seq] == [0, 1, 2, 3, 0] and all(x[1] == "Band Kit" for x in seq[1:]) and
+          [x[2] for x in seq[1:]] == ["ACOUSTIC", "ELECTRO", "CHIP", "STUDIO"] and S["seq0"]["vp_open"] == 0 and
+          S["seq1"]["ui_view"] == V_SETUP,
+          f"SEQ on SETUP steps STUDIO -> ACOUSTIC -> ELECTRO -> CHIP -> STUDIO with the pop-up \"Band Kit\" {seq} "
+          f"(m10p6-seq2.png: the KIT row; STUDIO at power-on: reset)")
+    ps = S["play-seq"]
+    check(ps["popup_open"] == 1 and ps["popup_btn"] == B["SEQ"] and ps["kit"] == 0 and ps["vp_value"] != "ACOUSTIC",
+          "SEQ on the play screen stays NOT IMPLEMENTED (the pop-up); the kit does not change")
+    bad = []
+    for sty in range(11):
+        base = S[(sty, 0)]
+        for kit in range(4):
+            s = S[(sty, kit)]
+            drums_vsynth = kit >= 2
+            if not (s["kit"] == kit and (s["kit_bass_prog"], s["kit_harm_prog"]) == KIT_PROGS[kit] and
+                    s["notes_on"][:3] == base["notes_on"][:3] and all(x > 0 for x in s["notes_on"][:3]) and
+                    ((s["kit_hits"] > 0) == drums_vsynth) and (not drums_vsynth or s["kit_hits"] == base["notes_on"][0]
+                                                               or s["kit_hits"] > 0) and not R[(sty, kit)]["halt"]):
+                bad.append((sty, kit, s["kit"], s["notes_on"][:3], base["notes_on"][:3], s["kit_hits"]))
+    check(not bad, f"every kit plays in every one of the 11 styles (FULL, BUSY): hits counted per kit (ELECTRO / CHIP: the drum "
+                   f"voices; STUDIO / ACOUSTIC: EAS), the notes (drums, bass, harmony note-ons) identical across the kits {bad[:3] or ''}")
+    cpu = {}
+    for key in S:
+        if isinstance(key, tuple) and key[0] == "cpu":
+            s = S[key]
+            cpu[(key[1], key[2])] = ((s["render_max"] + s["synth_render_max"]) / s["budget"], s["synth_voices_max"], s["swaps"],
+                                     R[key]["halt"], s["kit"])
+    worst = {k: max(v[0] for kk, v in cpu.items() if kk[1] == k) for k in range(4)}
+    lines.append("  - CPU (EAS + synth render of a block / its time) per kit, worst of POP, ROCK, FUNK: " +
+                 ", ".join(f"{KITS[k]} {worst[k] * 100:.0f} %" for k in range(4)))
+    check(all(w <= 0.60 for w in worst.values()) and all(not v[3] and v[1] == 4 and v[2] >= 1 and v[4] == kk[1]
+                                                          for kk, v in cpu.items()),
+          f"the worst case (FULL, BUSY in a chorus, MIAMI PAD x 4 voices, a live switch) stays at or under 60 % with every kit: "
+          f"{', '.join(f'{KITS[k]} {worst[k] * 100:.0f} %' for k in range(4))}")
+    st["cpu_worst"] = worst
+    rep += lines
+    return st["ok"]
+
+
+PARTS = {"m10p1": test_m10p1, "m10p2": test_m10p2, "m10p3": test_m10p3, "m10p4": test_m10p4, "m10p5": test_m10p5,
+         "m10p6": test_m10p6}
 
 
 def main():

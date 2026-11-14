@@ -34,6 +34,14 @@ static const char *const BT_STYLE_NAME[BT_STYLES] = {"POP", "ROCK", "INDIE POP",
 static const uint8_t BT_STYLE_OF[BT_STYLES] = {4, 6, 7, 1, 2, 3, 0, 5, 8, 9, 10};   /* song.h STYL indices */
 static const uint8_t BT_STYLE_BPM[BT_STYLES] = {100, 120, 110, 70, 96, 110, 96, 140, 130, 100, 80};
 #define BT_WALTZ 6u
+/* M10 (D062): the band kits, chosen on SETUP with SEQ: the drums' route (0 EAS's GM kit, 1 vsynth's 808, 2 CHIP), the bass and
+ * the harmony GM programs (counted from 0: 33 Acoustic Bass = 32, 25 Nylon Guitar = 24, 39 Synth Bass 1 = 38, 90 Pad 2 = 89,
+ * 5 Electric Piano 1 = 4; 0xFF: the file's own = M9's sound). Never GM 81. */
+#define BT_KITS 4u
+static const char *const BT_KIT_NAME[BT_KITS] = {"STUDIO", "ACOUSTIC", "ELECTRO", "CHIP"};
+static const uint8_t BT_KIT_DRUMS[BT_KITS] = {0, 0, 1, 2};
+static const uint8_t BT_KIT_BASS[BT_KITS] = {0xFF, 32, 38, 38};
+static const uint8_t BT_KIT_HARM[BT_KITS] = {0xFF, 24, 89, 4};
 static const char *const BT_STRUCT_NAME[BS_N] = {"LOOP", "VERSE/CHORUS", "FULL"};
 static const char *const BT_CPLX_NAME[4] = {"", "SIMPLE", "MEDIUM", "BUSY"};
 #define BT_IDLE_MS 300u                    /* the knobs still this long: the new version is built */
@@ -191,19 +199,21 @@ static void draw_setup(void)
             text_cat(t, it ? it->title : "?");
             cv_text(6, 41 - y0, &FONT_B, t, C_WHITE);
             cv_text(6, 62 - y0, &FONT_XS, it ? it->numerals : "", C_HI);
-            bt_row(80 - y0, "K2", "STYLE", bt.style == BT_WALTZ ? "WALTZ (3/4)" : BT_STYLE_NAME[bt.style], "");
-            bt_row(100 - y0, "K3", "COMPLEXITY", BT_CPLX_NAME[bt.cplx], "");
-            bt_row(120 - y0, "K4", "MELODY SOUND", vsynth_stock(bt.sound)->name, "");
+            /* (M10: the KIT row under TEMPO: the rows from STYLE on are 2 px closer, 18 px apart, KEY's chord line 14 under it) */
+            bt_row(78 - y0, "K2", "STYLE", bt.style == BT_WALTZ ? "WALTZ (3/4)" : BT_STYLE_NAME[bt.style], "");
+            bt_row(96 - y0, "K3", "COMPLEXITY", BT_CPLX_NAME[bt.cplx], "");
+            bt_row(114 - y0, "K4", "MELODY SOUND", vsynth_stock(bt.sound)->name, "");
             kn[0] = 0;
             bt_key_name(kn, it, bt.key, 1);
             ch[0] = 0;
             bt_chords(ch, it, sizeof ch, bt.key);
-            bt_row(140 - y0, "PRE", "KEY", kn, ch);
-            bt_row(172 - y0, "ALG", "STRUCTURE", BT_STRUCT_NAME[bt.structure], "");
+            bt_row(132 - y0, "PRE", "KEY", kn, ch);
+            bt_row(164 - y0, "ALG", "STRUCTURE", BT_STRUCT_NAME[bt.structure], "");
             t[0] = 0;
             num_cat(t, bt.bpm);
             text_cat(t, " BPM");
-            bt_row(192 - y0, "SEL", "TEMPO", t, "");
+            bt_row(182 - y0, "SEL", "TEMPO", t, "");
+            bt_row(198 - y0, "SEQ", "KIT", BT_KIT_NAME[bt.kit], "");
         }
         if (plat_ms() < ui.msg_until) {   /* a message (an error opening one) over the lower rows */
             cv_rect(10, 150 - y0, 220, 50, C_BLACK);
@@ -219,7 +229,7 @@ static void draw_setup(void)
 static uint32_t bt_hash(void)
 {
     return bt.prog | bt.style << 6 | bt.structure << 10 | bt.key << 12 | bt.bpm << 16 | bt.n << 24 |
-           (uint32_t)(plat_ms() < ui.msg_until) << 31 ^ bt.cplx << 28 ^ bt.sound << 20;
+           (uint32_t)(plat_ms() < ui.msg_until) << 31 ^ bt.cplx << 28 ^ bt.sound << 20 ^ bt.kit * 0x9E3779B1u;
 }
 
 /* the style's tempo, unless SELECT was turned */
@@ -237,6 +247,16 @@ static void bt_sound(uint32_t i)
     player_stats.synth_preset = bt.sound;
 }
 
+/* the kit chosen is given to the player (and withdrawn when BACKTRACK is left: SONG LEARN keeps EAS's GM kit and the files' programs) */
+static void bt_kit_apply(int on)
+{
+    uint32_t k = on ? bt.kit % BT_KITS : 0u;
+    player_kit(on ? BT_KIT_DRUMS[k] : 0u, on ? BT_KIT_BASS[k] : 0xFFu, on ? BT_KIT_HARM[k] : 0xFFu);
+    player_stats.kit = k;
+    player_stats.kit_bass_prog = on ? BT_KIT_BASS[k] : 0xFFu;
+    player_stats.kit_harm_prog = on ? BT_KIT_HARM[k] : 0xFFu;
+}
+
 /* into BACKTRACK (the mode screen): the synth on the buffer's upper part, 4 voices, the band under it */
 static void bt_enter(void)
 {
@@ -251,11 +271,13 @@ static void bt_enter(void)
         bt.entered = 1;
         bt.prog = bt.style = bt.structure = bt.key = 0;
         bt.cplx = 2;
+        bt.kit = 0;
         bt.bpm_turned = 0;
         bt.sound = 0;
         bt_style_bpm();
     }
     bt_sound(bt.sound);
+    bt_kit_apply(1);
     vsynth_tempo(bt.bpm < 60u ? 60u : bt.bpm > 200u ? 200u : bt.bpm);
     bt.on = 1;
     bt.sw_pending = 0;
@@ -269,6 +291,7 @@ static void bt_leave(void)
 {
     uint32_t t = plat_ms();
     lib_release();
+    bt_kit_apply(0);
     synth_band(0);
     vsynth_stop();
     while (plat_ms() - t < 20u)
@@ -887,7 +910,7 @@ static void bt_vp(uint32_t k)
         break;
     default:
         title = "Band Kit";
-        text_cat(v, "");
+        text_cat(v, BT_KIT_NAME[bt.kit % BT_KITS]);
     }
     vpop_show(title, v, sub, badge);
 }
@@ -932,6 +955,11 @@ static void bt_setup_input(uint32_t down)
         bt_vp(VK_STRUCT);
     if (sel)
         bt_vp(VK_TEMPO);
+    if (down >> B_SEQ & 1u) {              /* M10: the next band kit */
+        bt.kit = (bt.kit + 1u) % BT_KITS;
+        bt_kit_apply(1);
+        bt_vp(VK_KIT);
+    }
     if (down >> B_PLAY & 1u)
         bt_open();
     bt_stats();

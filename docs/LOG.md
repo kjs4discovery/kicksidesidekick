@@ -944,3 +944,17 @@ Hardware touched: none
 Questions for the planning chat: the website's JavaScript port (D036) must read / write INFO (docs/song-format.md 2.8); the plan's
   amazing-grace info text is 39 characters, the plan's limit 38 (M10-12).
 Next: Part 6 (band kits).
+
+2026-11-14 00:30 — Step M10 Part 6 (band kits for BACKTRACK) —
+Status: done
+Did:
+- STUDIO / ACOUSTIC / ELECTRO / CHIP: SEQ on SETUP steps the kit (pop-up "Band Kit", the KIT row on SETUP), the drum layer of ELECTRO and
+  CHIP plays on vsynth's 808 / CHIP voices, the bass and harmony programs per kit; the tier tables and every note unchanged. SEQ on the play
+  screen: still NOT IMPLEMENTED. The census expectation for SETUP updated (M10-13).
+- m10p6 ALL PASS on build/step-M10/pkgs/p6.fwsc: SEQ cycles (and 4 presses back to STUDIO); every kit in all 11 styles at FULL, BUSY: kit
+  hits counted (ELECTRO / CHIP), the note-ons of drums, bass and harmony identical across the four kits; CPU (EAS + synth) STUDIO 44 %,
+  ACOUSTIC 41 %, ELECTRO 57 %, CHIP 47 % of a block (limit 60 %). Two test timing mistakes of mine fixed (SEQ presses collided with PLAY).
+Learned / measured: ELECTRO is the heaviest kit (57 %): little room left under 60 %.
+Hardware touched: none
+Questions for the planning chat: decisions M10-13.
+Next: the early install point (0.10.1-m10a), then Part 7.

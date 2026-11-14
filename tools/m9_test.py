@@ -341,7 +341,7 @@ def test_m9census(all_songs, rep):
     """the button census (D044), BACKTRACK's SETUP and play screen with the M9 map: every button has its job or the pop-up"""
     lines, st, check = m5.checker("M9: the button census (D044) of SETUP and BACKTRACK's play screen; HOME taps; rescues")
     names = list(m7.B)
-    jobs = {"SETUP": ({"PLAY", "GLO", "OCTDN", "OCTUP"}, []),
+    jobs = {"SETUP": ({"PLAY", "GLO", "OCTDN", "OCTUP", "SEQ"}, []),      # (M10, Part 6: SEQ steps the band kit on SETUP)
             "BACKTRACK play": (set(names) - {"SEQ", "SAVE"}, m5.press_raw(4500, "PLAY") + m5.press_raw(4900, "PLAY"))}
     bad = []
     for scr, (has, pre) in jobs.items():
@@ -355,7 +355,7 @@ def test_m9census(all_songs, rep):
                 bad.append((scr, b, pop))
     hm = btrun("m9c-setup-home", 5500, m5.press_raw(4700, "HOME"))
     check(not bad and hm["stats"]["popup_btn"] == m7.B["HOME"] and hm["stats"]["popup_open"] == 1,
-          f"SETUP: PLAY, GLO, OCT-/OCT+ have jobs, every other button (HOME a tap) the pop-up; BACKTRACK's play screen: "
+          f"SETUP: PLAY, GLO, OCT-/OCT+ (M10: and SEQ, the band kit) have jobs, every other button (HOME a tap) the pop-up; BACKTRACK's play screen: "
           f"every button a job, but SEQ and SAVE (the pop-up; the knobs and PRESETS do their jobs) {bad or ''}")
     taps = []
     for k in range(24):

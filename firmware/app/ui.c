@@ -208,6 +208,7 @@ static struct {
     uint8_t bpm_turned;                  /* SELECT turned: the tempo stays when the style changes */
     uint32_t prog, style, structure, key, bpm, sound;   /* the choices (prog: an index into list[]); on the play screen
                                           * what is playing now */
+    uint32_t kit;                        /* M10: the band kit chosen on SETUP (0 STUDIO .. 3 CHIP; kept until power-off) */
     uint32_t cplx;                       /* M9 (D053): the complexity, 1 SIMPLE .. 3 BUSY (the tier of verses, intros and
                                           * bridges; choruses one more) */
     uint32_t n;                          /* backtracks found */
@@ -1338,8 +1339,8 @@ static uint32_t learn_jobs(void)
             if (!ui.s->layer[l].variants && !(bt.on && l == L_MELODY))   /* (M8: BACKTRACK's melody: yours) */
                 j &= ~(1u << LAYER_BUTTON[l]);
         return j;
-    case V_SETUP:                        /* M8: PLAY starts (with backtracks); HOME: held only */
-        return j | (bt.n ? 1u << B_PLAY : 0u);
+    case V_SETUP:                        /* M8: PLAY starts (with backtracks); HOME: held only; M10: SEQ steps the band kit */
+        return j | (bt.n ? 1u << B_PLAY : 0u) | 1u << B_SEQ;
     case V_SETTINGS:
     case V_VIEWSET:                      /* PLAY / EDIT change, GLO / HOME back */
         return j | 1u << B_PLAY | 1u << B_EDIT | 1u << B_HOME;

@@ -24,6 +24,9 @@ void player_start(int32_t from, int count_in);   /* play from tick from (count-i
                                                    * from's bar up to it, in clicks) */
 void player_play(int on);                 /* 1: player_start(the song's start, the count-in setting); 0: stop */
 void player_park(int32_t at);             /* M10: the song stopped at tick `at`, held PAUSED there (no sound); PLAY goes on */
+/* M10 (BACKTRACK band kits): the drums to vsynth's drum voices (kit_drum 0: EAS's GM kit as before; 1: the 808; 2: CHIP) and
+ * the bass / harmony programs (0xFF: the song's own); they apply when the player starts. Main loop. */
+void player_kit(uint32_t kit_drum, uint32_t bass_prog, uint32_t harm_prog);
 void player_pause(void);                  /* playing: hold the position, sound off (PL_PAUSED); player_start goes on */
 void player_mute(uint32_t layers);        /* bit l: layer l muted (song.h order) */
 void player_variant(uint32_t layer, uint32_t v);   /* 1..variants; takes effect at the next block */

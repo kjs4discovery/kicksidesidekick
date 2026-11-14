@@ -10,6 +10,7 @@
 #include "player.h"
 #include "synth.h"
 #include "plat.h"
+#include "vsynth.h"
 
 #define BIAS_BARS 3                       /* the count-in runs below tick 0: positions are kept this far above (M3:
                                            * up to 2 bars of count-in before a pickup) */
@@ -250,6 +251,29 @@ __attribute__((noinline)) static uint64_t mul64(uint32_t a, uint32_t b) { return
 static int32_t tick_of(uint64_t v) { return (int32_t)(v / DEN) - (int32_t)bias; }
 static uint64_t q_of(int32_t tick) { return mul64((uint32_t)(tick + (int32_t)bias), DEN); }
 
+/* M10: the band kit (player_kit): the drum layer's note-ons to vsynth's drum voices, programs for the bass and harmony */
+static volatile uint8_t kit_dr, kit_bass = 0xFFu, kit_harm = 0xFFu;
+void player_kit(uint32_t kit_drum, uint32_t bass_prog, uint32_t harm_prog)
+{
+    kit_dr = (uint8_t)(kit_drum <= 2u ? kit_drum : 0u);
+    kit_bass = (uint8_t)bass_prog;
+    kit_harm = (uint8_t)harm_prog;
+}
+
+/* a GM drum note as one of vsynth's 8 drum voices (the ride and the crash have none: the closed and open hat) */
+static void kit_hit(uint32_t note, uint32_t vel)
+{
+    static const uint8_t NOTE[10] = {36, 38, 42, 46, 39, 45, 50, 37, 51, 49};
+    static const uint8_t INST[10] = {DR_KICK, DR_SNARE, DR_CHH, DR_OHH, DR_CLAP, DR_TOMLO, DR_TOMHI, DR_RIM, DR_CHH, DR_OHH};
+    uint32_t i;
+    for (i = 0; i < 10u; i++)
+        if (NOTE[i] == note) {
+            vsynth_drum(0, kit_dr, INST[i], vel >= 90u ? 3u : vel >= 60u ? 2u : 1u, 89u);
+            player_stats.kit_hits++;
+            return;
+        }
+}
+
 static void send(uint32_t l, uint32_t status, uint32_t d1, uint32_t d2)
 {
     synth_send_now((uint8_t)(status | song->layer[l].channel), (uint8_t)d1, (uint8_t)d2);
@@ -313,6 +337,12 @@ static void dispatch(uint32_t l, const struct song_event *e)
             vel = vel * quiet_q8 / 256u;
             vel = vel ? vel : 1u;
             player_stats.notes_guided++;
+        }
+        if (l == 0u && kit_dr) {          /* M10: ELECTRO / CHIP: the drums are vsynth's voices (they die away by themselves) */
+            kit_hit(n, vel);
+            player_stats.notes_on[l]++;
+            player_stats.note_on_last[l] = n;
+            return;
         }
         if (active[l][w] & bit)
             send(l, 0x80u, n, 0);         /* restarted: end the one sounding */
@@ -447,7 +477,11 @@ static void channel_setup(void)
             continue;
         send(l, 0xB0u, 123u, 0);          /* all notes off, reset controllers */
         send(l, 0xB0u, 121u, 0);
-        if (ly->program != 0xFFu)
+        if (l == 1u && kit_bass != 0xFFu)          /* M10: the band kit's programs */
+            send(l, 0xC0u, kit_bass, 0);
+        else if (l == 2u && kit_harm != 0xFFu)
+            send(l, 0xC0u, kit_harm, 0);
+        else if (ly->program != 0xFFu)
             send(l, 0xC0u, ly->program, 0);
         send(l, 0xB0u, 7u, ly->volume);
         send(l, 0xB0u, 10u, ly->pan);

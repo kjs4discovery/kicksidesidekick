@@ -129,3 +129,22 @@ Format (docs/plan-M10.md, "Read this first"): one entry per judgment call the pl
   unchanged. "A song is loaded" = from its play screen (ui.back == V_PLAY, not BACKTRACK).
 - The six new songs' info lines in songs/m10_songs.py are my placeholders (M10-01). The 9 older songs' are the plan's, exact.
 - Undo: song.c meta(), binformat.py INFO, source.py `info`, ui.c draw_settings.
+
+## M10-13 — band kits: routing, mapping, SETUP layout (Part 6)
+- Situation: the plan says "reuse SYNTH's drum voices for the backtrack's drum layer", the tier tables the same for every kit.
+- Chosen: player.c `player_kit(drum route, bass program, harmony program)`; in dispatch() the drum layer's note-ons go to
+  vsynth_drum (ELECTRO = KIT_808, CHIP = KIT_CHIP), velocities 34 / 70 / 92 -> hit levels 1 / 2 / 3, volume 89 (SYNTH's default
+  drum volume 7 of 10), in the audio interrupt at the start of the block (5.8 ms grid). The GM drum notes map to the 8 voices:
+  36 kick, 38 snare, 42 hat, 46 open hat, 39 clap, 45 tom lo, 50 tom hi, 37 rim; the ride (51) has no voice of its own: the closed
+  hat; the crash (49): the open hat. STUDIO and ACOUSTIC use EAS's GM kit (ACOUSTIC differs in the bass 33 and harmony 25
+  programs). Programs are sent at player_start (channel_setup); a kit chosen on SETUP is in place before PLAY. BACKTRACK's exit
+  withdraws the kit (player_kit(0, 0xFF, 0xFF)): SONG LEARN is untouched. The kit resets with the other BACKTRACK choices at power-off
+  (not at every entry: like them).
+- SETUP: "SEQ  KIT  <name>" is a row like the others (FONT_XS) at y 198 under TEMPO; to make room the rows from STYLE on moved up
+  2, 4, 6, 8, 10, 12 px (18 px apart instead of 20; KEY's chord line unchanged under it): nothing is cut (m10p6-seq2.png). The plan
+  said "up to 2 px each"; they would not fit otherwise.
+- The button census of SETUP (m9census) expected SEQ to open the "NOT IMPLEMENTED" pop-up; now it has a job there: the expectation
+  in tools/m9_test.py is updated (a stale expectation).
+- Measured: CPU with FULL, BUSY in a chorus, MIAMI PAD x 4 voices, a live switch, POP / ROCK / FUNK: STUDIO 44 %, ACOUSTIC 41 %,
+  ELECTRO 57 %, CHIP 47 % of a block (limit 60 %): all four kits are kept. ELECTRO is the heaviest (the 808's noise voices).
+- Undo: player.c player_kit / kit_hit; bt.c BT_KIT_* and bt_kit_apply; the SETUP rows.
