@@ -27,3 +27,8 @@ No test cycle in this run (plan, D072): build, pytest tools/fm1song and the make
 - Keys: `ui.key_route[k]` (1 = vsynth) set at the press as `bt.on || lm_active()`; the release uses the recorded route. LM_VOICES stays 4 (CPU): the keys and the melody layer share the four voices. keys_program(song): 0xC0 on SYNTH_KEYS_CH with the open song's melody layer program (0xFF or no melody layer: GM_ELECTRIC_PIANO_1, the default synth.c sets at init).
   Called: open_play (SONG LEARN only), lm_set(LM_SONG) (K4 back to SONG), the HOME-from-stopped branch that goes back to the list, and mode_leave (synthui.c) when SONG LEARN is left with a song open.
 - Start pop-up: `vpop.big_sub` (set by say_from after vpop_show when the section name is non-empty; cleared by vpop_keep, so by every other pop-up). Name at y = 32 + value font height + 6, FONT_B C_WHITE, FONT_XS if wider than 208 px. 32 + 24 + 6 + FONT_B height stays well inside the 104 px box.
+
+## M10.3-04 — Part 3: POTATO
+- Row before: `PR("POTATO", AN, 6, 60, 100, 30, 50, 30, 74, 0, 6, 8, 70, 0, 30, 40, 0, 0, ARP_UP, RATE_8, 0, 64, 64, 30, 30, 25, 20, 40, 30, 0, 3, 64, 20, 0, 64, 80, 30, 104, 0)`
+  after: the same with the 8th number of the second line (VP_CRUSH, index 27) 0 -> 127; LEVEL (104) unchanged. A user preset saved from POTATO earlier is a copy and does not change.
+- tools/m101_test.py's "only ... differ from M10's table" list now includes POTATO (25 rows byte for byte). Not run.
