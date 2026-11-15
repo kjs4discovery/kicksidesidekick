@@ -1109,3 +1109,12 @@ Learned / measured: see Parts 2 and 4 for the CPU (35 %) and loudness numbers (E
 Hardware touched: none
 Questions for the planning chat: decisions M10.1-01 .. M10.1-15; EDS was judged by numbers, not by ear.
 Next: STOP. The user installs; Claude Code runs only --info / fm1song list and records.
+
+2026-11-14 20:30 — Step M10.2 Part 0 (housekeeping) —
+Status: done
+Did:
+- Recorded in docs/device.md: the user installed 0.10.2-m10.1 (FM-1_46001002, sha256 7ff83930...b5af) and used it; notes in the vault (install details not given).
+- Created docs/decisions-M10.2.md. Version of this milestone: 0.10.3 (`--release 0.10.3-m102`).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 1.

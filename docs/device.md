@@ -9,7 +9,9 @@ measured.
 **Milestone M10, FM-1_46001000** (fm1-accompaniment 0.10.0-m10, package `build/step-M10/fm1acc-0.10.0-m10.fwsc`, sha256
 `27128989d16660ae7f40fee55b4b0c561540fa4c6661fe162d631080dcbf60c8`): installed by the user and used, no problems reported (install
 details not given; reported 2026-11-14). The user saved a user preset named **ZUNJET** in SYNTH (a U slot). Fallback: M9 below.
-M10.1 (0.10.2) is built but NOT installed until the user reports it.
+**Update 2026-11-14 (late): Milestone M10.1, FM-1_46001002** (fm1-accompaniment 0.10.2-m10.1, package
+`build/step-M10.1/fm1acc-0.10.2-m10.1.fwsc`, sha256 `7ff839308734740be83175a204f204ab46702a9fbb4a943aa63548c9db77b5af`): installed and
+used by the user; notes in the vault (install details not given). Fallback: M10 above.
 
 Previous record (M9):
 
