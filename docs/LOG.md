@@ -1159,3 +1159,14 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 7.
+
+2026-11-14 23:10 — Step M10.2 Part 7 (docs, build, install note) —
+Status: done (prepared; not installed). STOPPED for the user.
+Did:
+- Release build build/step-M10.2/fm1acc-0.10.3-m10.2.fwsc (`--release 0.10.3-m102`), identity FM-1_46001003, sha256 0c38fc04c4cd7653fc0212101a4782c6f5869be7a132e10811a92fd476e0c320, commit abbfc72, same sha in two builds; app 519,284 B (66,444 B free), RAM .data+.bss 89,120 B; no new compiler warnings.
+- Checks the plan names: build ok; pytest tools/fm1song 298 passed; make_songs.py for all slugs changes only oh-susanna's files (validate ok). No suite, no fast lane, no emulator run, no new test (the user's choice).
+- docs/controls.md "M10.2", docs/step-M10.2-install.md (install over M10.1, then `tools/fm1song.sh send songs/oh-susanna/`, a by-hand list; it states that the emulator was not run).
+Learned / measured: the stale test strings in tools/m5_test.py, m7_test.py, m10_test.py, m101_test.py were updated, not run; m2_test.py and m4_test.py still have the old SAVE + SELECT key sequences (decisions M10.2-04). The user's own M10.1 notes are in the vault (not readable here): the by-hand list follows the plan's items.
+Hardware touched: none
+Questions for the planning chat: decisions M10.2-01 .. M10.2-08 (notably: the stopped legend on three pages; V_HINT's enum slot kept as V_HINT_UNUSED; the marker is a hash of FW_VERSION).
+Next: STOP. The user installs; Claude Code runs only --info / fm1song list and records.

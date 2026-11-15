@@ -66,3 +66,8 @@ No test cycle in this run (the user's choice): build, pytest and the make_songs 
 - ui.c frame_play: `count` (used by draw_big and draw_count_view alike, and ui.sh_count) is now the beat in the bar at the lead tick tc: ((tc mod bar_ticks) + bar_ticks) mod bar_ticks / ppq + 1. The bar lines are at multiples
   of bar_ticks, the same as the clicks, so a song without a pickup counts 1 2 3 4 (3/4: 1 2 3), one with a 1-beat pickup in 4/4 counts 1 2 3 4 | 1 2 3 and the pickup comes in on the 4th beat. The number changes at the same instants as the old one (the old
   beats-left number changed when ceil((from - tc) / ppq) did). No change to player.c, the label "COUNT-IN" or the layout. Tests that read the shown count (not run) are not updated: none was found by grep for "COUNT-IN" numbers.
+
+## M10.2-09 — Part 7
+- Version: FW_VERSION "0.10.3-m10.2" and FW_MILESTONE "m10.2" in app.h (the package is built with `--release 0.10.3-m102`, as M10.1-15); tools/m10_test.py's check of the source's FW_MILESTONE follows (not run).
+- No emulator run: the plan and the user say so; docs/step-M10.2-install.md says it in the pre-flight (row P4b) because CLAUDE.md asks for one, so the user can decide knowingly.
+- The by-hand list follows the plan's items (the user's vault notes are not readable from here).
