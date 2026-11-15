@@ -1202,3 +1202,12 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 1.
+
+2026-11-15 15:25 — Step M10.4 Part 1 (two fixes to M10.3) —
+Status: done
+Did:
+- The knock-knock joke removed from firmware/app/app.h (the contact paragraph stays); the kit pop-up's title is "Band Kit" again (bt.c, tools/m10_test.py, docs/reference.md, controls.md note).
+- Build: ok, no new warnings (dev build: app 523,428 B).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 2.

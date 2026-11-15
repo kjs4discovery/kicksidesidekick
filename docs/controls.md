@@ -1196,7 +1196,7 @@ Text only (no screenshots: the user chose no test cycle; the build, pytest and t
 - **The section indicator leaves LOOP at once**: it says LOOP only while the structure and the structure waiting for the next phrase are both LOOP; the frame ALGORITHM picks VERSE/CHORUS or FULL it shows the section playing.
 - **HOME on the play screen** (playing, count-in, paused or stopped): stop and back to SETUP in one press. SONG LEARN's HOME is unchanged (playing: back to the start point; stopped: the list). HOME held 2 s: the mode screen, as before.
 - **SEQ steps the band kit while it plays** (STUDIO, ACOUSTIC, ELECTRO, CHIP), at once: the drums change from the next hit, the bass and harmony get their program at the player's next event (notes already sounding keep their old sound). The play legend says "SEQ band kit"; the help has the row.
-- The kit pop-up's title is **"Band Drum Kit"** (the SETUP row is still "KIT").
+- The kit pop-up's title was changed to "Band Drum Kit" here; M10.4 puts it back to **"Band Kit"** (a kit sets the bass and harmony programs too, not only the drums).
 
 ### SONG LEARN
 

@@ -930,7 +930,7 @@ static void bt_vp(uint32_t k)
         text_cat(v, " BPM");
         break;
     default:
-        title = "Band Drum Kit";
+        title = "Band Kit";
         text_cat(v, BT_KIT_NAME[bt.kit % BT_KITS]);
     }
     vpop_show(title, v, sub, badge);

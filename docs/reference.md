@@ -138,7 +138,7 @@ VERSE/CHORUS, FULL), SEL (SELECT) TEMPO, SEQ KIT.
 | PRESETS | the key |
 | ALGORITHM | the structure |
 | SELECT | the tempo (60-200 BPM) |
-| SEQ | the band kit: STUDIO, ACOUSTIC, ELECTRO, CHIP, STUDIO ... (pop-up "Band Drum Kit") |
+| SEQ | the band kit: STUDIO, ACOUSTIC, ELECTRO, CHIP, STUDIO ... (pop-up "Band Kit") |
 | PLAY | start (lit when there are backtracks) |
 | HOME, a tap | the mode screen |
 | GLO | help; GLO again: the settings |

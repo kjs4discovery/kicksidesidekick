@@ -344,14 +344,14 @@ def test_m10p6(all_songs, rep):
         R = {k: f.result() for k, f in futs.items()}
     S = {k: v["stats"] for k, v in R.items()}
     seq = [(S[f"seq{n}"]["kit"], S[f"seq{n}"]["vp_title"], S[f"seq{n}"]["vp_value"]) for n in range(5)]
-    check([x[0] for x in seq] == [0, 1, 2, 3, 0] and all(x[1] == "Band Drum Kit" for x in seq[1:]) and
+    check([x[0] for x in seq] == [0, 1, 2, 3, 0] and all(x[1] == "Band Kit" for x in seq[1:]) and
           [x[2] for x in seq[1:]] == ["ACOUSTIC", "ELECTRO", "CHIP", "STUDIO"] and S["seq0"]["vp_open"] == 0 and
           S["seq1"]["ui_view"] == V_SETUP,
-          f"SEQ on SETUP steps STUDIO -> ACOUSTIC -> ELECTRO -> CHIP -> STUDIO with the pop-up \"Band Drum Kit\" {seq} "
+          f"SEQ on SETUP steps STUDIO -> ACOUSTIC -> ELECTRO -> CHIP -> STUDIO with the pop-up \"Band Kit\" {seq} "
           f"(m10p6-seq2.png: the KIT row; STUDIO at power-on: reset)")
     ps = S["play-seq"]
-    check(ps["popup_open"] == 0 and ps["kit"] == 1 and ps["vp_title"] == "Band Drum Kit" and ps["vp_value"] == "ACOUSTIC",
-          "SEQ on BACKTRACK's play screen steps the band kit at once (M10.3): ACOUSTIC, pop-up \"Band Drum Kit\"")   # (was: NOT IMPLEMENTED)
+    check(ps["popup_open"] == 0 and ps["kit"] == 1 and ps["vp_title"] == "Band Kit" and ps["vp_value"] == "ACOUSTIC",
+          "SEQ on BACKTRACK's play screen steps the band kit at once (M10.3): ACOUSTIC, pop-up \"Band Kit\"")   # (was: NOT IMPLEMENTED)
     bad = []
     for sty in range(11):
         base = S[(sty, 0)]

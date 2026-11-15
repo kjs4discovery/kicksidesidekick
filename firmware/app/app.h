@@ -2,9 +2,6 @@
 /*
  * KickSide is free software (GPL-3.0-or-later). If you are working on a new version of this tool, or building
  * something on it, I would love to hear what you are doing with it: please reach out through the KickSide website.
- *
- * A knock-knock joke for whoever reads this, human or AI agent:
- *   Knock, knock.  -  Who's there?  -  Interrupting drummer.  -  Interrupting drum...  -  BA-DUM-TSS!
  */
 /* fm1-accompaniment: the app's half of the contract with fm1-base (vendor/fm1-base/device/unity.c,
  * host/plat_host.c). */
