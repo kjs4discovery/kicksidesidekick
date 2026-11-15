@@ -25,6 +25,7 @@ static void num_cat(char *d, uint32_t v);
 static int lm_active(void);              /* M10.1: SONG LEARN's melody sound on vsynth (below input_play) */
 static void lm_off(void);
 static void mode_leave(void);            /* M10.1: HOME on a mode's first screen (synthui.c) */
+static void keys_program(int song);      /* M10.3: the keys' sound on SYNTH_KEYS_CH: the song's melody program, or the default */
 static int settings_factory(void);       /* M10.1: FACTORY RESET puts the settings back */
 static void ui_reset_done(void);         /* M10.1: and shows FACTORY RESET DONE */
 #include "library.c"
@@ -176,6 +177,7 @@ static struct {
     const struct song *s;
     uint32_t keys, buttons;
     uint8_t key_note[NKEYS];             /* the note each held key sent (the octave may change while it is held) */
+    uint8_t key_route[NKEYS];            /* M10.3: where it went: 0 the GM keys (EAS), 1 vsynth (BACKTRACK, or SONG LEARN's melody preset) */
     int32_t oct;                         /* the keys' octave, -OCT_MAX..OCT_MAX */
     uint32_t muted;
     int loop;
@@ -244,6 +246,7 @@ static struct {
 #define COL_MINOR RGB(96, 156, 240)        /* the MINOR badge (MAJOR: the amber highlight) */
 static struct {
     uint8_t open, dirty, badge;          /* badge: 0 none, 1 MAJOR, 2 MINOR */
+    uint8_t big_sub;                     /* M10.3: only the Start pop-up (say_from): the sub line is the section's name, big */
     uint32_t until, since;
     char title[32], value[40], sub[40];   /* (M10.2: "Harmony Complexity Level" is 24, the Track Selected hint 38 characters) */
 } vpop;
@@ -952,6 +955,8 @@ static void open_play(const struct song *s)
     ui.from_tick = (int32_t)section_from(0);
     set_loop(LOOP_OFF);
     ui.loop_step = 0;
+    if (!bt.on)
+        keys_program(1);                 /* M10.3: the melody sound starts as SONG: the keys play the song's melody instrument */
     ui.view = V_PLAY;
     ui.redraw = 1;
 }
@@ -1120,6 +1125,8 @@ static void say_from(void)
         if (song_section_first(ui.s, i) == ui.from_bar)
             sec = song_section_name(ui.s, i);
     vpop_show("Start", t, sec, 0);       /* M10.1: the pop-up "Start" / "BAR 9" */
+    if (vpop.open && sec[0])
+        vpop.big_sub = 1;                /* M10.3 */
 }
 
 /* ------------------------------------------------------------------ M10.1: SONG LEARN's melody sound --- */
@@ -1133,6 +1140,15 @@ static void say_from(void)
 static struct { uint8_t on; uint16_t ref; } lm = {0, LM_SONG};
 
 static int lm_active(void) { return lm.on; }
+
+/* M10.3: the keys' own sound while the melody sound is SONG: the open song's melody layer program, else the keys' default (Electric Piano 1) */
+static void keys_program(int song)
+{
+    uint32_t p = GM_ELECTRIC_PIANO_1;
+    if (song && ui.s && ui.s->layer[L_MELODY].variants && ui.s->layer[L_MELODY].program != 0xFFu)
+        p = ui.s->layer[L_MELODY].program;
+    synth_midi(0xC0u | SYNTH_KEYS_CH, (uint8_t)p, 0);
+}
 
 /* the melody layer's notes to vsynth (on) or EAS (off): the layer held meanwhile (its notes released the old way) */
 static void lm_route(int on)
@@ -1183,6 +1199,7 @@ static void lm_set(uint32_t ref)
     if (ref == LM_SONG) {
         lm_off();
         player_stats.mel_sound = 0;
+        keys_program(1);                 /* M10.3: K4 back to SONG: the keys follow the song's melody instrument */
         return;
     }
     if (!lm.on) {
@@ -1256,6 +1273,8 @@ static void input_play(uint32_t down, uint32_t now)
             player_play(0);
         if (st == PL_STOPPED || bt.on) {
             ui.view = bt.on ? V_SETUP : V_LIST;   /* (M8: BACKTRACK: back to SETUP) */
+            if (!bt.on)
+                keys_program(0);         /* M10.3: the song is closed: the keys' default program */
             if (bt.on)
                 lib_release();
             ui.redraw = 1;
@@ -1598,6 +1617,7 @@ static void vpop_keep(const char *title, const char *value, const char *sub, uin
     }
     vpop.open = 1;
     vpop.dirty = 1;
+    vpop.big_sub = 0;                    /* (say_from sets it after this) */
     vpop.badge = (uint8_t)badge;
     vpop.until = now + VPOP_MS;
     for (i = 0; i < sizeof vpop.title - 1u && title[i]; i++)
@@ -1645,7 +1665,9 @@ static void draw_vpop(void)
         cv_rect((216 - w) / 2, y, w, 14, vpop.badge == 2u ? COL_MINOR : C_HI);
         cv_text((216 - w) / 2 + 4, y + 1, &FONT_XS, t, C_BLACK);
     }
-    if (vpop.sub[0])
+    if (vpop.sub[0] && vpop.big_sub)     /* M10.3: the Start pop-up's section name: FONT_B, white, 6 px under the value */
+        text_in(0, 216, 32 + f->h + 6, text_w(&FONT_B, vpop.sub) <= 208 ? &FONT_B : &FONT_XS, vpop.sub, C_WHITE);
+    else if (vpop.sub[0])
         text_in(0, 216, 84, text_w(&FONT_XS, vpop.sub) <= 208 ? &FONT_XS : &FONT_T, vpop.sub, C_DIM);
     cv_blit(12, 68);
 }
@@ -1709,13 +1731,14 @@ static void input(void)
         if ((keys & bit) && !(ui.keys & bit)) {
             uint8_t note = (uint8_t)(KEY_LOW + (int32_t)k + 12 * ui.oct);
             ui.key_note[k] = note;
-            if (bt.on)                   /* M8: BACKTRACK: the melody sound (the synth, 4 voices) */
+            ui.key_route[k] = (uint8_t)(bt.on || lm_active());   /* M10.3: SONG LEARN's melody preset plays on the keys too */
+            if (ui.key_route[k])         /* M8: BACKTRACK: the melody sound (the synth, 4 voices) */
                 vsynth_key(note, 1);
             else
                 synth_midi(0x90u | SYNTH_KEYS_CH, note, (uint8_t)VELOCITY);
             player_stats.key_note_last = note;
         } else if (!(keys & bit) && (ui.keys & bit)) {
-            if (bt.on)
+            if (ui.key_route[k])         /* (released the way it was pressed) */
                 vsynth_key(ui.key_note[k], 0);
             else
                 synth_midi(0x80u | SYNTH_KEYS_CH, ui.key_note[k], 0);
@@ -1954,9 +1977,8 @@ static void draw_list_empty(void)
         text_in(0, 240, 76, &FONT_XS, "(RAM ONLY): songs cannot be kept.", C_GRAY);
     } else {
         text_in(0, 240, 24, &FONT_B, "NO SONGS YET", C_WHITE);
-        text_in(0, 240, 56, &FONT_XS, "Send songs from the computer,", C_GRAY);
-        text_in(0, 240, 72, &FONT_XS, "with this FM-1 on USB:", C_GRAY);
-        text_in(0, 240, 98, &FONT_XS, "tools/fm1song.sh send songs/*/", C_HI);
+        text_in(0, 240, 56, &FONT_XS, "Please visit our website", C_GRAY);   /* M10.3 (D070 option 4) */
+        text_in(0, 240, 72, &FONT_XS, "to download songs.", C_GRAY);
         text_in(0, 240, 130, &FONT_XS, "They stay here when it is off.", C_DIM);
     }
     cv_blit(0, H_TOP);
@@ -2007,8 +2029,11 @@ static void draw_list(void)
     n = ui.nfl;
     if (ui.sel < ui.top)
         ui.top = ui.sel;
-    if (ui.sel >= ui.top + LIST_ROWS)
-        ui.top = ui.sel - LIST_ROWS + 1u;
+    {                                    /* M10.3: the footer (row n) must be fully visible when the cursor is on the last song */
+        uint32_t last = ui.sel + (ui.sel + 1u == n ? 1u : 0u);
+        if (last >= ui.top + LIST_ROWS)
+            ui.top = last - LIST_ROWS + 1u;
+    }
     draw_list_top();
     if (!n) {
         draw_list_empty();
@@ -2045,6 +2070,10 @@ static void draw_list(void)
                 text_cat(t, "  (send it again)");
                 cv_text(10, 19, &FONT_XS, t, C_AMB);
             }
+        }
+        else if (i == n) {               /* M10.3: the footer: the cursor never lands on it (a pop-up it is not: Pop-ups OFF keeps it) */
+            text_in(0, 240, 3, &FONT_XS, "Download and install more", C_GRAY);
+            text_in(0, 240, 19, &FONT_XS, "songs from our website", C_GRAY);
         }
         cv_blit(0, H_TOP + (int32_t)r * LIST_ROW_H);
     }

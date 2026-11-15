@@ -20,3 +20,10 @@ No test cycle in this run (plan, D072): build, pytest tools/fm1song and the make
   Swap/phrase code untouched.
 - Help: BACKTRACK's BTN table gets a "SEQ band kit" row. The table had 9 rows and no room, so ALL button tables became 10 rows 15 px apart (was 9 at 17 px; the last row ends at y 165, "GLO again" stays at 184). Legend: "PLAY pause|HOME stop|SEQ band kit|GLO help" playing (the EDIT view is in the help); paused: "PLAY go on|HOME stop|SEQ band kit|GLO help".
 - Title "Band Drum Kit" (bt_vp default case). Test strings naming "Band Kit": see M10.3-tests (end of this file).
+
+## M10.3-03 — Part 2: SONG LEARN
+- List footer: drawn as row n of the list (the cursor clamps to n - 1, so it never lands there), two FONT_XS C_GRAY lines centred ("Download and install more" / "songs from our website": one line would not fit 228 px). The scroll rule: with the cursor on the last song `top` is raised so row n is on the screen. The folders screen: no footer.
+- Empty screens (SONG LEARN flash OK and BACKTRACK): "Please visit our website" / "to download songs."; the old laptop command line (the tools/fm1song.sh line, C_HI) is removed from SONG LEARN's screen, "They stay here when it is off." stays (C_DIM).
+- Keys: `ui.key_route[k]` (1 = vsynth) set at the press as `bt.on || lm_active()`; the release uses the recorded route. LM_VOICES stays 4 (CPU): the keys and the melody layer share the four voices. keys_program(song): 0xC0 on SYNTH_KEYS_CH with the open song's melody layer program (0xFF or no melody layer: GM_ELECTRIC_PIANO_1, the default synth.c sets at init).
+  Called: open_play (SONG LEARN only), lm_set(LM_SONG) (K4 back to SONG), the HOME-from-stopped branch that goes back to the list, and mode_leave (synthui.c) when SONG LEARN is left with a song open.
+- Start pop-up: `vpop.big_sub` (set by say_from after vpop_show when the section name is non-empty; cleared by vpop_keep, so by every other pop-up). Name at y = 32 + value font height + 6, FONT_B C_WHITE, FONT_XS if wider than 208 px. 32 + 24 + 6 + FONT_B height stays well inside the 104 px box.

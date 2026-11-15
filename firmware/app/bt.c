@@ -187,8 +187,8 @@ static void draw_setup(void)
         }
         if (!bt.n) {
             text_in(0, 240, 60 - y0, &FONT_B, "NO BACKTRACKS", C_WHITE);
-            text_in(0, 240, 86 - y0, &FONT_XS, "send songs/backtracks/ from", C_GRAY);
-            text_in(0, 240, 102 - y0, &FONT_XS, "the laptop (in SONG LEARN)", C_GRAY);
+            text_in(0, 240, 86 - y0, &FONT_XS, "Please visit our website", C_GRAY);   /* M10.3 (D070 option 4) */
+            text_in(0, 240, 102 - y0, &FONT_XS, "to download songs.", C_GRAY);
         } else {
             /* 7 rows in 240 px: the knob labels and values in the small font, the progression's name in the big one */
             cv_text(6, 27 - y0, &FONT_XS, "K1", C_AMB);

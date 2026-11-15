@@ -130,6 +130,7 @@ static void mode_leave(void)
     } else {
         lm_off();                        /* M10.1: SONG LEARN's melody synth, if on (the song still plays: its layer is held) */
         lib_release();                   /* the song stops */
+        keys_program(0);                 /* M10.3: the keys' default program again */
     }
     sy.mode_sel = M_LEARN;               /* (M8: the cursor on SONG LEARN, as at power-on) */
     synth_panic();
