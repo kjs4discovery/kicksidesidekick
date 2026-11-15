@@ -15,6 +15,7 @@
 #include "player.h"
 #include "song.h"
 #include "logo_gen.h"
+#include "mascot_gen.h"
 #include "guitar.h"
 #include "ukulele.h"
 #include "upreset.h"
@@ -527,30 +528,37 @@ static void lcd_done(void)               /* the last blit has reached the LCD (i
 }
 
 /* -------------------------------------------------------------------------- splash --- */
-/* the logo (logo_gen.h: tools/logo_to_c.py from firmware/assets/tmp-logo.jpg), its name and version under it. Called
+/* the artwork (logo_gen.h, mascot_gen.h: tools/logo_to_c.py from firmware/assets/src/kickside-*.jpg), drawn 1 : 1. Called
  * by the platform at power-on, before anything else of the app runs; the list comes SPLASH_MS after power-on */
-/* the mascot, scaled num / den (nearest neighbour; 1 / 1: as it is), its left edge centred, its top at oy */
-static void draw_logo_s(int32_t oy, uint32_t num, uint32_t den)
+struct art {                             /* M10.3: one drawing function for the splash's logo and the mode screen's mascot */
+    uint16_t w, h, bg;
+    const uint16_t *pal;
+    const uint8_t *rle;
+    uint32_t len;
+};
+static const struct art ART_LOGO = {LOGO_W, LOGO_H, LOGO_BG, LOGO_PAL, LOGO_RLE, sizeof LOGO_RLE};
+static const struct art ART_MASCOT = {MASCOT_W, MASCOT_H, MASCOT_BG, MASCOT_PAL, MASCOT_RLE, sizeof MASCOT_RLE};
+
+/* the picture, its left edge centred, its top at oy (stored at its display size) */
+static void draw_logo_s(const struct art *a, int32_t oy)
 {
-    const uint8_t *p = LOGO_RLE, *end = LOGO_RLE + sizeof LOGO_RLE;
-    uint32_t W = LOGO_W * num / den, H = LOGO_H * num / den, y0 = 0, x = 0, y = 0;
+    const uint8_t *p = a->rle, *end = a->rle + a->len;
+    uint32_t W = a->w, H = a->h, y0 = 0, x = 0, y = 0;
     int32_t ox = (240 - (int32_t)W) / 2;
     while (y0 < H) {                     /* in bands the canvas can hold */
         uint32_t band = H - y0 < 112u ? H - y0 : 112u;
-        cv_begin(W, band, LOGO_BG);
-        while (p < end && y * num / den < y0 + band) {
-            uint32_t c = *p >> 4, n = (*p & 15u) + 1u, yo = y * num / den, xa, xb;
+        cv_begin(W, band, a->bg);
+        while (p < end && y < y0 + band) {
+            uint32_t c = *p >> 4, n = (*p & 15u) + 1u;
             if ((*p & 15u) == 15u)
                 n = 16u + p[1], p++;
             p++;
-            xa = x * num / den;
-            xb = ((x + n) * num + den - 1u) / den;
-            if (xb > W)
-                xb = W;
-            if (xb > xa && yo >= y0)
-                cv_rect((int32_t)xa, (int32_t)(yo - y0), (int32_t)(xb - xa), 1, LOGO_PAL[c]);
+            if (n > W - x)
+                n = W - x;
+            if (y >= y0)
+                cv_rect((int32_t)x, (int32_t)(y - y0), (int32_t)n, 1, a->pal[c]);
             x += n;
-            if (x >= LOGO_W)
+            if (x >= W)
                 x = 0, y++;
         }
         cv_blit((uint32_t)ox, (uint32_t)oy + y0);
@@ -558,21 +566,19 @@ static void draw_logo_s(int32_t oy, uint32_t num, uint32_t den)
     }
 }
 
-static void draw_logo(int32_t oy)         /* (M5: the mode screen's mascot too) */
+static void draw_logo(int32_t oy)
 {
-    draw_logo_s(oy, 1u, 1u);
+    draw_logo_s(&ART_LOGO, oy);
 }
 
+/* M10.3: the logo (it has the name in it) at y 36, the version small at the lower right */
 void app_splash(void)
 {
-    int32_t oy = 12;
     lcd_fill(0, 0, 240, 240, LOGO_BG);
-    draw_logo(oy);
-    cv_begin(240, 40, LOGO_BG);
-    /* M8 (D050): the name, in FONT_B if it fits 240 px, else the next smaller font (never cut); under it the milestone */
-    text_in(0, 240, 0, text_w(&FONT_B, APP_NAME) <= 236 ? &FONT_B : &FONT_XS, APP_NAME, RGB(60, 50, 40));
-    text_in(0, 240, 22, &FONT_XS, FW_MILESTONE, RGB(150, 136, 118));
-    cv_blit(0, (uint32_t)oy + LOGO_H + 6u);
+    draw_logo(36);
+    cv_begin(240, FONT_XS.h, LOGO_BG);
+    cv_text(234 - text_w(&FONT_XS, "v" FW_VERSION), 0, &FONT_XS, "v" FW_VERSION, RGB(150, 136, 118));
+    cv_blit(0, 240u - 6u - FONT_XS.h);
 }
 
 /* ---------------------------------------------------------------- the key (part 3, item 8) --- */

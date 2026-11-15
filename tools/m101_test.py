@@ -152,8 +152,8 @@ def test_m101p1(all_songs, rep):
     mimg = R["mode"]["lcd"].convert("RGB").resize((240, 240))
     bg = mimg.getpixel((0, 0))
     ink = sum(1 for x in range(4, 236) for y in range(2, 18) if mimg.getpixel((x, y)) != bg)
-    sink = sum(1 for x in range(4, 236) for y in range(190, 214) if simg.getpixel((x, y)) != simg.getpixel((0, 0)))
-    check(S["mode"]["ui_view"] == V_MODE and ink > 150 and _margins_clear(mimg, 0, 20) and sink > 150 and _margins_clear(simg, 188, 216),
+    sink = sum(1 for x in range(4, 236) for y in range(216, 236) if simg.getpixel((x, y)) != simg.getpixel((0, 0)))   # M10.3: the version, lower right
+    check(S["mode"]["ui_view"] == V_MODE and ink > 150 and _margins_clear(mimg, 0, 20) and sink > 20,
           f"the name fits on one line across the mode screen ({ink} text pixels, 4 px margins clear) and on the splash ({sink}) "
           f"(m101p1-mode.png, m101p1-splash.png)")
     check(S["mode"]["mode_sel"] == 0 and S["mode-learn"]["ui_view"] == V_LIST and S["mode-bt"]["ui_view"] == V_SETUP and

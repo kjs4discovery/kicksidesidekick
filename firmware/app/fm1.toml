@@ -8,8 +8,10 @@ usb_product = "FM-1 Accompaniment"
 words = "words.tsv"
 font_full = ["L", "M"]         # chord names have lower case (Em, Bbmaj7)
 # M2: no songs in the image; they live in the flash's song store, sent from the laptop (tools/fm1song send; library.c)
-# The splash's logo: firmware/assets/tmp-logo.jpg (a placeholder: replace that one file) -> a palette and run-length rows
-gen = ["../../tools/logo_to_c.py ../assets/tmp-logo.jpg {gen}/logo_gen.h"]
+# M10.3: the splash's logo (240 wide) and the mode screen's mascot (120 wide), the user's own art in firmware/assets/src/, mapped to one
+# fixed palette (cream background first) -> a palette and run-length rows each. firmware/assets/tmp-logo.jpg is no longer built.
+gen = ["../../tools/logo_to_c.py ../assets/src/kickside-logo.jpg {gen}/logo_gen.h --width 240 --prefix LOGO --palette 253,239,202;18,32,18;254,180,59;240,140,40;230,87,27;255,250,235;200,60,20",
+       "../../tools/logo_to_c.py ../assets/src/kickside-mascot.jpg {gen}/mascot_gen.h --width 120 --prefix MASCOT --palette 253,239,202;18,32,18;254,180,59;240,140,40;230,87,27;255,250,235;200,60,20"]
 tagline = "a play-along band for the FM-1"
 licence = "TBD"
 credits = "Built on fm1-base and felucca-bsp (MPL-2.0). GM sounds: Sonivox EAS (Apache-2.0)."

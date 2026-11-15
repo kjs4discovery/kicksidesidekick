@@ -202,16 +202,15 @@ def test_m10p3(all_songs, rep):
         ch = ex.submit(lambda: m5.run("m10p3-choose", 5200, ["4400:PLAY", "4460:PLAY^"], mode=None, flash=bt_flash()))
         sp, md, ch = sp.result(), md.result(), ch.result()
     ssrc = (ROOT / "firmware/app/app.h").read_text()
-    check('#define APP_NAME "KickSide - Your Musical SideKick"' in ssrc and '#define FW_MILESTONE "m10.2"' in ssrc and   # (M10.1-02: the name and milestone follow M10.1)
+    check('#define APP_NAME "KickSide - Your Musical SideKick"' in ssrc and '#define FW_MILESTONE "m10.3"' in ssrc and   # (M10.1-02: the name and milestone follow M10.1)
           sp["stats"]["ui_view"] >= 16,
           "the splash: \"Tuneka - Song Sidekick\" and \"m10\" under it (app.h; m10p3-splash.png)")
     simg = sp["lcd"].convert("RGB").resize((240, 240))
     mimg = md["lcd"].convert("RGB").resize((240, 240))
     bg = mimg.getpixel((0, 0))
     ink = sum(1 for x in range(4, 236) for y in range(2, 18) if mimg.getpixel((x, y)) != bg)
-    sink = sum(1 for x in range(4, 236) for y in range(190, 214) if simg.getpixel((x, y)) != simg.getpixel((0, 0)))
-    check(md["stats"]["ui_view"] == V_MODE and ink > 150 and _margins_clear(mimg, 0, 20) and sink > 150
-          and _margins_clear(simg, 188, 216),
+    sink = sum(1 for x in range(4, 236) for y in range(216, 236) if simg.getpixel((x, y)) != simg.getpixel((0, 0)))   # M10.3: the version, lower right
+    check(md["stats"]["ui_view"] == V_MODE and ink > 150 and _margins_clear(mimg, 0, 20) and sink > 20,
           f"the title fits across the top of the mode screen with a 4 px margin ({ink} text pixels in its row) and the splash's "
           f"name fits too ({sink}); the mascot is scaled under it (m10p3-mode.png)")
     check(md["stats"]["mode_sel"] == 0 and ch["stats"]["ui_view"] == V_LIST,
@@ -345,14 +344,14 @@ def test_m10p6(all_songs, rep):
         R = {k: f.result() for k, f in futs.items()}
     S = {k: v["stats"] for k, v in R.items()}
     seq = [(S[f"seq{n}"]["kit"], S[f"seq{n}"]["vp_title"], S[f"seq{n}"]["vp_value"]) for n in range(5)]
-    check([x[0] for x in seq] == [0, 1, 2, 3, 0] and all(x[1] == "Band Kit" for x in seq[1:]) and
+    check([x[0] for x in seq] == [0, 1, 2, 3, 0] and all(x[1] == "Band Drum Kit" for x in seq[1:]) and
           [x[2] for x in seq[1:]] == ["ACOUSTIC", "ELECTRO", "CHIP", "STUDIO"] and S["seq0"]["vp_open"] == 0 and
           S["seq1"]["ui_view"] == V_SETUP,
-          f"SEQ on SETUP steps STUDIO -> ACOUSTIC -> ELECTRO -> CHIP -> STUDIO with the pop-up \"Band Kit\" {seq} "
+          f"SEQ on SETUP steps STUDIO -> ACOUSTIC -> ELECTRO -> CHIP -> STUDIO with the pop-up \"Band Drum Kit\" {seq} "
           f"(m10p6-seq2.png: the KIT row; STUDIO at power-on: reset)")
     ps = S["play-seq"]
-    check(ps["popup_open"] == 1 and ps["popup_btn"] == B["SEQ"] and ps["kit"] == 0 and ps["vp_value"] != "ACOUSTIC",
-          "SEQ on the play screen stays NOT IMPLEMENTED (the pop-up); the kit does not change")
+    check(ps["popup_open"] == 0 and ps["kit"] == 1 and ps["vp_title"] == "Band Drum Kit" and ps["vp_value"] == "ACOUSTIC",
+          "SEQ on BACKTRACK's play screen steps the band kit at once (M10.3): ACOUSTIC, pop-up \"Band Drum Kit\"")   # (was: NOT IMPLEMENTED)
     bad = []
     for sty in range(11):
         base = S[(sty, 0)]
