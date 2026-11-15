@@ -169,3 +169,6 @@ built from community reverse engineering and Felucca's HAL; not measured on our 
 - **Flash:** 1 MiB SPI NOR on SPI0 (CS PD0). The emulator's flash answers JEDEC `85 60 14`
   (our chip) and has no option to report `B3 60 14` (only the SMK-37 board switches it, to
   `EB 60 14`). Testing our 0xB36014 path will need a small emulator patch or option.
+
+**Prepared 2026-11-15 (not installed): Milestone M10.4, FM-1_46001005** (0.10.5-m10.4, package `build/step-M10.4/fm1acc-0.10.5-m10.4.fwsc`, sha256
+`769c87bfdf746dcb1aa39571ca40dbf4d58fbcfae66f1cd8a3f278cc3559cc43`, commit 6adc7ee; checklist docs/step-M10.4-install.md; no song to send; installs over M10.2). Fallback: M10.2 above.

@@ -1238,3 +1238,17 @@ Learned / measured: app 554,916 B, 30,812 B free of the app area (>= 16 KB MUST 
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 5 (the trimmed test run, once).
+
+2026-11-15 19:30 — Step M10.4 Parts 4-6 (build, the trimmed run, install note) —
+Status: done (prepared; not installed). STOPPED for the user.
+Did:
+- Package build/step-M10.4/fm1acc-0.10.5-m10.4.fwsc, `--release 0.10.5-m104`, two builds, the same sha256 769c87bfdf746dcb1aa39571ca40dbf4d58fbcfae66f1cd8a3f278cc3559cc43, identity FM-1_46001005, commit 6adc7ee. App 554,980 B (30,748 B free, MUST >= 16 KB), RAM .data+.bss 89,936 B (8,368 B free), pack 22,162 B + 3,712 B dictionary. The first release build (4ccaea14, commit 801ad75) was tested first; it was replaced because the run found a crash (below).
+- The trimmed run (test-runner subagent; times in build/step-M10.4/times.txt). Lane A (laptop): pytest 298 passed; store_test, upreset_test, vsynth_test LEVELS=1 (POTATO level 104 -> 105, no change made), builtin_test (30 s: 2,166,640 corrupt packs, errors only) all pass; make_songs.py for all slugs changed no file (run by the main session: it writes into songs/). Lane B (emulator): m104p1-p5, m5 boot/flash, m10 p2/p3, m101 p6 passed; m5 store, m10p5, m101p3 failed.
+- **Found by the run: M10.3's help tables had nine initialisers where ten rows are drawn, so a NULL string crashed every help screen except BACKTRACK's play help (also on M10.3's package, not on M10.2's).** Fixed in ui.c (the three tables get their empty rows), a new check in m104p5 (help of list, play, SETUP, Settings: no crash screen); m5 store-empty was also a stale expectation (the run ended before PLAY). Package rebuilt; only the failed groups re-run on it (m5 store 11/11, m10p5 5/5, m101p3 6/6) plus m104p5: all pass. Not re-run (the fix touches three const tables): the other groups of the first run.
+- Screenshots in docs/step-M10.4/ looked at: splash (logo, version lower right), mode screen (mascot, Kick bold twice), BACKTRACK help (ten rows readable), list footer.
+- Not run, and why: m51 (store and USB commands unchanged; m101p6 sends all 57 through the same path); m6-m9; m10p1/p4/p6/p7; m10_flash and m101_flash (presets untouched); song_fuzz (parser unchanged; the decoder has builtin_test); every-song play-throughs (pytest's goldens: no song changed).
+- docs/step-M10.4-install.md written (install over M10.2; no factory reset; nothing to send).
+Learned / measured: `fm1song list` shows only the store (the built-ins are not in it); built-ins play sample-identically to the store's copies in the emulator, CPU the same.
+Hardware touched: none
+Questions for the planning chat: M10.4-03 (dictionary rule; no built-ins when the store's flash is unusable), M10.4-06 (the crash in M10.3's help tables; M10.3's package was never installed)
+Next: STOP. The user installs per docs/step-M10.4-install.md; Claude Code runs only --info / fm1song list and records.
