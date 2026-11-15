@@ -50,3 +50,9 @@ The user was away and said not to stop: each call was decided and recorded here.
   1 the store, 2 a built-in).
 - **Budget (MUST):** dev build image 554,900 B (M10.3: 523,444 B): +31.5 KB; app area 585,728 B, so about 30.8 KB free (>= 16 KB); RAM .data+.bss 89,920 B
   of 98,304 (8.4 KB free, >= 4 KB); pool 295,560 of 344,064. The plan's guess for the pack was 14-30 KB; it is 25.9 KB + the decoder and tables.
+
+## M10.4-04 — Part 4: version and release build
+- Version 0.10.5-m10.4 (FW_VERSION), FW_MILESTONE "m10.4", `--release 0.10.5-m104`; identity FM-1_46001005 (the scheme held). tools/m10_test.py's source check of FW_MILESTONE updated to "m10.4" (a stale expectation, exact new value).
+- Release build from commit ac96f73 (a clean tree: only the user's untracked import/): two builds, the same sha256 7904930c8653a2ff03dbc2d4b977daece88d8a89e5fa21b440a4a2961ebc39b0.
+  App 554,916 B of the 585,728 B app area: **30,812 B free (M10.3: 62,284 B)**; RAM .data+.bss 89,920 B of 98,304 (8,384 B free); pool 295,560 of 344,064. The pack: 22,162 B packed + 3,712 B dictionary = 25,874 B.
+  No new compiler warnings (the two older ones: EAS eas_voicemgt.c, bt.c:234).

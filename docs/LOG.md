@@ -1229,3 +1229,12 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 4 (version bump, release build).
+
+2026-11-15 17:50 — Step M10.4 Part 4 (release build) —
+Status: done
+Did:
+- Version 0.10.5-m10.4 (commit ac96f73); `firmware/build.sh --release 0.10.5-m104` twice: the same sha256 7904930c8653a2ff03dbc2d4b977daece88d8a89e5fa21b440a4a2961ebc39b0, identity FM-1_46001005, build/step-M10.4/fm1acc-0.10.5-m10.4.fwsc.
+Learned / measured: app 554,916 B, 30,812 B free of the app area (>= 16 KB MUST met), RAM .data+.bss 89,920 B (8,384 B free, >= 4 KB), pack 25,874 B; no new warnings.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 5 (the trimmed test run, once).
