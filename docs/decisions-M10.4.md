@@ -53,6 +53,23 @@ The user was away and said not to stop: each call was decided and recorded here.
 
 ## M10.4-04 — Part 4: version and release build
 - Version 0.10.5-m10.4 (FW_VERSION), FW_MILESTONE "m10.4", `--release 0.10.5-m104`; identity FM-1_46001005 (the scheme held). tools/m10_test.py's source check of FW_MILESTONE updated to "m10.4" (a stale expectation, exact new value).
-- Release build from commit ac96f73 (a clean tree: only the user's untracked import/): two builds, the same sha256 7904930c8653a2ff03dbc2d4b977daece88d8a89e5fa21b440a4a2961ebc39b0.
-  App 554,916 B of the 585,728 B app area: **30,812 B free (M10.3: 62,284 B)**; RAM .data+.bss 89,920 B of 98,304 (8,384 B free); pool 295,560 of 344,064. The pack: 22,162 B packed + 3,712 B dictionary = 25,874 B.
-  No new compiler warnings (the two older ones: EAS eas_voicemgt.c, bt.c:234).
+- The first release build (commit ac96f73, sha256 7904930c...) was superseded before any test: Part 5 needed three more diagnostic fields in player_stats (M10.4-05), which changes the package. **The package that is tested and installed:
+  commit 801ad75 (a clean tree: only the user's untracked import/ and the screenshots folder docs/step-M10.4/), two builds, the same sha256
+  4ccaea14b998554cbcb370a15ea70880dec2e45ba6b9c38e6f70c385602db221**, build/step-M10.4/fm1acc-0.10.5-m10.4.fwsc.
+  App 554,980 B of the 585,728 B app area: **30,748 B free (M10.3: 62,284 B; the MUST is 16 KB)**; RAM .data+.bss 89,936 B of 98,304 (8,368 B free; the MUST is 4 KB);
+  pool 295,560 of 344,064. The pack: 22,162 B packed + 3,712 B dictionary = 25,874 B. No new compiler warnings (the two older ones: EAS eas_voicemgt.c, bt.c:234).
+
+## M10.4-05 — Part 5: how the trimmed run was set up
+- **Three more diagnostic words in player_stats** (after M10.4's `builtins`, `open_src`): `key_route` (the last key pressed went to 0 EAS / 1 vsynth), `keys_prog` (the last
+  program sent on the keys' channel, 0xFF none yet), `big_sub` (the last pop-up's sub line was the big section name). The plan's m104p4 asks to observe exactly these and M10.3 had
+  no way to see them; no behaviour changes.
+- **tools/m104_test.py** (the structure of m101_test.py; its stats reader appends the five M10.4 words after M10.1's texts). m104p1 compares every played built-in with the store's copy of the
+  same song: the emulator's audio is sample-identical, so "CPU as in M10" is the same CPU, and the limit 60 % of a block (M10.1's) is checked too. The user's "one private song" in
+  m104p2 is a copy of saints under another slug and title ("zzz-private", "Zzz Private Test"): the real songs/private/ songs are never read by a test (m5.PRIVATE_SKIP). A store song of
+  the same title as a built-in comes first in the list (the insertion sort is stable and the store's songs are scanned first); m10p5's "noinfo" copy of saints relies on it.
+- `builtins` counts the built-ins in the lists of both modes (songs and backtracks): 57 on a new FM-1; list_n counts the songs of SONG LEARN's folder (15).
+- **Stale expectations fixed to the exact new value** (the built-ins fill every list, so nothing is "empty" any more): tools/m5_test.py store-empty (PLAY now starts the first song:
+  starts 1); tools/m101_test.py m101p3 (15 songs before the reset: 2 sent + 13 built-in; 15 after it) and tools/m10_test.py m10p5 (the "noinfo" song is opened by its list index).
+- **make_songs.py** for all slugs was run by the main session, not the test-runner subagent (it writes into songs/; the subagent may write only into build/): `git status` showed no song file changed.
+- **Dev runs:** tools/m104_test.py itself was run against dev builds while it was being written (its own expectations: the meaning of `builtins`, HOME twice = the mode screen, ALGO's applied structure,
+  a not-found delete never leaves the splash). The official run below is the ONE run of the final package, with the subagent.
