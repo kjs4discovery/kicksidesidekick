@@ -17,6 +17,9 @@ used by the user; notes in the vault (install details not given). Fallback: M10 
 `build/step-M10.2/fm1acc-0.10.3-m10.2.fwsc`, sha256 `0c38fc04c4cd7653fc0212101a4782c6f5869be7a132e10811a92fd476e0c320`): installed and
 used by the user; notes in the vault (install details not given). Fallback: M10.1 above.
 
+**Prepared 2026-11-15 (not installed): Milestone M10.3, FM-1_46001004** (0.10.4-m10.3, package `build/step-M10.3/fm1acc-0.10.4-m10.3.fwsc`, sha256
+`59ea0e6d012cd4715067664b70a9bfd226234ea024f2968dba752cefce3c3234`, commit b13125b; checklist docs/step-M10.3-install.md; no song to send). Fallback: M10.2 above.
+
 Previous record (M9):
 
 **Milestone M9, FM-1_46000900** (fm1-accompaniment v0.9.0-m9, release build, commit 755af1a, package

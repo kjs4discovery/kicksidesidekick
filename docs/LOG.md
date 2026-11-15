@@ -1180,3 +1180,16 @@ Did:
 Hardware touched: none
 Questions for the planning chat: M10.3-01 (which scope is wanted: the plan's, or the HANDOFF's with the library and the test run)
 Next: Part 1.
+
+2026-11-15 15:55 — Step M10.3 Parts 1-7 (BACKTRACK, SONG LEARN, POTATO, artwork, open source, docs, build) —
+Status: done (prepared; not installed). STOPPED for the user.
+Did:
+- Part 1 BACKTRACK: the indicator says LOOP only while structure and the waiting structure are LOOP; HOME in any state of the play screen stops and goes to SETUP; SEQ steps the band kit while it plays (player.c: kit_programs_due, sent at the next dispatch); "Band Drum Kit"; the help's button tables are ten rows now.
+- Part 2 SONG LEARN: list footer; empty screens "Please visit our website / to download songs."; the keys play the melody preset (route per key) or the song's melody program; the Start pop-up's section name big.
+- Part 3 POTATO CRUSH 127. Part 4 artwork (logo_to_c.py --palette/--prefix/--preview; docs/step-M10.3/splash-logo.png and mode-mascot.png looked at; logo 5,643 B, mascot 2,264 B); splash and mode screen. Part 5 LICENSE, LICENSES/, SPDX lines (81 files), REUSE.toml, NOTICE, the contact comment. Part 6 docs/reference.md, controls.md M10.3, staleness fixes.
+- Part 7: release build `--release 0.10.4-m103`, two builds, same sha256 59ea0e6d012cd4715067664b70a9bfd226234ea024f2968dba752cefce3c3234, identity FM-1_46001004, commit b13125b, build/step-M10.3/fm1acc-0.10.4-m10.3.fwsc. docs/step-M10.3-install.md.
+- Checks: build with no new warnings; pytest tools/fm1song 298 passed; make_songs.py for all slugs changed no song file. No emulator run, no suite (the plan: no test cycle). Stale test strings updated in m10_test.py and m101_test.py, not run.
+Learned / measured: app 523,444 B (62,284 B free; M10.2 66,444 B), RAM .data+.bss 89,152 B; the network was available, so LICENSES/CC-BY-SA-4.0.txt is the real text; `reuse` is not installed (no lint).
+Hardware touched: none
+Questions for the planning chat: M10.3-01 (the prompt and the older HANDOFF note name the built-in starter library, builtin_test and a trimmed final test run; docs/plan-M10.3.md says none of them are in M10.3 and has only Parts 0-7: I followed the plan; is the library M10.4 now?), and M10.3-06 (the extra REUSE annotations; the comment in __init__.py is a # block because the file has no docstring), M10.3-02 (help tables to ten rows).
+Next: STOP. The user installs per docs/step-M10.3-install.md; Claude Code runs only --info / fm1song list and records.
