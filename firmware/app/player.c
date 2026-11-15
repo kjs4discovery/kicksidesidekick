@@ -30,7 +30,7 @@
 #define FRAME_RATE 44100u
 #define DEN (FRAME_RATE * 60u)            /* a tick is DEN units of position; a frame adds ppq * bpm */
 
-volatile struct player_stats player_stats = {.magic = PL_STATS_MAGIC, .version = 4, .ui_view = 0xFFu, .part = 0xFFu};
+volatile struct player_stats player_stats = {.magic = PL_STATS_MAGIC, .version = 4, .ui_view = 0xFFu, .part = 0xFFu, .keys_prog = 0xFFu};
 
 /* ------------------------------------------------- requests (main loop -> interrupt) --- */
 static const struct song *volatile want_song;

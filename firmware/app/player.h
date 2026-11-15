@@ -190,6 +190,8 @@ struct player_stats {
     /* M10.4 (tools/m104_test.py): after the M10.1 texts */
     uint32_t builtins;                    /* built-in songs in the list (the store's songs of the same slug replace theirs) */
     uint32_t open_src;                    /* the last file opened (SONG LEARN or BACKTRACK): 0 none yet, 1 the store, 2 a built-in */
+    uint32_t key_route, keys_prog, big_sub;   /* M10.3's checks: the last key pressed went to 0 EAS / 1 vsynth (key_route); the last program sent on
+                                           * the keys' channel (keys_prog, 0xFF none yet); the last pop-up's sub line was the big section name */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

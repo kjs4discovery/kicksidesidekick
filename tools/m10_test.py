@@ -283,7 +283,8 @@ def test_m10p5(all_songs, rep):
         c0 = ex.submit(lambda: m5.run("m10p5-noinfo-send", 120000, [], flash="empty_quiet",
                                        host=f"{m5.SEND} send --emu-pipe {d}"))
         a, b, c0 = a.result(), b.result(), c0.result()
-        c = ex.submit(lambda: m5.run("m10p5-noinfo", O + 2600, m5.open_song(0) + settings(O + 1200), flash=c0["flash"])).result()
+        # (M10.4: the built-in library fills the list: saints-noinfo, sent, has the title of the built-in saints and comes first of the two)
+        c = ex.submit(lambda: m5.run("m10p5-noinfo", O + 2600, m5.open_song(i_saints) + settings(O + 1200), flash=c0["flash"])).result()
     A, Bs, C = a["stats"], b["stats"], c["stats"]
     check(A["ui_view"] == V_SETTINGS and A["info_shown"] == 1 and A["info_text"] == "Traditional spiritual, c. 1896",
           f"a song with INFO, from its play screen: Settings shows its info line {A['info_text']!r} (m10p5-info.png)")

@@ -420,8 +420,8 @@ def test_store(all_songs, sent, rep):
     check(not lst["halt"], "the song list with every song (store-songs.png)")
 
     em = run("store-empty", 4600, press(OPEN_MS, "PLAY") + press(PLAY_MS, "PLAY"), flash="empty")
-    check(not em["halt"] and em["stats"] and em["stats"]["starts"] == 0 and em["ops"] == 0,
-          "empty song area: the list says how to send songs (store-empty.png); PLAY does nothing; no crash; "
+    check(not em["halt"] and em["stats"] and em["stats"]["starts"] == 1 and em["ops"] == 0,
+          "empty song area (M10.4: the built-in library fills the list): the first song opens and PLAY starts it (store-empty.png); no crash; "
           "nothing written")
 
     junk = OUT / "runs" / "junk-src.flash"

@@ -1131,8 +1131,10 @@ static void say_from(void)
         if (song_section_first(ui.s, i) == ui.from_bar)
             sec = song_section_name(ui.s, i);
     vpop_show("Start", t, sec, 0);       /* M10.1: the pop-up "Start" / "BAR 9" */
-    if (vpop.open && sec[0])
+    if (vpop.open && sec[0]) {
         vpop.big_sub = 1;                /* M10.3 */
+        player_stats.big_sub = 1;
+    }
 }
 
 /* ------------------------------------------------------------------ M10.1: SONG LEARN's melody sound --- */
@@ -1154,6 +1156,7 @@ static void keys_program(int song)
     if (song && ui.s && ui.s->layer[L_MELODY].variants && ui.s->layer[L_MELODY].program != 0xFFu)
         p = ui.s->layer[L_MELODY].program;
     synth_midi(0xC0u | SYNTH_KEYS_CH, (uint8_t)p, 0);
+    player_stats.keys_prog = p;
 }
 
 /* the melody layer's notes to vsynth (on) or EAS (off): the layer held meanwhile (its notes released the old way) */
@@ -1624,6 +1627,7 @@ static void vpop_keep(const char *title, const char *value, const char *sub, uin
     vpop.open = 1;
     vpop.dirty = 1;
     vpop.big_sub = 0;                    /* (say_from sets it after this) */
+    player_stats.big_sub = 0;
     vpop.badge = (uint8_t)badge;
     vpop.until = now + VPOP_MS;
     for (i = 0; i < sizeof vpop.title - 1u && title[i]; i++)
@@ -1738,6 +1742,7 @@ static void input(void)
             uint8_t note = (uint8_t)(KEY_LOW + (int32_t)k + 12 * ui.oct);
             ui.key_note[k] = note;
             ui.key_route[k] = (uint8_t)(bt.on || lm_active());   /* M10.3: SONG LEARN's melody preset plays on the keys too */
+            player_stats.key_route = ui.key_route[k];
             if (ui.key_route[k])         /* M8: BACKTRACK: the melody sound (the synth, 4 voices) */
                 vsynth_key(note, 1);
             else

@@ -481,8 +481,8 @@ def test_m101p3(all_songs, rep):
     boot0 = m5.run("m101p3-boot-before", 5200, [], flash=str(before))
     B0 = boot0["stats"]
     B0["preset_used"] = synth_run("m101p3-boot-before-sy", 5200, [], flash=str(before))["stats"]["preset_used"]   # (counted in SYNTH)
-    check(B0["list_n"] == 2 and B0["preset_used"] == 2 and (B0["settings"] >> 16) & 15 == 1,
-          f"the image before: {B0['list_n']} songs, {B0['preset_used']} saved presets, ZOOM changed (settings {B0['settings']:#x})")
+    check(B0["list_n"] == 15 and B0["preset_used"] == 2 and (B0["settings"] >> 16) & 15 == 1,
+          f"the image before: {B0['list_n']} songs (2 sent + 13 built-in; M10.4), {B0['preset_used']} saved presets, ZOOM changed (settings {B0['settings']:#x})")
     default = m5.run("m101p3-boot-default", 5200, [], flash="empty")["stats"]
     host = f"{m5.SEND} factory-reset --emu-pipe --yes"
     rs = m5.run("m101p3-reset", 40000, [], flash=str(before), host=host)
@@ -498,8 +498,8 @@ def test_m101p3(all_songs, rep):
     boot = m5.run("m101p3-boot-after", 5200, [], flash=str(rs["flash"]))
     B = boot["stats"]
     B["preset_used"] = synth_run("m101p3-boot-after-sy", 5200, [], flash=str(rs["flash"]))["stats"]["preset_used"]
-    check(B["list_n"] == 0 and B["preset_used"] == 0 and (B["settings"]) == default["settings"] and B["ui_view"] == V_LIST and not boot["halt"],
-          f"after a power cycle: no songs ({B['list_n']}), no presets ({B['preset_used']}), the settings are the defaults "
+    check(B["list_n"] == 15 and B["preset_used"] == 0 and (B["settings"]) == default["settings"] and B["ui_view"] == V_LIST and not boot["halt"],
+          f"after a power cycle: only the built-in songs ({B['list_n']}; M10.4), no presets ({B['preset_used']}), the settings are the defaults "
           f"({B['settings']:#x} = {default['settings']:#x}), a normal boot")
     # refused in SYNTH and BACKTRACK (as sends are: result 9); nothing written
     before_bytes = Path(before).read_bytes()
