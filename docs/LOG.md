@@ -1211,3 +1211,13 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 2.
+
+2026-11-15 17:10 — Step M10.4 Part 2 (the built-in starter library) —
+Status: done
+Did:
+- tools/builtin_pack.py (gen at every build -> builtin_gen.h; refuses private and unlisted paths; compile route checked identical to `fm1song send`'s), firmware/app/builtin.c/.h (LZ77 + shared dictionary decoder, bounds-checked), library.c (source indices, store wins by slug, lib_file with two 2 KB slots), bt.c (bt_prepare through lib_file), ui.c (uint16_t lists, helpers), player.h stats (builtins, open_src), WIPE text. USB commands and store code unchanged.
+- tools/builtin_test.c + builtin_test.sh (ASan + UBSan): all 57 built-ins unpack byte-identical, CRC and metadata equal song_peek, song_open and every level builds; 500,000 corrupt packs in 5 s give errors only (the full 30 s run is Part 5's).
+Learned / measured: 57 files 73,336 B raw -> 22,162 B packed + 3,712 B dictionary; image 554,900 B (dev build; ~30.8 KB of the app area free), RAM .data+.bss 89,920 B (8.4 KB free). Decisions M10.4-03.
+Hardware touched: none
+Questions for the planning chat: M10.4-03 (the dictionary rule; no built-ins when the store's flash is unusable)
+Next: Part 3 (docs).

@@ -8,10 +8,12 @@ usb_product = "FM-1 Accompaniment"
 words = "words.tsv"
 font_full = ["L", "M"]         # chord names have lower case (Em, Bbmaj7)
 # M2: no songs in the image; they live in the flash's song store, sent from the laptop (tools/fm1song send; library.c)
+# M10.4: the built-in starter library: songs/library.txt packed (tools/builtin_pack.py; the decoder is builtin.c) into {gen}/builtin_gen.h
 # M10.3: the splash's logo (240 wide) and the mode screen's mascot (120 wide), the user's own art in firmware/assets/src/, mapped to one
 # fixed palette (cream background first) -> a palette and run-length rows each. firmware/assets/tmp-logo.jpg is no longer built.
 gen = ["../../tools/logo_to_c.py ../assets/src/kickside-logo.jpg {gen}/logo_gen.h --width 240 --prefix LOGO --palette 253,239,202;18,32,18;254,180,59;240,140,40;230,87,27;255,250,235;200,60,20",
-       "../../tools/logo_to_c.py ../assets/src/kickside-mascot.jpg {gen}/mascot_gen.h --width 120 --prefix MASCOT --palette 253,239,202;18,32,18;254,180,59;240,140,40;230,87,27;255,250,235;200,60,20"]
+       "../../tools/logo_to_c.py ../assets/src/kickside-mascot.jpg {gen}/mascot_gen.h --width 120 --prefix MASCOT --palette 253,239,202;18,32,18;254,180,59;240,140,40;230,87,27;255,250,235;200,60,20",
+       "../../tools/builtin_pack.py {gen}/builtin_gen.h"]
 tagline = "a play-along band for the FM-1"
 licence = "TBD"
 credits = "Built on fm1-base and felucca-bsp (MPL-2.0). GM sounds: Sonivox EAS (Apache-2.0)."
@@ -20,7 +22,7 @@ credits = "Built on fm1-base and felucca-bsp (MPL-2.0). GM sounds: Sonivox EAS (
 # with our configuration and host layer from eas/ (ours). The 22.05 kHz wavetable set wt_200k_G (GM).
 include = ["../vendor/felucca-engines/src", "eas", "../vendor/sonivox/arm-wt-22k/host_src", "../vendor/sonivox/arm-wt-22k/lib_src"]
 device_include = ["eas/fm1inc"]   # the C library header EAS wants, for the firmware only (ours)
-o2 = ["synth.c", "vsynth.c", "player.c", "song.c", "gen.c", "store.c", "upreset.c", "eas/eas_host_fw.c",
+o2 = ["synth.c", "vsynth.c", "player.c", "song.c", "gen.c", "store.c", "upreset.c", "builtin.c", "eas/eas_host_fw.c",
       "../vendor/sonivox/arm-wt-22k/host_src/eas_config.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_chorus.c",
       "../vendor/sonivox/arm-wt-22k/lib_src/eas_chorusdata.c",

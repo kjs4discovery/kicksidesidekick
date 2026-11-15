@@ -33,6 +33,7 @@
  * window off while it writes. */
 #include "store.h"
 #include "vsynth.h"
+#include "builtin_gen.h"                 /* M10.4: the built-in library (tools/builtin_pack.py): bi_files, bi_items, the packs */
 
 #define SC_LIST 0x70u
 #define SC_ENTRY 0x71u
@@ -50,18 +51,20 @@ enum { SR_OK, SR_NO_FLASH, SR_SIZE, SR_TRANSFER, SR_CRC, SR_INVALID, SR_STORE, S
 static uint8_t piece[512] __attribute__((aligned(4)));                          /* a song being received: a piece */
 static uint8_t dec[LIB_DEC_BYTES] PLAT_POOL __attribute__((aligned(4)));        /* the open song's events */
 static uint32_t region[SONG_LAYERS];     /* 2.0: each layer's level in dec, from here */
-/* a song of the list: what the list shows (M4 kept the whole struct song: too big for 200 songs) */
-struct lib_item {
-    const char *title, *key, *category;  /* in the file, in the flash */
-    uint32_t bpm, beats_per_bar;
-    const char *numerals;                /* M8 (2.2 FORM): a backtrack's numerals ("" a song) */
-    uint8_t kind, number, scale, key_mode;   /* M8: SONG_KIND_*, a backtrack's number and scale; the key's mode */
-};
+/* M10.4 (D070 option 1): a song of the list is a SOURCE index k: k < STORE_MAX_SONGS is the store's song k (as before: the USB commands,
+ * peeked[] and peek_err[] use these), k >= STORE_MAX_SONGS is built-in k - STORE_MAX_SONGS (builtin_gen.h: const metadata, no RAM copy).
+ * order[] lists source indices by title; lib_item (the list's row) is in builtin.h */
+#define LIB_BUILTIN STORE_MAX_SONGS
+#define LIB_MAX (STORE_MAX_SONGS + BUILTIN_N)
 static struct lib_item peeked[STORE_MAX_SONGS] PLAT_POOL;
 static int8_t peek_err[STORE_MAX_SONGS];
-static int8_t open_err[STORE_MAX_SONGS];  /* found when opened (the full check): the list keeps showing it */
-static uint8_t order[STORE_MAX_SONGS];   /* the list's order: by title */
-static uint32_t nsongs;
+static int8_t open_err[LIB_MAX];          /* found when opened (the full check): the list keeps showing it */
+static uint16_t order[LIB_MAX];          /* the list's order: by title (source indices) */
+static uint32_t nsongs;                  /* the list's songs: the store's and the built-ins no store song replaces */
+static uint32_t nstore;                  /* the store's songs (the USB commands see only these) */
+/* a built-in is decoded into one of two file slots when opened (SONG LEARN: slot 0; BACKTRACK: the half it prepares) */
+_Static_assert(BUILTIN_MAX <= 2048u, "a built-in file slot is 2 KB");
+static uint8_t bi_slot[2][BUILTIN_MAX] PLAT_POOL __attribute__((aligned(4)));
 static int lib_state;                    /* 0 not scanned, 1 scanned, < 0 STORE_E_NO_FLASH */
 static struct song current;              /* the song open for playing (its events in dec) */
 static int32_t current_i = -1;
@@ -105,19 +108,32 @@ static int title_before(const struct lib_item *a, const struct lib_item *b)
     return lower(*p) < lower(*q);
 }
 
+/* source k's list row, and why its header does not peek (a built-in always does) */
+static const struct lib_item *lib_raw(uint32_t k) { return k < LIB_BUILTIN ? &peeked[k] : &bi_items[k - LIB_BUILTIN]; }
+static int lib_perr(uint32_t k) { return k < LIB_BUILTIN ? peek_err[k] : 0; }
+
+static int lib_same_slug(const char *a, const char *b)
+{
+    while (*a && *a == *b)
+        a++, b++;
+    return *a == *b;
+}
+
 static void lib_scan(void)
 {
-    uint32_t i, k;
+    uint32_t i, k, j;
     int r = store_open();                /* (M5.1: the store's table is kept up to date: scanned once) */
     current_i = -1;
     nsongs = 0;
+    nstore = 0;
+    player_stats.builtins = 0;
     if (r < 0) {
         lib_state = r;
         return;
     }
     lib_state = 1;
-    nsongs = store_count();
-    for (i = 0; i < nsongs; i++) {
+    nstore = store_count();
+    for (i = 0; i < nstore; i++) {
         const struct store_entry *e = store_get(i);
         struct song s;
         if ((i & 15u) == 15u)
@@ -134,17 +150,31 @@ static void lib_scan(void)
         peeked[i].scale = s.scale;
         peeked[i].key_mode = s.key_mode;
         open_err[i] = 0;
-        order[i] = (uint8_t)i;
+        order[i] = (uint16_t)i;
     }
-    for (i = 1; i < nsongs; i++)          /* insertion sort by title; songs that do not peek last */
+    nsongs = nstore;
+    for (j = 0; j < BUILTIN_N; j++) {     /* M10.4: each built-in no valid store song has the slug of: the store wins */
+        for (i = 0; i < nstore; i++)
+            if (!peek_err[i] && lib_same_slug(store_get(i)->slug, bi_files[j].slug))
+                break;
+        open_err[LIB_BUILTIN + j] = 0;
+        if (i == nstore) {
+            order[nsongs++] = (uint16_t)(LIB_BUILTIN + j);
+            player_stats.builtins++;
+        }
+    }
+    for (i = 1; i < nsongs; i++) {        /* insertion sort by title; songs that do not peek last */
+        if ((i & 31u) == 31u)
+            store_yield();
         for (k = i; k > 0; k--) {
-            uint8_t a = order[k - 1u], b = order[k];
-            int swap = peek_err[a] ? !peek_err[b] : !peek_err[b] && title_before(&peeked[b], &peeked[a]);
+            uint16_t a = order[k - 1u], b = order[k];
+            int swap = lib_perr(a) ? !lib_perr(b) : !lib_perr(b) && title_before(lib_raw(b), lib_raw(a));
             if (!swap)
                 break;
             order[k - 1u] = b;
             order[k] = a;
         }
+    }
 }
 
 static int lib_ready(void)
@@ -160,8 +190,43 @@ static uint32_t lib_count(void) { return lib_ready() ? nsongs : 0; }
 static const struct lib_item *lib_peek(uint32_t i, int *err)
 {
     uint32_t k = order[i];
-    *err = peek_err[k] ? peek_err[k] : open_err[k];
-    return *err ? 0 : &peeked[k];
+    *err = lib_perr(k) ? lib_perr(k) : open_err[k];
+    return *err ? 0 : lib_raw(k);
+}
+
+/* M10.4: source k's file, to open it: a store song in place in the flash (as before), or a built-in decoded into file slot `slot` (0 or 1:
+ * the caller keeps that slot for as long as the song is in use), its length and CRC-32 checked here. *crc is what the file's record says
+ * (the callers compare song_crc32 with it, as they always did) -> SONG_OK, or SONG_E_CRC (a built-in that does not decode or check: the
+ * pack is damaged; the rest of the library still works), SONG_E_SHORT (no such song) */
+static int lib_file(uint32_t k, uint32_t slot, const uint8_t **p, uint32_t *len, uint32_t *crc)
+{
+    *p = 0;
+    *len = 0;
+    if (k < LIB_BUILTIN) {
+        const struct store_entry *e = store_get(k);
+        if (!e)
+            return SONG_E_SHORT;
+        *p = store_file(e);
+        *len = e->len;
+        *crc = e->crc;
+        player_stats.open_src = 1;
+        return SONG_OK;
+    }
+    if (k - LIB_BUILTIN >= BUILTIN_N)
+        return SONG_E_SHORT;
+    {
+        const struct bi_file *f = &bi_files[k - LIB_BUILTIN];
+        uint8_t *buf = bi_slot[slot & 1u];
+        if (f->rawlen > BUILTIN_MAX || f->off > BUILTIN_PACK_LEN || f->clen > BUILTIN_PACK_LEN - f->off ||
+            bi_unpack(bi_dict, BUILTIN_DICT_LEN, bi_pack + f->off, f->clen, buf, f->rawlen) != BI_OK ||
+            song_crc32(buf, f->rawlen, 0) != f->crc)
+            return SONG_E_CRC;
+        *p = buf;
+        *len = f->rawlen;
+        *crc = f->crc;
+        player_stats.open_src = 2;
+    }
+    return SONG_OK;
 }
 
 /* the player lets go of the song before its events are overwritten (the audio interrupt reads them) */
@@ -179,7 +244,8 @@ static void lib_release(void)
 /* song i opened for playing: checked in full now (its first use) -> SONG_OK or SONG_E_* */
 static int lib_open(uint32_t i, const struct song **out)
 {
-    const struct store_entry *e;
+    const uint8_t *f;
+    uint32_t flen, fcrc;
     int r;
     *out = 0;
     if (i >= lib_count())
@@ -189,9 +255,10 @@ static int lib_open(uint32_t i, const struct song **out)
         return SONG_OK;
     }
     lib_release();
-    e = store_get(order[i]);
-    r = song_open(&current, store_file(e), e->len, dec, sizeof dec);
-    if (r == SONG_OK && song_crc32(store_file(e), e->len, 0) != e->crc)
+    r = lib_file(order[i], 0, &f, &flen, &fcrc);    /* (M10.4: a store song in place, a built-in decoded into slot 0) */
+    if (r == SONG_OK)
+        r = song_open(&current, f, flen, dec, sizeof dec);
+    if (r == SONG_OK && song_crc32(f, flen, 0) != fcrc)
         r = SONG_E_CRC;                   /* (song_open checked the file's own CRC; this is the record's) */
     if (r == SONG_OK && current.fmt2) {   /* 2.0: each layer's region, and level 1 built in it (M7, 2.1: its start
                                            * level) */
@@ -367,7 +434,7 @@ static void sc_result(uint32_t cmd, uint32_t result, int detail)
     b[0] = (uint8_t)cmd;
     b[1] = (uint8_t)result;
     b[2] = (uint8_t)(int8_t)detail;
-    b[3] = (uint8_t)nsongs;
+    b[3] = (uint8_t)nstore;              /* (M10.4: the store's songs only: the commands never see the built-ins) */
     b[4] = (uint8_t)store_free_sectors();
     b[5] = (uint8_t)store_free_blocks();
     b[6] = (uint8_t)(store_free_blocks() >> 8);
@@ -377,7 +444,7 @@ static void sc_result(uint32_t cmd, uint32_t result, int detail)
 static void sc_list(void)
 {
     uint8_t b[32];
-    uint32_t i, k, n = lib_count();
+    uint32_t i, k, n = lib_ready() ? nstore : 0;   /* (M10.4: the store's songs only, as before) */
     for (i = 0; i < n; i++) {
         const struct store_entry *e = store_get(i);
         for (k = 0; k < sizeof b; k++)
@@ -545,7 +612,7 @@ static void sc_wipe(const uint8_t *body, uint32_t n)
     }
     r = lib_wipe();
     sc_result(SC_WIPE, r == STORE_OK ? SR_OK : SR_STORE, r);
-    app_say(r == STORE_OK ? "SONG STORE WIPED" : "NOT WIPED", r == STORE_OK ? "no songs now" : store_error_name(r));
+    app_say(r == STORE_OK ? "SONG STORE WIPED" : "NOT WIPED", r == STORE_OK ? "built-in songs only" : store_error_name(r));
 }
 
 static void sc_factory(const uint8_t *body, uint32_t n)

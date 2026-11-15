@@ -173,7 +173,7 @@ static struct {
     int folder;                          /* M3 part 8: the folder shown: -1 the folders, 0 all songs, k category k */
     uint32_t nfold, fsel;                /* categories found (folders 1..nfold), the folder list's cursor */
     char fname[16][16];                  /* their names, sorted; "Other": songs with none */
-    uint8_t fl[STORE_MAX_SONGS];         /* the folder's songs: list indices (by title) */
+    uint16_t fl[LIB_MAX];                /* the folder's songs: list indices (by title); M10.4: store songs and built-ins (up to 257) */
     uint32_t nfl, fl_seen;
     const struct song *s;
     uint32_t keys, buttons;
@@ -224,7 +224,7 @@ static struct {
     uint32_t cplx;                       /* M9 (D053): the complexity, 1 SIMPLE .. 3 BUSY (the tier of verses, intros and
                                           * bridges; choruses one more) */
     uint32_t n;                          /* backtracks found */
-    uint8_t list[BT_MAX];                /* their lib indices, by number */
+    uint16_t list[BT_MAX];               /* their lib indices, by number (M10.4: uint16_t: the list has up to 257 songs) */
     uint32_t shown;                      /* the setup screen drawn (a hash) */
     uint32_t sound_until;                /* the melody sound's name shown on the play screen until */
     /* M9: the play screen's live changes (bt.c): what the knobs ask for, and the swap prepared for it */
@@ -1039,8 +1039,8 @@ static const char *song_folder(uint32_t i)
     int err;
     const struct lib_item *s = lib_peek(i, &err);
     if (!s)
-        s = &peeked[order[i]];
-    return !peek_err[order[i]] && s->category && s->category[0] ? s->category : "Other";
+        s = lib_raw(order[i]);
+    return !lib_perr(order[i]) && s->category && s->category[0] ? s->category : "Other";
 }
 
 /* the categories (sorted, at most 16; more: in "All songs" only) and the songs of the folder shown */
@@ -1077,7 +1077,7 @@ static void folders_build(void)
     ui.nfl = 0;
     for (i = 0; i < n; i++)
         if (!lib_is_backtrack(i) && (ui.folder <= 0 || same_text(song_folder(i), ui.fname[ui.folder - 1])))
-            ui.fl[ui.nfl++] = (uint8_t)i;
+            ui.fl[ui.nfl++] = (uint16_t)i;
     ui.fl_seen = lib_changes + 1u;
     player_stats.folder = (uint32_t)(ui.folder + 1);
     player_stats.list_n = ui.nfl;
@@ -1825,7 +1825,7 @@ static void input(void)
                 ui.wipe_done = 1u + (uint32_t)(r == STORE_OK ? 0 : 1);
                 ui.wipe_t0 = 0;
                 ui.view = V_WIPE;          /* (lib_wipe's progress screen moved it) */
-                app_say(r == STORE_OK ? "SONG STORE WIPED" : "NOT WIPED", r == STORE_OK ? "no songs now" :
+                app_say(r == STORE_OK ? "SONG STORE WIPED" : "NOT WIPED", r == STORE_OK ? "built-in songs only" :
                         store_error_name(r));
                 ui.redraw = 1;
             }
@@ -2067,8 +2067,8 @@ static void draw_list(void)
                 cv_text(10, 19, &FONT_XS, t, sel ? C_HI : C_DIM);
             } else {
                 char t[48] = "";
-                const struct lib_item *pk = &peeked[order[li]];
-                text_cat(t, peek_err[order[li]] ? "(unreadable song)" : pk->title);
+                const struct lib_item *pk = lib_raw(order[li]);
+                text_cat(t, lib_perr(order[li]) ? "(unreadable song)" : pk->title);
                 cv_text(10, 1, &FONT_B, t, sel ? C_WHITE : C_GRAY);
                 t[0] = 0;
                 text_cat(t, "SONG ERROR: ");
@@ -2182,7 +2182,7 @@ static void draw_wipe(uint32_t now)
     text_in(0, 240, 14, &FONT_B, ui.wipe_done == 1u ? "SONG STORE WIPED" : ui.wipe_done ? "NOT WIPED" :
             "WIPE SONG STORE?", C_WHITE);
     if (ui.wipe_done) {
-        text_in(0, 240, 46, &FONT_XS, ui.wipe_done == 1u ? "No songs on the FM-1 now." : "The flash refused an erase.",
+        text_in(0, 240, 46, &FONT_XS, ui.wipe_done == 1u ? "Only the built-in songs now." : "The flash refused an erase.",
                 C_GRAY);
         text_in(0, 240, 66, &FONT_XS, "Send them again from the laptop:", C_GRAY);
         text_in(0, 240, 86, &FONT_XS, "tools/fm1song.sh send songs/*/", C_HI);

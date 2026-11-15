@@ -187,6 +187,9 @@ struct player_stats {
     /* M10.1 (tools/m101_test.py): after the M10 texts */
     char title_now[48], legend_now[64], cells_now[48];   /* the SYNTH screen's title as drawn last; the bottom instruction row's text as
                                            * drawn last; an edit page's four values as drawn, space-separated ("12 70 50 30") */
+    /* M10.4 (tools/m104_test.py): after the M10.1 texts */
+    uint32_t builtins;                    /* built-in songs in the list (the store's songs of the same slug replace theirs) */
+    uint32_t open_src;                    /* the last file opened (SONG LEARN or BACKTRACK): 0 none yet, 1 the store, 2 a built-in */
 };
 #define PL_STATS_MAGIC 0x54534C50u        /* "PLST" */
 extern volatile struct player_stats player_stats;

@@ -75,7 +75,7 @@ static void bt_list_build(void)
             const struct lib_item *a = lib_peek(i, &err);
             for (k = bt.n++; k > 0 && lib_peek(bt.list[k - 1u], &err)->number > a->number; k--)
                 bt.list[k] = bt.list[k - 1u];
-            bt.list[k] = (uint8_t)i;
+            bt.list[k] = (uint16_t)i;
         }
     if (bt.prog >= bt.n)
         bt.prog = 0;
@@ -316,12 +316,15 @@ static void bt_leave(void)
  * the other half and is not touched */
 static int bt_prepare(uint32_t half, uint32_t prog, uint32_t style, uint32_t cplx)
 {
-    const struct store_entry *e = store_get(order[bt.list[prog]]);
+    const uint8_t *f;
+    uint32_t flen, fcrc;
     struct song *s = &bt_song[half];
     uint8_t *base = dec + half * BT_HALF;
     uint32_t l, at = 0, off[SONG_LAYERS], t0 = plat_ms();
-    int r = song_open(s, store_file(e), e->len, base, BT_HALF);
-    if (r == SONG_OK && song_crc32(store_file(e), e->len, 0) != e->crc)
+    int r = lib_file(order[bt.list[prog]], half, &f, &flen, &fcrc);   /* (M10.4: a store song in place, a built-in decoded into slot `half`) */
+    if (r == SONG_OK)
+        r = song_open(s, f, flen, base, BT_HALF);
+    if (r == SONG_OK && song_crc32(f, flen, 0) != fcrc)
         r = SONG_E_CRC;
     store_yield();
     if (r == SONG_OK && s->kind != SONG_KIND_BACKTRACK)
