@@ -1170,3 +1170,13 @@ Learned / measured: the stale test strings in tools/m5_test.py, m7_test.py, m10_
 Hardware touched: none
 Questions for the planning chat: decisions M10.2-01 .. M10.2-08 (notably: the stopped legend on three pages; V_HINT's enum slot kept as V_HINT_UNUSED; the marker is a hash of FW_VERSION).
 Next: STOP. The user installs; Claude Code runs only --info / fm1song list and records.
+
+2026-11-15 14:40 — Step M10.3 Part 0 (housekeeping) —
+Status: done
+Did:
+- Recorded the user's install of 0.10.3-m10.2 (FM-1_46001003): "installed and used; notes in the vault" (docs/device.md, here).
+- Created docs/decisions-M10.3.md.
+- Source conflict found: the user's prompt (parts 0-10, built-in starter library, builtin_test, a trimmed test run) and the older text in docs/HANDOFF.md describe a larger M10.3 than docs/plan-M10.3.md (written last: parts 0-7, "Not in M10.3: the built-in starter library", no test cycle, D072). The user is away and said not to stop: following the plan file (the newest, most specific, and it states the user's choice); recorded as M10.3-01.
+Hardware touched: none
+Questions for the planning chat: M10.3-01 (which scope is wanted: the plan's, or the HANDOFF's with the library and the test run)
+Next: Part 1.

@@ -4,7 +4,7 @@ All of these must be filled in before any write to the unit is even proposed
 (see CLAUDE.md, hardware safety rules). Note for each value how and when it was
 measured.
 
-## Currently installed (updated 2026-11-14)
+## Currently installed (updated 2026-11-15)
 
 **Milestone M10, FM-1_46001000** (fm1-accompaniment 0.10.0-m10, package `build/step-M10/fm1acc-0.10.0-m10.fwsc`, sha256
 `27128989d16660ae7f40fee55b4b0c561540fa4c6661fe162d631080dcbf60c8`): installed by the user and used, no problems reported (install
@@ -12,6 +12,10 @@ details not given; reported 2026-11-14). The user saved a user preset named **ZU
 **Update 2026-11-14 (late): Milestone M10.1, FM-1_46001002** (fm1-accompaniment 0.10.2-m10.1, package
 `build/step-M10.1/fm1acc-0.10.2-m10.1.fwsc`, sha256 `7ff839308734740be83175a204f204ab46702a9fbb4a943aa63548c9db77b5af`): installed and
 used by the user; notes in the vault (install details not given). Fallback: M10 above.
+
+**Update 2026-11-15: Milestone M10.2, FM-1_46001003** (fm1-accompaniment 0.10.3-m10.2, package
+`build/step-M10.2/fm1acc-0.10.3-m10.2.fwsc`, sha256 `0c38fc04c4cd7653fc0212101a4782c6f5869be7a132e10811a92fd476e0c320`): installed and
+used by the user; notes in the vault (install details not given). Fallback: M10.1 above.
 
 Previous record (M9):
 
