@@ -202,7 +202,7 @@ def test_m10p3(all_songs, rep):
         ch = ex.submit(lambda: m5.run("m10p3-choose", 5200, ["4400:PLAY", "4460:PLAY^"], mode=None, flash=bt_flash()))
         sp, md, ch = sp.result(), md.result(), ch.result()
     ssrc = (ROOT / "firmware/app/app.h").read_text()
-    check('#define APP_NAME "KickSide - Your Musical SideKick"' in ssrc and '#define FW_MILESTONE "m10.3"' in ssrc and   # (M10.1-02: the name and milestone follow M10.1)
+    check('#define APP_NAME "KickSide - Your Musical SideKick"' in ssrc and '#define FW_MILESTONE "m10.4"' in ssrc and   # (M10.1-02: the name and milestone follow M10.1)
           sp["stats"]["ui_view"] >= 16,
           "the splash: \"Tuneka - Song Sidekick\" and \"m10\" under it (app.h; m10p3-splash.png)")
     simg = sp["lcd"].convert("RGB").resize((240, 240))
