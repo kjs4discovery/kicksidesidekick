@@ -184,3 +184,13 @@ LICENSES/, SPDX lines, REUSE.toml, NOTICE, one contact comment (no joke comment)
 unchanged). Docs: docs/reference.md (current controls, from the code) and a staleness check. **Testing: one trimmed
 run at the end** (Part 9: pytest, host tools, a new builtin_test and m103_test, trimmed m5/m10/m101; no m51, no
 every-song play-through). Coder Sonnet; judgment calls in docs/decisions-M10.3.md. Never run a device command.
+
+---
+
+## 2026-11-15 (later) — from the planning chat — Milestone M10.4 planned: docs/plan-M10.4.md
+
+Answers M10.3-01. The revised plan-M10.3.md never reached this disk (a copy problem on the planning chat's side), so
+M10.3 was correctly built from the first version. The note above describes the revised M10.3, and that work now
+lives in M10.4: the built-in starter library, the trimmed test run (covering M10.3 too: it was never run in the
+emulator), the knock-knock comment removed, and the kit pop-up back to "Band Kit". M10.3's package is never
+installed; M10.4 installs over M10.2. Coder Sonnet; judgment calls in docs/decisions-M10.4.md.

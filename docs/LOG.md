@@ -1193,3 +1193,12 @@ Learned / measured: app 523,444 B (62,284 B free; M10.2 66,444 B), RAM .data+.bs
 Hardware touched: none
 Questions for the planning chat: M10.3-01 (the prompt and the older HANDOFF note name the built-in starter library, builtin_test and a trimmed final test run; docs/plan-M10.3.md says none of them are in M10.3 and has only Parts 0-7: I followed the plan; is the library M10.4 now?), and M10.3-06 (the extra REUSE annotations; the comment in __init__.py is a # block because the file has no docstring), M10.3-02 (help tables to ten rows).
 Next: STOP. The user installs per docs/step-M10.3-install.md; Claude Code runs only --info / fm1song list and records.
+
+2026-11-15 15:10 — Step M10.4 Part 0 (housekeeping) —
+Status: done
+Did:
+- M10.3 (commits b13125b, a3de01f; 0.10.4-m10.3, FM-1_46001004) recorded as built, superseded by M10.4, never installed (docs/device.md). M10.3-01 is answered by docs/plan-M10.4.md: the built-in starter library, the trimmed test run, the knock-knock comment removed, the kit pop-up back to "Band Kit".
+- Created docs/decisions-M10.4.md; committed the planning chat's plan-M10.4.md and HANDOFF note.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 1.
