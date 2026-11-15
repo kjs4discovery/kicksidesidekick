@@ -268,7 +268,14 @@ def test_m104p4(all_songs, rep):
 # --------------------------------------------------------------------------------------------- part 5
 def test_m104p5(all_songs, rep):
     lines, st, check = m5.checker("M10.4 part 5: screenshots (docs/step-M10.4/): the splash, the mode screen, BACKTRACK's help")
+    def crashed(r):          # fm1-base's crash screen: a dark red page (the stats still say the view the UI was in)
+        px = r["lcd"].convert("RGB").resize((240, 240)).getpixel((120, 200))
+        return px[0] > 120 and px[1] < 40 and px[2] < 40
     R = run_all({"splash": lambda: m5.run("m104p5-splash", 2500, [], mode=None),
+                 "h-list": lambda: m5.run("m104p5-h-list", 5400, P(4600, "GLO")),
+                 "h-play": lambda: m5.run("m104p5-h-play", O + 1500, m5.open_song(0) + P(O + 500, "GLO")),
+                 "h-setup": lambda: btrun("m104p5-h-setup", 5800, P(4600, "GLO")),
+                 "s-list": lambda: m5.run("m104p5-s-list", 6000, P(4600, "GLO") + P(5000, "GLO")),
                  "mode": lambda: m5.run("m104p5-mode", 4700, [], mode=None),
                  "help": lambda: btrun("m104p5-bt-help", 7000, P(4700, "PLAY") + P(6000, "GLO"))})
     S = {k: r["stats"] for k, r in R.items()}
@@ -280,6 +287,11 @@ def test_m104p5(all_songs, rep):
     check(S["splash"]["ui_view"] >= 16 and S["mode"]["ui_view"] == V_MODE and S["help"]["ui_view"] == V_HELP and not any(r["halt"] for r in R.values()),
           f"the splash (view {S['splash']['ui_view']}), the mode screen ({S['mode']['ui_view']}) and BACKTRACK's play help ({S['help']['ui_view']}), no halt; "
           f"the pictures are in docs/step-M10.4/ (splash.png, mode-screen.png, bt-help.png; list-footer.png from part 1)")
+    check(not any(crashed(R[k]) or R[k]["halt"] for k in R) and S["h-list"]["ui_view"] == V_HELP and S["h-play"]["ui_view"] == V_HELP and
+          S["h-setup"]["ui_view"] == V_HELP and S["s-list"]["ui_view"] == V_SETTINGS,
+          "the help of the song list, of a song's play screen, of BACKTRACK's SETUP and of its play screen, and the Settings screen: no crash screen "
+          "(M10.3's help tables had nine rows where ten were drawn: a NULL string crashed every help but BACKTRACK's play help; found by this run) "
+          "(m104p5-h-list.png, m104p5-h-play.png, m104p5-h-setup.png)")
     rep += lines
     return st["ok"]
 

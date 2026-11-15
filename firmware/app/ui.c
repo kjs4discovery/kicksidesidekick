@@ -2104,17 +2104,17 @@ static void draw_help(void)
     static const char *const BTN[10][2] = {{"K1-K4", "levels"}, {"FX..LFO", "your part, volume"},
                                           {"PLAY", "play / pause"}, {"HOME", "stop, list"}, {"SEQ", "loop: A, B, off"},
                                           {"ARP", "count-in"}, {"EDIT", "view"}, {"HOME", "held: mode"},
-                                          {"", ""}};   /* (M10.2: SAVE is gone from the list: it has no job here) */   /* (M6; the keys play along: plain) */
+                                          {"", ""}, {"", ""}};   /* (M10.2: SAVE is gone from the list: it has no job here) */   /* (M6; the keys play along: plain) */
     static const char *const BTN_LIST[10][2] = {{"PLAY", "open"}, {"EDIT", "open"},
                                                {"HOME", "folders"}, {"keys", "play along"}, {"", ""},
                                                {"HOME", "held: mode"},
-                                               {"", ""}, {"", ""}, {"", ""}};
+                                               {"", ""}, {"", ""}, {"", ""}, {"", ""}};   /* (M10.4: ten rows: M10.3 left the tenth a NULL string, a crash on this help) */
     static const char *const ENC_SETUP[5][2] = {{"SELECT", "tempo"}, {"PRESETS", "key"},
                                                 {"ALGORITHM", "structure"}, {"MASTER", "volume"},
                                                 {"OCT- OCT+", "keys' octave"}};   /* M9: BACKTRACK, the one knob map */
     static const char *const BTN_SETUP[10][2] = {{"K1", "progression"}, {"K2", "style"}, {"K3", "complexity"},
                                                 {"K4", "melody sound"}, {"PLAY", "start"}, {"HOME", "held: mode"},
-                                                {"keys", "melody sound"}, {"", ""}, {"", ""}};
+                                                {"keys", "melody sound"}, {"", ""}, {"", ""}, {"", ""}};
     static const char *const ENC_BT[5][2] = {{"SELECT", "tempo"}, {"PRESETS", "key (bar)"},
                                              {"ALGORITHM", "structure*"}, {"MASTER", "volume"},
                                              {"OCT- OCT+", "keys' octave"}};

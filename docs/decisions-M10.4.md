@@ -73,3 +73,14 @@ The user was away and said not to stop: each call was decided and recorded here.
 - **make_songs.py** for all slugs was run by the main session, not the test-runner subagent (it writes into songs/; the subagent may write only into build/): `git status` showed no song file changed.
 - **Dev runs:** tools/m104_test.py itself was run against dev builds while it was being written (its own expectations: the meaning of `builtins`, HOME twice = the mode screen, ALGO's applied structure,
   a not-found delete never leaves the splash). The official run below is the ONE run of the final package, with the subagent.
+
+## M10.4-06 — A crash found by the run: M10.3's help tables (fixed in M10.4)
+- The trimmed run's m10p5 and m101p3 showed fm1-base's CRASH screen on opening Settings (GLO): the PC was in cv_text (nm), a load through a NULL string.
+  Cause: M10.3-02 made the help's button tables ten rows (the loop draws ten), but BTN, BTN_LIST and BTN_SETUP had only nine initialisers, so row ten was {NULL, NULL}. Only BTN_BT
+  (ten written rows) was safe. **Every help screen except BACKTRACK's play help crashed on M10.3's package** (which was never installed: the unit runs M10.2, whose tables had nine rows and drew nine).
+  Confirmed on build/step-M10.3's package (m10p5 fails the same way) and absent on M10.2's (m10p5 passes).
+- Fix (ui.c, the SMALLEST change): each of the three tables gets its missing empty rows ({"", ""}). New check in m104p5: the help of the list, of a song's play screen, of SETUP, and
+  Settings, no crash screen (the stats' view cannot tell: the crash screen is detected by its dark red page).
+- Effect on the run: the package changed, so it was rebuilt (the sha below) and ONLY the failed groups were re-run on it (m5 store; m10 m10p5; m101 m101p3) plus m104p5 (its new check);
+  the passed groups of the first run stay as run on the first package 4ccaea14... (the fix touches only the three help tables). Recorded in the LOG.
+- m5 store-empty was also a stale expectation of mine: its run stopped at 4.6 s, before PLAY, so "starts 0" was never about the list; it now runs past PLAY and expects starts 1.

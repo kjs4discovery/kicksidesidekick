@@ -419,7 +419,7 @@ def test_store(all_songs, sent, rep):
     lst = run("store-songs", 4500, [])
     check(not lst["halt"], "the song list with every song (store-songs.png)")
 
-    em = run("store-empty", 4600, press(OPEN_MS, "PLAY") + press(PLAY_MS, "PLAY"), flash="empty")
+    em = run("store-empty", PLAY_MS + 1500, press(OPEN_MS, "PLAY") + press(PLAY_MS, "PLAY"), flash="empty")   # (M10.4: it now plays: run past PLAY)
     check(not em["halt"] and em["stats"] and em["stats"]["starts"] == 1 and em["ops"] == 0,
           "empty song area (M10.4: the built-in library fills the list): the first song opens and PLAY starts it (store-empty.png); no crash; "
           "nothing written")
