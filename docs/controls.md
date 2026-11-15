@@ -1143,3 +1143,44 @@ saints (135 BPM), scarborough-fair (the traditional rhythm, an 18-bar verse: 36 
 ### The census (M10.1)
 
 SETUP: **HOME** now has a job (the mode screen); SONG LEARN's folder list: HOME too. No screen opens the "not implemented" pop-up for HOME any more.
+
+## M10.2 (0.10.3-m10.2: the user's notes on M10.1; docs/plan-M10.2.md; decisions docs/decisions-M10.2.md)
+
+Text only (no screenshots: the user chose no test cycle for this milestone; the build, pytest and the song check ran, the emulator did not).
+
+### SONG LEARN: text and screens
+
+- **Level pop-ups**: K1-K4 say "Drums Complexity Level", "Bass Complexity Level", "Harmony Complexity Level", "Melody Complexity Level"; the value is still "2 of 3". A title wider than the box is drawn one font smaller, never cut.
+- **Track Selected**: a layer button that makes a layer your part shows "Track Selected", the layer name ("Drums", "Bass", "Harmony", "Melody") and under it, smaller, "(press again to control volume level)".
+  BACKTRACK's melody button: "Track Selected / Melody", no second line. The volume pop-up ("Bass Volume / QUIET") is as before. The top-line message says TRACK SELECTED.
+- **The stopped play screen**: no song title (it is at the top); "PRESS PLAY" sits where the title was; under it the start line ("from bar 9 (Chorus 1)") in a larger font (FONT_B) and a brighter grey
+  (FONT_XS, same grey, if a line is too long for the box).
+- **"THE LAYER BUTTONS"** screen is gone: opening a song goes straight to its play screen. The bottom row's page "FX-LFO: pick part|again: volume" stays.
+
+### SONG LEARN: start and key
+
+- **ALGORITHM sets the start**, a bar a click. The pop-up "Start / BAR 9"; when that bar is a section's first bar its name is under it ("Chorus 1"). A section's first bar still starts at its pickup.
+- **PRESETS is the key** (as in BACKTRACK): a semitone a click, the nearest way (-5..+6). The pop-up "Key / E (+2)", at 0 "D (song key)". The old KEY mode (SAVE on, SELECT turns, "SELECT key|SAVE done") is gone;
+  **SAVE has no job** on the play screen (it opens the controls pop-up like any free button). **SELECT** is tempo / zoom (REC's tempo mode unchanged).
+- **While setting a loop** (SEQ), PRESETS still snaps A or B to a section; ALGORITHM moves them by bar.
+- **Paused, then a new start**: if ALGORITHM moves the start while the song is paused, PLAY starts from the NEW start (with the count-in setting), and the PAUSED screen says "PLAY: from bar 9". Without a start change PLAY goes on as before.
+- **Help (GLO) and the bottom row**: PRESETS "key", ALGORITHM "start: bar; loop A/B", SELECT "tempo / zoom", no SAVE. The stopped row has three pages (6 s each): "PLAY|ALGO start|PRESETS key|GLO help",
+  "FX-LFO: pick part|again: volume", "SEQ loop|SELECT tempo|EDIT view|GLO help" ("SEQ set A-B" with the whole-song loop).
+
+### Settings: Pop-ups
+
+The row that was "Controls hint" is **Pop-ups**: OFF / ON, default ON. OFF silences the value pop-ups (SONG LEARN, SYNTH, BACKTRACK: the box with the title and value when a knob or button changes a setting), the "Track Selected" box
+and the controls pop-up of a button with no job. It does NOT silence confirmations and errors ("SAVED U05", "NOT SAVED"), questions, warnings, FACTORY RESET and WIPE. With OFF, SYNTH's bottom row shows the turned knob's
+value again. **Pop-ups is ON after every firmware update** (the settings record keeps a marker of the firmware version; a different one sets ON and is stored; a choice of OFF lasts until the next update).
+
+### Small fixes
+
+- **The mode screen ignores the knobs**: only SELECT counts there; turns of the other encoders are dropped (K3 turned on the mode screen no longer changes SYNTH's reverb).
+- **BACKTRACK's SETUP**: PLAY is lit (full) when there are backtracks to play.
+- **EDS and NIGHT DRIVE** swapped their sounds (names and list positions stay: EDS is still 6th).
+- **Oh! Susanna**: the chorus's 2nd and 6th bars are "D A7" (the planning chat's chart); send the song again.
+
+### The count-in numbers
+
+The count-in shows the beat in the bar, not the beats left: 1 2 3 4 | 1 2 3 for a 4/4 song with a 1-beat pickup (the pickup comes in on the fourth beat), 1 2 3 4 for one without; 3/4: 1 2 3. The clicks are unchanged
+(a full bar, then the pickup bar up to the pickup; the high click on each bar's beat 1).
