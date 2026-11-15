@@ -53,3 +53,10 @@ No test cycle in this run (plan, D072): build, pytest tools/fm1song and the make
 - NOTICE: the title is "KickSide - Your Musical SideKick"; the top lists our three licences; the third-party list is unchanged.
 - The comments are typed as the plan has them. app.h: a block comment after the SPDX line (both paragraphs). tools/fm1song/__init__.py has no docstring (it is a `#` header), so the first paragraph is a `#` block under the SPDX line.
 - No README, CONTRIBUTING or contact address (the plan).
+
+## M10.3-07 — Part 6: docs
+- docs/reference.md written from the code (the help tables in ui.c, learn_jobs, the legends, the settings rows and defaults, the pop-up texts, synthui.c's input and save code, bt.c's SETUP and play input), CC-BY-SA header comment. Not checked against a running unit or the emulator.
+  Things worth a second look by the planning chat: the folders screen's HOME (mode screen: from the code); REC in BACKTRACK (the code toggles the tempo mode there; SELECT is the tempo anyway); "SONG LEARN, melody with more than one level: K4 is its level" (the code's `variants == 1` condition).
+- docs/controls.md: one line at the top pointing to reference.md, and an "M10.3" section.
+- Staleness check: docs/song-format.md: the section-2 heading said "versions 1.0, 1.1 and 1.2" (1.3 and 2.0-2.2 exist, INFO is in 2.8): heading fixed, the rest checked against tools/fm1song/binformat.py (VERSION 1.3, 2.0, 2.1, 2.2; INFO last): no other change needed.
+  docs/import.md: no change needed (it names no firmware text or version). docs/emulator.md: no change needed (no mention of the splash). docs/device.md: "Currently installed" got the M10.2 install (Part 0), and the M10.3 package is added in Part 7. docs/firmware.md (not on the plan's list): its Splash bullet described the old logo: updated.

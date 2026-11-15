@@ -74,8 +74,9 @@ Controls and screens: [controls.md](controls.md) (mock-ups first, then the scree
 - **Count-in** louder (velocity 127 on beat 1, 104 on the others, the percussion channel at full volume during
   it, the drums' own volume back after): 2.1x M1's peak in the emulator.
 - **Beat light**: PLAY's green LED flashes on every beat (bright on beat 1, the mid level on the others), count-in too.
-- **Splash**: the logo (`firmware/assets/tmp-logo.jpg` → `tools/logo_to_c.py`, 150×170, 8 colours, run-length:
-  4.4 KB) with the name and version, at least 3 s (the power-on checks come before it and are not delayed).
+- **Splash** (M10.3): the user's logo (`firmware/assets/src/kickside-logo.jpg` → `tools/logo_to_c.py` with a fixed 7-colour palette, 240×160,
+  run-length: 5.6 KB; it has the name in it) at y 36, the version small at the lower right, at least 4 s (the power-on checks come before it and are not
+  delayed). The mode screen's mascot is `firmware/assets/src/kickside-mascot.jpg` (120×136, 2.3 KB), drawn 1 : 1.
 - **The keys' octave**: OCT− / OCT+ (−3..+3), lit when shifted; a key held while the octave changes is released at
   the note it played.
 - **Help** (GLO): every control and what it does; the CPU / voices line moved there. Every screen has a legend.

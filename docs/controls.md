@@ -1,5 +1,7 @@
 # Controls (M2; M3, M4 and M5 changes at the end)
 
+**The current description of the controls is docs/reference.md (firmware 0.10.4). This file is the history, milestone by milestone.**
+
 The FM-1's panel, as M2 uses it. M1's map (2026-11-04) was the start; M2 adds what the user asked for after testing
 M1 (D020: tempo in BPM, loops you can find, pause, the keys' octave) and the planning chat's rule from M1's lesson
 (the user could not find section looping): **every screen shows a short legend of its controls, and GLO shows them
@@ -1184,3 +1186,27 @@ value again. **Pop-ups is ON after every firmware update** (the settings record 
 
 The count-in shows the beat in the bar, not the beats left: 1 2 3 4 | 1 2 3 for a 4/4 song with a 1-beat pickup (the pickup comes in on the fourth beat), 1 2 3 4 for one without; 3/4: 1 2 3. The clicks are unchanged
 (a full bar, then the pickup bar up to the pickup; the high click on each bar's beat 1).
+
+## M10.3 (0.10.4-m10.3: the user's notes on M10.2; docs/plan-M10.3.md; decisions docs/decisions-M10.3.md)
+
+Text only (no screenshots: the user chose no test cycle; the build, pytest and the song check ran, the emulator did not). The current description of every control is docs/reference.md.
+
+### BACKTRACK
+
+- **The section indicator leaves LOOP at once**: it says LOOP only while the structure and the structure waiting for the next phrase are both LOOP; the frame ALGORITHM picks VERSE/CHORUS or FULL it shows the section playing.
+- **HOME on the play screen** (playing, count-in, paused or stopped): stop and back to SETUP in one press. SONG LEARN's HOME is unchanged (playing: back to the start point; stopped: the list). HOME held 2 s: the mode screen, as before.
+- **SEQ steps the band kit while it plays** (STUDIO, ACOUSTIC, ELECTRO, CHIP), at once: the drums change from the next hit, the bass and harmony get their program at the player's next event (notes already sounding keep their old sound). The play legend says "SEQ band kit"; the help has the row.
+- The kit pop-up's title is **"Band Drum Kit"** (the SETUP row is still "KIT").
+
+### SONG LEARN
+
+- **The song list ends with a footer** (never selected): "Download and install more / songs from our website". The folders screen has none; Pop-ups OFF does not hide it.
+- **The empty screens** (SONG LEARN "NO SONGS YET", BACKTRACK "NO BACKTRACKS") say "Please visit our website / to download songs." (D070 option 4). Seen only after a factory reset.
+- **The keys play the melody's sound**: with a preset chosen with K4 the keys play it too (four voices shared with the melody layer); with SONG, the keys' sound is the song's melody layer program (when the song opens, when K4 returns to SONG), and Electric Piano 1 in the list and the folders. A key lets go through the route it started on.
+- **The Start pop-up** shows the section's name in the larger bold type, white, under the bar number.
+
+### Sounds, screens, licence
+
+- **POTATO**: CRUSH 0 -> 127 (nothing else). A user preset saved from POTATO earlier is a copy and does not change.
+- **The splash** is the new logo (it has the name in it) with the firmware version small at the lower right; **the mode screen** has the mascot (1 : 1) and the title "KickSide - Your Musical SideKick" with "Kick" bold in both words.
+- **Open source**: LICENSE (GPL-3.0), LICENSES/, an SPDX line in every file of ours, REUSE.toml, NOTICE; the name, logo and mascot are not licensed.
