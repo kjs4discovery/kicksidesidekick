@@ -126,7 +126,8 @@ struct settings {
     uint8_t hide[4];                     /* M4: views hidden from EDIT, per layer (bit: PV_*; the main view is bit 0) */
     uint8_t hide2[4];                    /* (bits 8..: PV_DNOTE) */
     uint8_t v2[8];                       /* M5: S_* values 8.. */
-    uint8_t hint_count, pad[3];          /* M5: times the controls hint was shown */
+    uint8_t hint_count, pad[3];          /* M5: times the controls hint was shown. M10.2: the firmware marker (a 32-bit hash of FW_VERSION,
+                                          * little-endian over these 4 bytes): S_HINT is now "Pop-ups" and is set ON again after each update */
     uint8_t synth[4];                    /* M7: SYNTH's settings: drum volume 0..10, drum kit (KIT_*); 2 spare */
 };
 #define SET_SIZE_M4 24u                  /* M4's record: read too, the M5 fields then get their defaults */
@@ -135,7 +136,7 @@ struct settings {
 #define SV(i) (*((uint32_t)(i) < 8u ? &ui.set.v[(i)] : &ui.set.v2[(uint32_t)(i) - 8u]))
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
                                           "Note names (notation)", "Zoom at start", "Quiet level",
-                                          "Key lights", "Views (hide some)", "Bass sound", "Controls hint",
+                                          "Key lights", "Views (hide some)", "Bass sound", "Pop-ups",
                                           "Switch mode", "Chord boxes, tab", "Scale guide", "Wipe song store"};
 static const uint8_t SET_COUNT[S_N] = {2, 2, 3, 2, 2, 2, 2, 1, 2, 2, 1, 2, 3, 1};   /* how many values each has (Views: a
                                                                                   * screen) */
@@ -246,7 +247,8 @@ static struct {
     uint32_t until, since;
     char title[32], value[40], sub[40];   /* (M10.2: "Harmony Complexity Level" is 24, the Track Selected hint 38 characters) */
 } vpop;
-static void vpop_show(const char *title, const char *value, const char *sub, uint32_t badge);
+static void vpop_show(const char *title, const char *value, const char *sub, uint32_t badge);   /* a value pop-up: off with Pop-ups OFF (M10.2) */
+static void vpop_keep(const char *title, const char *value, const char *sub, uint32_t badge);   /* the same, always: confirmations, errors */
 static void bt_vp_select(void);          /* (bt.c) */
 static uint32_t bt_ind_update(int st);   /* (bt.c) */
 static void vpop_text(volatile char *d, const char *t, uint32_t n)
@@ -304,6 +306,35 @@ static void settings_load(void)
         if (SV(i) >= SET_COUNT[i])
             SV(i) = SET_DEFAULT[i];
     settings_apply();
+}
+
+/* M10.2: Pop-ups is ON after every firmware update: the record keeps a 32-bit marker of the firmware's version (FNV-1a of FW_VERSION, never 0) in
+ * hint_count + pad[0..2]. Different (an update, an older record): Pop-ups ON, the marker stored, the settings saved once. Same: the user's choice
+ * stays. Called once at start-up (app_ui_init), not by a factory reset (its defaults are ON already). */
+static uint32_t fw_marker(void)
+{
+    const char *v = FW_VERSION;
+    uint32_t h = 2166136261u;
+    while (*v)
+        h = (h ^ (uint8_t)*v++) * 16777619u;
+    return h ? h : 1u;
+}
+
+static void settings_save(void);
+static void settings_marker(void)
+{
+    uint32_t m = fw_marker(), have = (uint32_t)ui.set.hint_count | (uint32_t)ui.set.pad[0] << 8 | (uint32_t)ui.set.pad[1] << 16 |
+                                     (uint32_t)ui.set.pad[2] << 24;
+    if (have == m)
+        return;
+    SV(S_HINT) = 1;
+    ui.set.hint_count = (uint8_t)m;
+    ui.set.pad[0] = (uint8_t)(m >> 8);
+    ui.set.pad[1] = (uint8_t)(m >> 16);
+    ui.set.pad[2] = (uint8_t)(m >> 24);
+    ui.set_dirty = 1;
+    settings_apply();
+    settings_save();
 }
 
 /* a view hidden from EDIT (the Views settings, M4) */
@@ -1488,6 +1519,8 @@ static uint32_t learn_jobs(void)
 
 static void popup_open(uint32_t b)
 {
+    if (!SV(S_HINT))                     /* M10.2: Pop-ups OFF: a button with no job does nothing */
+        return;
     ui.popup = 1;
     ui.popup_until = plat_ms() + POPUP_MS;
     player_stats.popups++;
@@ -1548,6 +1581,12 @@ static void draw_popup(void)
 
 /* the value pop-up opened (or its text changed): title, value, an optional second line (FONT_XS) and a MAJOR / MINOR badge */
 static void vpop_show(const char *title, const char *value, const char *sub, uint32_t badge)
+{
+    if (SV(S_HINT))                      /* M10.2: the setting "Pop-ups" (S_HINT, the old "Controls hint" slot) */
+        vpop_keep(title, value, sub, badge);
+}
+
+static void vpop_keep(const char *title, const char *value, const char *sub, uint32_t badge)
 {
     uint32_t now = plat_ms(), i;
     if (!vpop.open) {
@@ -4225,6 +4264,7 @@ void app_ui_init(void)
 {
     ui.flash_ok = plat_data(PLAT_DATA_LO) != 0;   /* 0: the platform refused the chip (fm1-base main_fm1.c) */
     settings_load();
+    settings_marker();                   /* M10.2: Pop-ups ON after an update */
     upreset_boot();                      /* M10: the user presets (a read; never a write at start-up) */
     ui.splash = plat_ms() < SPLASH_MS;   /* (after a restore or a resource install: no splash, straight back) */
     ui.view = ui.splash ? V_MODE : V_LIST;   /* M5: after the splash, LEARN or SYNTH (no splash: learning, as before) */

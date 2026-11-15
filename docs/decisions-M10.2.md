@@ -33,3 +33,17 @@ No test cycle in this run (the user's choice): build, pytest and the make_songs 
   1 "PLAY|ALGO start|PRESETS key|GLO help", 2 "FX-LFO: pick part|again: volume" (the existing one), 3 "SEQ loop|SELECT tempo|EDIT view|GLO help" (LOOP_SONG: "SEQ set A-B|..."). Loop-setting legends are unchanged.
 - Tests (not run): m5_test.py's key sequences (view-key2, view-key-next-song, view-key-live, p6-guitar-key, p7-notation-flats, m5p1-fresh) use PRESETS (e6) instead of SAVE + SELECT; m7_test.py's "every button has a job" list drops SAVE.
   tools/m2_test.py and tools/m4_test.py still contain the old SAVE + SELECT key sequences (older milestones' copies of the same checks); they were not rewritten and will fail there if ever run again.
+
+## M10.2-05 — Part 3: the Pop-ups setting
+- The row is S_HINT (same index 9, same record), name "Pop-ups", values OFF / ON (SET_VAL unchanged), default ON (SET_DEFAULT[9] = 1). The enum name S_HINT is kept (no renames).
+- Marker: FNV-1a (32 bit) of FW_VERSION (never 0), stored little-endian in hint_count + pad[0..2] (nothing else uses them: hint_count's only writers were the removed hint screen and the M4-record
+  default, which now just gets a mismatch). settings_marker() runs once in app_ui_init after settings_load(): different marker (an update, or an older record, whose hint_count is a 0..10 counter): Pop-ups ON, marker
+  stored, settings_apply(), settings_save() once. Equal: the user's choice stays. A factory reset zeroes the record; settings_load's defaults are ON; the next boot stores the marker (a second, harmless save).
+- Gate: `vpop_show` (gated on SV(S_HINT)) and `vpop_keep` (the old body, always). popup_open() returns at once with Pop-ups OFF (a button with no job does nothing; popup_input still says "consumed").
+- Every vpop_show call, classified:
+  - gated (a value shown because a knob or button changed a setting): ui.c say_from "Start"; lm_step "Melody Sound" (incl. its "no room: keeps SONG" sub line); "Track Selected" (both places); the volume pop-up ("Drums Volume"...);
+    the level pops "... Complexity Level"; SONG LEARN "Tempo"; SONG LEARN "Key"; bt.c bt_vp_select's pop-up (BACKTRACK's knobs: progression, style, complexity, melody sound, key, structure, tempo, band kit);
+    synthui.c "Preset", "Tempo", the quick-knob parameter pop-ups.
+  - kept (vpop_keep): synthui.c "SAVED U05"-style confirmation and "NOT SAVED" (an error).
+  - Other confirmations (the factory reset, WIPE, yes/no questions) are screens of their own, not vpop calls: untouched. The v-pop and its "SAVED U05" test are unaffected.
+- SYNTH with OFF: draw_synth_main shows the turned quick knob's "NAME value" in the bottom row for QUICK_MS (the code of M10 before 9fd953a, restored under `!SV(S_HINT)`); synth_hash includes the value so it redraws on each click.

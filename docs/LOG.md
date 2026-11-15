@@ -1134,3 +1134,11 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 3.
+
+2026-11-14 22:05 — Step M10.2 Part 3 (Pop-ups setting) —
+Status: done
+Did:
+- Settings row "Pop-ups" ON/OFF (the old "Controls hint" slot), gated value pop-ups and the controls pop-up, ON again after each firmware update (FNV-1a marker of FW_VERSION in hint_count + pad[3]); SYNTH's bottom row shows the value with OFF. Builds clean. Every call classified in decisions M10.2-05.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 4.

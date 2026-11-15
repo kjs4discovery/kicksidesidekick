@@ -273,10 +273,10 @@ static void save_do(void)
         synth_load(pl_index_of_slot(sy.sv_slot));   /* the sound goes on as the saved preset, now selected as U05 */
         sy.scr = sy.sv_back;
         sy.say_until = 0;
-        vpop_show(ti, vsynth_now()->name, "", 0);
+        vpop_keep(ti, vsynth_now()->name, "", 0);
     } else {
         sy.scr = sy.sv_back;
-        vpop_show("NOT SAVED", ui.flash_ok ? "the flash refused" : "no flash (RAM only)", "", 0);
+        vpop_keep("NOT SAVED", ui.flash_ok ? "the flash refused" : "no flash (RAM only)", "", 0);
     }
     sy.sv_confirm = 0;
 }
@@ -518,7 +518,8 @@ static uint32_t synth_hash(uint32_t now)
         h = h * 31u + r->v[k];
     h = h * 31u + sy.bpm * 1031u + (uint32_t)(ui.oct + 8) * 65537u + sy.menu_sel * 17u + sy.set_row * 3u;
     h = h * 31u + (uint32_t)synth_drums_on() * 5u + synth_drum_pattern_of() * 257u + synth_drum_beat() * 11u;
-    h = h * 31u + drum_vol_set() * 13u + drum_kit_set() * 101u + (now < sy.quick_until ? sy.quick + 1u : 0) * 999u;
+    h = h * 31u + drum_vol_set() * 13u + drum_kit_set() * 101u + (now < sy.quick_until ? sy.quick + 1u : 0) * 999u +
+        (now < sy.quick_until && !SV(S_HINT) ? vsynth_get(QUICK[sy.quick]) * 77u : 0);   /* (M10.2: OFF: the value is in the bottom row) */
     if (sy.scr == SY_SAVE) {             /* M10 */
         h = h * 31u + sy.sv_slot * 7u + sy.sv_cursor * 13u + sy.sv_confirm * 17u;
         for (k = 0; k < VS_NAME; k++)
@@ -633,8 +634,18 @@ static void draw_synth_main(uint32_t now)
     text_in(0, 240, 76, &FONT_XS, t, C_GRAY);
     cv_blit(0, 40);
     synth_drum_line(now, 170);
-    draw_legend(Y_LEGEND, (now / HINT_PAGE_MS) & 1u ? "PRESET sound|SELECT tempo|EDIT pages" :
-                          "K1-K4 quick|PLAY drums|SEQ pattern|GLO help");
+    if (!SV(S_HINT) && now < sy.quick_until) {   /* M10.2: Pop-ups OFF: the turned value in the bottom row again (as before M10.1) */
+        char v[16] = "";
+        t[0] = 0;
+        text_cat(t, vsynth_param(QUICK[sy.quick])->name);
+        vsynth_value_text(v, QUICK[sy.quick], vsynth_get(QUICK[sy.quick]));
+        text_cat(t, " ");
+        text_cat(t, v);
+        draw_legend(Y_LEGEND, t);
+    } else {
+        draw_legend(Y_LEGEND, (now / HINT_PAGE_MS) & 1u ? "PRESET sound|SELECT tempo|EDIT pages" :
+                              "K1-K4 quick|PLAY drums|SEQ pattern|GLO help");
+    }
 }
 
 static void draw_synth_page(uint32_t now)
