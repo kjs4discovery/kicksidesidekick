@@ -56,3 +56,13 @@ No test cycle in this run (the user's choice): build, pytest and the make_songs 
   - NIGHT DRIVE: 0, 50, 90, 20, 48, 30, 82, 0, 6, 10, 80, 0, 30, 64, 0, 0, ARP_UP, RATE_8, 0, 64 | 64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 6, 100, 0
   After: the two rows exchanged (EDS has NIGHT DRIVE's values, NIGHT DRIVE has EDS's, LEVEL 100 / 94 included). No loudness run.
 - Test: m101_test.py part 4's "changed vs M10" list is now E-GUITAR, EDS, NIGHT DRIVE, ZUNJET (26 unchanged rows). Not run.
+
+## M10.2-07 — Part 5: Oh! Susanna
+- The chorus chart typed exactly as the plan gives it (bars 2 and 6 "D A7"); only songs/make_songs.py's oh-susanna entry changed. song.mid is byte-identical (the melody did not change); song.yaml's chorus chart changed; the two previews
+  (preview-full-band-level1.mp3, preview-harmony-muted-level2.mp3) were regenerated with `make_songs.py --preview oh-susanna` (the harmony in them follows the chart).
+- `make_songs.py` for ALL slugs: `git status` shows only oh-susanna's files (and make_songs.py) changed; validate: songs/oh-susanna ok. No other song touched.
+
+## M10.2-08 — Part 6: the count-in number
+- ui.c frame_play: `count` (used by draw_big and draw_count_view alike, and ui.sh_count) is now the beat in the bar at the lead tick tc: ((tc mod bar_ticks) + bar_ticks) mod bar_ticks / ppq + 1. The bar lines are at multiples
+  of bar_ticks, the same as the clicks, so a song without a pickup counts 1 2 3 4 (3/4: 1 2 3), one with a 1-beat pickup in 4/4 counts 1 2 3 4 | 1 2 3 and the pickup comes in on the 4th beat. The number changes at the same instants as the old one (the old
+  beats-left number changed when ceil((from - tc) / ppq) did). No change to player.c, the label "COUNT-IN" or the layout. Tests that read the shown count (not run) are not updated: none was found by grep for "COUNT-IN" numbers.

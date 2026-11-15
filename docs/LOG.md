@@ -1150,3 +1150,12 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 5.
+
+2026-11-14 22:45 — Step M10.2 Parts 5 and 6 (Oh! Susanna, the count-in) —
+Status: done
+Did:
+- Part 5: oh-susanna's chorus bars 2 and 6 "D A7" (the planning chat's chart, typed exactly); make_songs.py for all slugs changes only oh-susanna's files; validate ok; previews regenerated.
+- Part 6 (**): the count-in shows the beat in the bar (1 2 3 4 | 1 2 3), draw_big and draw_count_view alike; player.c unchanged. Builds clean.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 7.

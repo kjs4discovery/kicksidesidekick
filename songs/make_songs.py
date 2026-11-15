@@ -299,7 +299,7 @@ SONGS = {
         form=[("Verse 1", 8, "verse"), ("Chorus 1", 8, "chorus"), ("Verse 2", 8, "verse"), ("Chorus 2", 8, "chorus")],
         chart={"pickup": "| N.C. |",
                "verse": "| D | D | D | A7 |\n| D | D | D A7 | D |",
-               "chorus": "| G | G | D | A7 |\n| G | G | D A7 | D |"},
+               "chorus": "| G | D A7 | D | A7 |\n| G | D A7 | D A7 | D |"},
         ending=None,
         melody=transpose(SUSANNA_PICKUP + SUSANNA_VERSE + SUSANNA_CHORUS + SUSANNA_VERSE + SUSANNA_CHORUS[:-7]
                          + [("E4", .5), ("E4", .5), ("D4", .5), ("D4", .5), ("C4", 2)], 2),
