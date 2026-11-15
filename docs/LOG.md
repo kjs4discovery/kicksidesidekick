@@ -1252,3 +1252,14 @@ Learned / measured: `fm1song list` shows only the store (the built-ins are not i
 Hardware touched: none
 Questions for the planning chat: M10.4-03 (dictionary rule; no built-ins when the store's flash is unusable), M10.4-06 (the crash in M10.3's help tables; M10.3's package was never installed)
 Next: STOP. The user installs per docs/step-M10.4-install.md; Claude Code runs only --info / fm1song list and records.
+
+2026-11-15 21:00 — Step M10.4 install (by the user; Claude Code ran only read-only commands) —
+Status: done (installed; the user's feedback comes tomorrow)
+Did:
+- The user installed build/step-M10.4/fm1acc-0.10.5-m10.4.fwsc over M10.2. `fm1song list`/`delete` answered with identity FM-1_46001005, so 0.10.5-m10.4 is running.
+- The user ran `tools/fm1song.sh delete oh-susanna` (a store write): "oh-susanna: deleted"; Oh! Susanna stayed in SONG LEARN's list (the built-in copy), as designed.
+- The user ran `tools/fm1song.sh wipe --yes` (a store write; the first `wipe` without --yes only explained). Claude Code then ran `fm1song list` (read-only): the first try found no FM-1 on USB (the unit had not restarted yet), the second answered: "0 song(s); 552 of 552 blocks free (512 bytes each; longest run 69 sectors); reads format 1.0..1.3 and 2.0..2.2". The unit is now in the state of a new user's: empty store, built-in library only.
+Learned / measured: store area 552 blocks, all free after the wipe; `fm1song list` shows only the store, as documented.
+Hardware touched: WRITE (by the user): firmware install, one song delete, store wipe. Claude Code: read-only (`list`).
+Questions for the planning chat: none yet; the user's first-use notes on the built-in lists follow tomorrow.
+Next: the user's feedback on the new-user state (SONG LEARN 15 songs, BACKTRACK 42, help screens, playing); then a later milestone.
