@@ -14,8 +14,8 @@
 
 #define APP_NAME "KickSide - Your Musical SideKick"   /* M8 (D050; M10, D063; M10.1: renamed): the splash, the help, fm1-base's crash / safe-mode
                                                  * screens; NOT the USB / MIDI names or the identity (FM-1_4600xxxx) */
-#define FW_MILESTONE "m10.2"              /* M8, M9, M10: the splash shows only this under the name */
-#define FW_VERSION "0.10.3-m10.2"           /* ours (M5 part builds 0.5.N-m5pN; M5.1 0.5.4-m5p4; M6 0.6.0-m6; M7 0.7.0-m7; M8 0.8.0-m8; M9 0.9.0-m9; M10) */
+#define FW_MILESTONE "m10.3"              /* M8, M9, M10: the splash shows only this under the name */
+#define FW_VERSION "0.10.4-m10.3"           /* ours (M5 part builds 0.5.N-m5pN; M5.1 0.5.4-m5p4; M6 0.6.0-m6; M7 0.7.0-m7; M8 0.8.0-m8; M9 0.9.0-m9; M10) */
 #define HINT_PAGE_MS 6000u               /* M10.1: the bottom instruction row's pages alternate, each shown this long (was 3 s) */
 #define APP_SPLASH_RGB RGB(64, 160, 220)
 #define APP_SPLASH                       /* our splash: the logo (ui.c app_splash; tools/logo_to_c.py) */

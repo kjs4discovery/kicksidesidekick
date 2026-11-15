@@ -131,7 +131,7 @@ before the pickup, wrong tempo/metre, track/variant mismatches, more than the li
 **Warnings**: events on another channel than `song.yaml` says, a note retriggered before its note-off (the
 first one is ended there), notes ringing past the end (cut at the end), unused chart parts.
 
-## 2. Compiled file (`.fm1s`), versions 1.0 to 1.3 and 2.0 to 2.2 (the 1.x chunks here; 2.x in 2.4-2.8)
+## 2. Compiled file (`.fm1s`), versions 1.0 to 1.3 and 2.0 to 2.2 (the 1.x chunks here; 2.x in 2.5-2.8)
 
 Little-endian, every chunk starts on a 4-byte boundary (zero padding between chunks). Text fields are
 fixed-size, NUL-padded, printable ASCII, and must contain at least one NUL. The reader refuses anything
