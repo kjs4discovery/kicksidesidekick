@@ -4054,8 +4054,9 @@ static void frame_play(uint32_t now)
             }
             if (next >= 0 && (int32_t)T > tb && (int32_t)T - tb <= (int32_t)s->bar_ticks)
                 left = ((int32_t)T - tb + (int32_t)s->ppq - 1) / (int32_t)s->ppq;
-        } else {                         /* the count-in: beats left, the first chord next */
-            count = (from - tc + (int32_t)s->ppq - 1) / (int32_t)s->ppq;
+        } else {                         /* the count-in: the beat in the bar (M10.2: 1 2 3 4 | 1 2 3, not the beats left), the first chord next */
+            int32_t bt = (int32_t)s->bar_ticks;
+            count = ((tc % bt) + bt) % bt / (int32_t)s->ppq + 1;   /* (the bar lines are at multiples of bar_ticks, as the clicks) */
             next = (int32_t)song_chord_at(s, (uint32_t)from);
             if (song_cevt_symbol(s, (uint32_t)next)[0] == 'N' && (uint32_t)next + 1u < s->ncevt)
                 next++;                  /* N.C. in the pickup: the first real chord */
