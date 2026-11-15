@@ -1,0 +1,24 @@
+version = 1
+SPDX-PackageName = "KickSide - Your Musical SideKick"
+
+# What has no SPDX header of its own (REUSE spec 3.x; a header in a file wins over these: precedence "closest").
+# Songs, backtracks and the docs: CC BY-SA 4.0 (the songs' yaml and mid files are not edited to carry a header).
+[[annotations]]
+path = ["songs/**", "docs/**", "CLAUDE.md", "NOTICE", "backups/SHA256SUMS", "tools/fm1song/tests/data/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "The KickSide author"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# The name, logo and mascot (the user's own artwork; docs/dropbox is where it came from): not under the open licences.
+[[annotations]]
+path = ["firmware/assets/**", "docs/dropbox/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "The KickSide author"
+SPDX-License-Identifier = "LicenseRef-KickSide-Trademark"
+
+# Our own small files that cannot carry a header (lists, tables, patches, settings): code licence.
+[[annotations]]
+path = [".gitignore", ".claude/**", "tools/.gitkeep", "tools/backtracks.tsv", "tools/band_styles.txt", "tools/patches/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "The KickSide author"
+SPDX-License-Identifier = "GPL-3.0-or-later"

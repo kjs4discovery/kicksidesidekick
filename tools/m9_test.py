@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # m9_test.py -- Milestone M9: headless emulator tests (built on tools/m8_test.py's runner and stats; same structure).
 # Never touches the FM-1.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m9_test.py [--only m9p1,m9p2,..] [--pkg PKG] [--out DIR]   -> build/emu/m9/report.md
 import argparse

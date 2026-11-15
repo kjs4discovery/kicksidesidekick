@@ -1,7 +1,7 @@
 #!/bin/sh
 # vsynth_test.sh: build tools/vsynth_test.c with firmware/app/vsynth.c (and the vendored Felucca-Engines) under ASan +
 # UBSan (host gcc) and run it: every SYNTH preset held, released and arpeggiated. Laptop only.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/build/vsynth"

@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* store_test: the song store (firmware/app/store.c) on the laptop, on a simulated flash, under ASan/UBSan
  * (tools/store_test.sh). The flash behaves as NOR: an erase sets a sector to 0xFF, a write can only clear bits. A
  * power cut at the Nth erase or write leaves that operation half done (half the sector erased, half the bytes

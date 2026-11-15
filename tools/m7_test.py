@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # m7_test.py -- Milestone M7: headless emulator tests of the new features (built on tools/m5_test.py's runner, its
-# prepared flash images and presses, and tools/m6_test.py's). Never touches the FM-1. Licence: TBD (see D017)
+# prepared flash images and presses, and tools/m6_test.py's). Never touches the FM-1.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m7_test.py [--only m7p1,m7p2,..] [--pkg PKG] [--out DIR]   -> build/emu/m7/report.md
 #

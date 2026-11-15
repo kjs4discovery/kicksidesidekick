@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The General MIDI synth: Sonivox EAS (firmware/vendor/sonivox) behind a message queue.
  * The main loop queues MIDI messages; the audio interrupt feeds them to EAS and renders. */
 #pragma once

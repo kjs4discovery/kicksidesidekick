@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The MIDI import tool (M4 part 5): a small made-up file through the whole import.
 from fm1song import compile_folder, read_compiled
 from fm1song import importer as imp

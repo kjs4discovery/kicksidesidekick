@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* M8 (D046, D048, D049), M9 (D052, D053): BACKTRACK mode. Included by ui.c (fm1-base's unity build) after synthui.c.
  *
  * The backtracks are songs of kind backtrack (format 2.2, FORM) in the song store, sent from the laptop

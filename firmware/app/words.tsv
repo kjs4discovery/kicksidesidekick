@@ -1,4 +1,4 @@
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The words a screen reader (fm1-reader) says for what is on the screen: the text <TAB> what to say.
 # url: https://example.invalid/fm1-accompaniment/words/
 # (placeholder: fm1-base wants the page where these words are published; we have no site yet)

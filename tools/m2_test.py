@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # m2_test.py -- Milestone M2: headless emulator tests of the firmware. Never touches the FM-1.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m2_test.py [--jobs N] [--only SLUG|store|flash|boot|practice|views|levels] [--pkg PKG]
 #

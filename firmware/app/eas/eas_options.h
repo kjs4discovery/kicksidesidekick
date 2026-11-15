@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Our configuration of Sonivox EAS (upstream generates this file from host_src/eas_options.cmake).
  * The wavetable synth only, stereo, 22.05 kHz to match the wt_200k_G sound set, the voices' filter. 8-bit samples:
  * the set as it was made (0x33CBD bytes, ~212 KB); _16_BIT_SAMPLES stores a 16-bit copy twice that size

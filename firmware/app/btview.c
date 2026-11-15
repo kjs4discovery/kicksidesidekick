@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* M8 Part 5: BACKTRACK's melody views and key lights. Included by ui.c before frame_play (it needs struct pinfo). */
 /* ------------------------------------------------- Part 5 (D049): what can I play now --- */
 /* The scale (the setting "Scale guide": PENTATONIC, FULL SCALE, CHORD TONES): pentatonic by default (major pentatonic

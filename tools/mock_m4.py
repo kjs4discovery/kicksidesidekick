@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # mock_m4.py -- design mock-ups of M4's new screens for docs/controls.md (drawn before the firmware draws them), with
-# tools/mock_screens.py's and mock_m3.py's pieces. Licence: TBD (see D017)
+# tools/mock_screens.py's and mock_m3.py's pieces.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   mock_m4.py [OUT_DIR [NAME...]]      -> OUT_DIR/mock-*.png at 2x (480 x 480); default docs/step-M4
 import sys

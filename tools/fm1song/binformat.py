@@ -1,4 +1,5 @@
-# fm1song: the compiled song file (.fm1s), versions 1.0, 1.1 and 1.2: writer and checking reader. Licence: TBD (see D017)
+# fm1song: the compiled song file (.fm1s), versions 1.0, 1.1 and 1.2: writer and checking reader.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # 1.1 (M2) stores each event stream delta-coded (chunk "EZ" + layer + variant) instead of 8-byte records ("EV..");
 # the device decodes them into RAM when it opens the song. 1.2 (M3) adds the CATG chunk: the song's category (16

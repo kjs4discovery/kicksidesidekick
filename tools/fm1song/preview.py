@@ -1,4 +1,5 @@
-# fm1song: audio previews of a compiled song (numpy; lameenc for mp3). Licence: TBD (see D017)
+# fm1song: audio previews of a compiled song (numpy; lameenc for mp3).
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # A rough laptop-side synth in the spirit of songs/amazing-grace/make_amazing_grace.py's previews: it plays
 # the compiled events (so a preview checks the compiled file, not the source), one simple timbre per GM

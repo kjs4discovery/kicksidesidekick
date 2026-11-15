@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # M10 (D060) Part 4: the backtrack generator's numeral parser (tools/backtracks.py) and the table of 42.
 import importlib.util
 

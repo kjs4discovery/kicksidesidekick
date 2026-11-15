@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The song store (store.h). */
 #include "store.h"
 #include "song.h"

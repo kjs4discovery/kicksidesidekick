@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* song_fuzz: the device's song parser (firmware/app/song.c) on the laptop, under ASan/UBSan (tools/song_fuzz.sh).
  *
  *   song_fuzz SECONDS SEED.fm1s...     mutate the seeds for SECONDS, open each result, and walk every accessor of

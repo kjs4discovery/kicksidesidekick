@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The firmware has no C library headers: what EAS calls, as felucca-bsp's chip/libc.c defines it (sizes as
  * unsigned) plus strcmp (eas/eas_host_fw.c). For the firmware build only (fm1.toml device_include); the host
  * simulator uses the system's. */

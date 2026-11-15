@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 # store_blocks.py: the song store's blocks (512 B; a 32-byte head + the file, whole blocks) for songs / backtracks, no device.
 # Records of up to 8 blocks share sectors; a longer one starts on a sector (8-block units): reported as plain blocks here.
 #   .venv/bin/python -I tools/store_blocks.py [--private]

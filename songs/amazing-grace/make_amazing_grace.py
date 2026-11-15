@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Generate the Amazing Grace sample song (draft source format v0.1).
 
 Writes, next to this script:

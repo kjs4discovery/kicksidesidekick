@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 from conftest import SONGS
 from fm1song.cli import main
 

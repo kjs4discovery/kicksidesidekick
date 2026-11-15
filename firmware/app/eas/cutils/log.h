@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Android's logging, which a few EAS files call on bad input: nothing to log to on the FM-1. */
 #ifndef FW_CUTILS_LOG_H
 #define FW_CUTILS_LOG_H

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The starter songs, the source checks (with bar:beat in the messages) and the chord helpers.
 import pytest
 

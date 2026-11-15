@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# guitar_check.py -- M3 part 6: checks our guitar chord table (firmware/app/guitar.h) on the laptop. Licence: TBD (see D017)
+# guitar_check.py -- M3 part 6: checks our guitar chord table (firmware/app/guitar.h) on the laptop.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   guitar_check.py              every shape's notes are its chord's (standard tuning), its lowest note the root or
 #                                the slash bass; and every chord of every song, in all 12 keys, finds a shape the way

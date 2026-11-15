@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* What upstream's CMake generates from host_src/eas_version.cmake: the library version of the vendored copy
  * (EmbeddedSynth/sonivox 86bd073, v4.0.x). */
 #ifndef FW_EAS_VERSION_H

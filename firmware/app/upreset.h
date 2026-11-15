@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* M10 (D040, D062): the user presets: 30 slots (U01..U30) of the M7 preset record (vsynth.h struct vs_preset, 64 bytes,
  * versioned), kept in ONE fm1-base store object (OBJ_PRESETS: an A/B sector pair at 0xDE000-0xDFFFF, torn-write safe, CRC,
  * header written last; at most PLAT_STORE_MAX = 3,840 bytes: the object is 1,928).

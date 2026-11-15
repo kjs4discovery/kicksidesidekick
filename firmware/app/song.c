@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The compiled song file's parser (song.h). Bytes are read one at a time (little-endian), so the file may sit at
  * any address; every multiplication that sizes a read is bounded first (counts <= 65535, records <= 24 bytes). */
 #include "song.h"

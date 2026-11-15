@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # apply_patches.sh -- apply our local patches to the third-party checkouts in third_party/ and rebuild what needs it.
 #   tools/apply_patches.sh
 # fm1-emu: tools/patches/fm1-emu-jedec-id.patch (FM1_FLASH_ID=b36014 sets the emulated flash chip's JEDEC id),

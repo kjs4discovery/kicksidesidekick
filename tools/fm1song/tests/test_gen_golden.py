@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # M5 Part 2 (D029, option C): the FM-1's generators (firmware/app/gen.c) and the laptop's (tools/fm1song/arrange.py)
 # make identical events for every song and level. The C side runs via build/fuzz/song_fuzz --events (song_fuzz.sh).
 import subprocess

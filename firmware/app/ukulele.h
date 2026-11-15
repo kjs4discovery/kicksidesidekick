@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Ukulele chord shapes (M6 part 2): our own table, standard tuning G4 C4 E4 A4 (re-entrant: the G string is the
  * high one). Strings G C E A, left to right as a chord box shows them; frets and fingers as guitar.h ('0' open /
  * none). A uke has no real bass note, so a slash chord shows its chord's shape (ui.c says which bass to leave out).

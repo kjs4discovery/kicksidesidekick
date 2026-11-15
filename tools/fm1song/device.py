@@ -1,4 +1,5 @@
-# fm1song: songs to and from the FM-1's song store over USB-MIDI (M2 part 1). Licence: TBD (see D017)
+# fm1song: songs to and from the FM-1's song store over USB-MIDI (M2 part 1).
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # The FM-1 side is firmware/app/library.c (its comment has the commands). Finding the FM-1 and the SysEx framing come
 # from fm1-base's tools/fm1_install.py (vendored in firmware/vendor/fm1-base, MPL-2.0), as fm1-base's own backup and

@@ -1,4 +1,5 @@
-# fm1song: a small Standard MIDI File reader. Licence: TBD (see D017)
+# fm1song: a small Standard MIDI File reader.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Our own reader (not mido) so every malformed byte gives a clear SongError with its offset instead of an
 # arbitrary exception, and so the website can reuse it without extra packages. Reads formats 0 and 1 with

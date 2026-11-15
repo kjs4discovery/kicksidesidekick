@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # logo_to_c.py -- the boot splash's logo: an image file -> a small C header (a palette and run-length rows).
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   logo_to_c.py IMAGE OUT.h [--width 150] [--colors 12] [--palette "R,G,B;R,G,B;..."] [--prefix LOGO] [--preview OUT.png]
 #

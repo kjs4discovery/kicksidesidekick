@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # M9 (D052): the band's tier tables for backtracks: tools/band_styles.txt -> band_styles.h (C) and band_styles_data.py;
 # the validator; the FM-1's generators (firmware/app/gen.c bt_*) and the laptop's (arrange.band_*) make the same events
 # for every backtrack in each of the 11 styles at tiers 1-4.

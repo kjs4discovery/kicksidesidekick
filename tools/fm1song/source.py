@@ -1,4 +1,5 @@
-# fm1song: read a song folder (song.yaml + song.mid, format fm1-song/1) into a Song. Licence: TBD (see D017)
+# fm1song: read a song folder (song.yaml + song.mid, format fm1-song/1) into a Song.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # docs/song-format.md is the specification; this module is its reference implementation. Every check
 # records a Diagnostic with the file and, where it applies, bar:beat in the musician's numbering

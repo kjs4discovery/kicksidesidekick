@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 """ppm2png.py -- convert fm1-live's panel image (binary PPM, P6) to PNG, with the standard library only.
 
   tools/ppm2png.py IN.ppm OUT.png

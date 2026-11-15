@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The song library (M2 part 1): the songs in the flash's song store (store.h), the one song open for playing, and
  * the laptop's commands over USB (tools/fm1song send / list / delete). Included by ui.c (fm1-base's unity build).
  *

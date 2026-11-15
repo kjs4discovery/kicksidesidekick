@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The General MIDI synth (synth.h). EAS is not re-entrant, so only the audio interrupt calls it after start-up:
  * the main loop puts messages in a single-producer, single-consumer ring, and each render drains it into EAS's
  * MIDI stream before rendering. EAS runs at 22.05 kHz (the wt_200k_G sound set's rate); each output block is

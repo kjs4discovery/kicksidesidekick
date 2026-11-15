@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # m3_test.py -- Milestone M3: headless emulator tests of the firmware (grown from tools/m2_test.py). Never touches
 # the FM-1.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m3_test.py [--jobs N] [--only GROUP[,GROUP..]] [--pkg PKG] [--out DIR]
 #   GROUP: a song's slug, store, flash, boot, practice, views, levels, part1 .. part9 (each M3 part's own checks)

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # The compiled format: round trip, every corruption refused with SongError, and fuzzing of all three inputs
 # (compiled bytes, song.mid bytes, song.yaml text): the only exception allowed is SongError.
 import random

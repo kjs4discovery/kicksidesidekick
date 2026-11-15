@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # mock_m3.py -- design mock-ups of M3's new screens for docs/controls.md (drawn before the firmware draws them), with
-# tools/mock_screens.py's fonts, colours and pieces. Licence: TBD (see D017)
+# tools/mock_screens.py's fonts, colours and pieces.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   mock_m3.py [OUT_DIR]      -> OUT_DIR/mock-*.png at 2x (480 x 480); default docs/step-M3
 import sys

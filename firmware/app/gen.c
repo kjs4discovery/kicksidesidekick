@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Format 2.0 (M5, D029): a layer's level built for playing (song.h song_build). A stored level comes from its NT
  * chunk (bars as patterns); a generated one is made here from the chord chart, the metre and the style, by the same
  * rules as tools/fm1song/arrange.py (harmony L1-5, bass L1-4, drums L1-3). Either way the notes then go through the

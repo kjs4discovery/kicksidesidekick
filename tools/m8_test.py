@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # m8_test.py -- Milestone M8: headless emulator tests of BACKTRACK mode and the renames (built on tools/m5_test.py's
 # runner, its prepared flash images and presses, and tools/m6_test.py's / m7_test.py's). Never touches the FM-1.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m8_test.py [--only m8p0,m8p1,..] [--pkg PKG] [--out DIR]   -> build/emu/m8/report.md
 #

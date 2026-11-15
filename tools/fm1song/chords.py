@@ -1,4 +1,5 @@
-# fm1song: chord symbols and keyboard voicings. Licence: TBD (see D017)
+# fm1song: chord symbols and keyboard voicings.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # A chord symbol is root [A-G] + optional # or b, a quality from QUALITIES, and an optional "/bass".
 # "N.C." means no chord. Voicings are what the keyboard view shows (and what our generated harmony plays):

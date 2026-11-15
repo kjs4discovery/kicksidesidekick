@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* SYNTH mode's sound (M5 Part 3, D030; M7 D039, D041, D042): a polyphonic synth on Felucca-Engines' ANALOG or PHASE
  * engine (MIT, firmware/vendor/felucca-engines), with our own voices, envelopes, effects, arpeggiator, presets and the
  * drum kits' synthesized voices (808: NOISE + our sine-sweep kick, CHIP: LOFI). The main loop sets (vsynth_*); the

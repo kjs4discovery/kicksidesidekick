@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # mock_screens.py -- design mock-ups of new screens for docs/controls.md (drawn before the firmware draws them), with
-# the firmware's fonts (fm1-base's Barlow) and colours (the AMBER palette). Licence: TBD (see D017)
+# the firmware's fonts (fm1-base's Barlow) and colours (the AMBER palette).
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   mock_screens.py OUT_DIR      -> OUT_DIR/mock-*.png at 2x (480 x 480)
 import sys

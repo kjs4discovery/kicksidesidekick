@@ -1,4 +1,8 @@
-# fm1song: the FM-1 Accompaniment song compiler (format fm1-song/1). Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
+# fm1song: the FM-1 Accompaniment song compiler (format fm1-song/1).
+#
+# KickSide is free software (GPL-3.0-or-later). If you are working on a new version of this tool, or building
+# something on it, I would love to hear what you are doing with it: please reach out through the KickSide website.
 #
 # Core API (no printing, no exiting; a website can reuse it):
 #   load_song(folder)          -> (Song, Diagnostics)     raises SongError

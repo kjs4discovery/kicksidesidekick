@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Restored by the planning chat 2026-11-14 after M10-01 (Claude Code's rebuilt copy replaced); camptown-races
 changed for M10-03.
 
@@ -13,7 +14,7 @@ US public domain; the user decides later about other countries (vault D059).
 
     .venv/bin/python songs/make_songs.py camptown-races ...      # writes the song folders
 
-Licence: TBD (see D017)
+SPDX-License-Identifier: GPL-3.0-or-later
 """
 
 NOTE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}

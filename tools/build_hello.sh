@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build_hello.sh -- build the Step 0.6 hello world (commit 4629478's firmware/), the fallback diagnostic for Step 0.7:
 # if our prototype misbehaves on the FM-1, this tells a hardware problem from a prototype problem.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   tools/build_hello.sh      -> build/hello/fm1acc-hello.fwsc (and its sha256)
 #

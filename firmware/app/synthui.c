@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* M5 Part 3 (D030); M7 (D039): the mode screen and SYNTH mode's screens and controls. Included by ui.c (fm1-base's
  * unity build), after its drawing helpers and the NOT IMPLEMENTED pop-up. The sound is vsynth.c's, the drums synth.c's.
  *

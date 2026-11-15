@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # m6_test.py -- Milestone M6: headless emulator tests of the new features (built on tools/m5_test.py's runner, its
-# prepared flash images and presses). Never touches the FM-1. Licence: TBD (see D017)
+# prepared flash images and presses). Never touches the FM-1.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m6_test.py [--only m6p1,m6p2,..] [--pkg PKG] [--out DIR]   -> build/emu/m6/report.md
 #

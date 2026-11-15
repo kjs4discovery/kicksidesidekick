@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* vsynth_test: SYNTH mode's sound (firmware/app/vsynth.c) on the laptop under ASan/UBSan (tools/vsynth_test.sh).
  * Every preset plays a chord (C E G B, 1.5 s held, then released until silent), then its arpeggio over it; prints per
  * preset the peak and RMS (24-bit), the voices at most; fails on silence, clipping, a voice that never ends, or an

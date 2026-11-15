@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # m51_test.py -- M5.1 (the song-send crash): the song store on the TIMED emulator. Laptop and emulator only: never
-# touches the FM-1. Licence: TBD (see D017)
+# touches the FM-1.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m51_test.py [--pkg PKG] [--jobs 3]     -> build/emu/m51/report.md
 #

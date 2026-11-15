@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # build_bases.sh -- build the Step 0.5 base candidates with the JieLi toolchain in third_party/jieli.
 #
 #   tools/build_bases.sh [NAME ...]     (default: all; names as in the list below)

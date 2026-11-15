@@ -1,7 +1,7 @@
 #!/bin/bash
 # fresh_install.sh -- install a package on the FM-1 and set it up like a new user's (M10.1 Part 6, D068).
 # THE USER RUNS THIS, NEVER CLAUDE CODE: it WRITES to the FM-1 (the firmware, then the song store, the saved presets and the settings).
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   tools/fresh_install.sh PACKAGE.fwsc          e.g. build/step-M10.1/fm1acc-0.10.2-m10.1.fwsc
 #

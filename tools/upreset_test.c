@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* upreset_test: the user presets' store (firmware/app/upreset.c on fm1-base's device/storage.c) on a simulated NOR flash, under
  * ASan/UBSan (tools/upreset_test.sh). A power cut at the Nth flash operation of a save leaves that operation half done and
  * nothing after it; then the "FM-1" boots again (upreset_boot: reads only). Checks:

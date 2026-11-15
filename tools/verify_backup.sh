@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # verify_backup.sh -- compare two full-flash dumps of the FM-1 and print their sha256.
 #
 #   tools/verify_backup.sh DUMP_A.bin DUMP_B.bin

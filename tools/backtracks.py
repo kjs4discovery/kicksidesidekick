@@ -2,7 +2,7 @@
 # backtracks.py -- M8 (D046, D047), M9 (D054: 36), M10 (D060: 42): the backtracks from ONE table (tools/backtracks.tsv) -> songs/backtracks/<slug>/
 # song.yaml + song.mid (a conductor track only: the compiler wants the file; a backtrack has no melody). Every one in C
 # major or A minor, kind backtrack, style POP (the FM-1 plays it in the style chosen there), category "Backtracks".
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/backtracks.py [--check]
 #       writes the folders, compiles each, and reports the sizes, the song store's room and (--check) that every

@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Guitar chord shapes (M3 part 6): our own table of standard open shapes, and barre shapes (E and A forms) made from
  * templates for any root. Strings low E to high e; frets as characters: 'x' muted, '0' open, '1'.. fretted (in a
  * template: frets above the barre, '0' the barre itself); fingers the same way ('0' none). Included by ui.c. */

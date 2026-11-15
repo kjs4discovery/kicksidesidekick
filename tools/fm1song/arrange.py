@@ -1,5 +1,5 @@
 # fm1song: the accompaniment generators (M4, D026): harmony levels 1-5, bass 1-4, drums 1-3, from a chord timeline.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Used by songs/make_songs.py (our songs) and by the MIDI import tool (tools/fm1song/importer.py): the import keeps a
 # file's own parts and generates the other levels here (D004: hybrid). Pure functions, no file access, so the

@@ -1,9 +1,12 @@
-Tuneka - Song Sidekick (the fm1-accompaniment project): third-party code and its licences
-==========================================================================================
+KickSide - Your Musical SideKick (the fm1-accompaniment project): our licences, and third-party code and its licences
+=====================================================================================================================
 
-Our own code (firmware/app/, tools/, songs/ and the docs): Licence: TBD (decision D017; the owner is leaning towards open
-source and decides later). The songs' tunes are public domain or the project's own (each song.yaml says which); the
-arrangements are the project's.
+Our own work, by licence (REUSE.toml and the SPDX line at the top of each file say which applies to a file):
+  - code (firmware/app/, tools/, the scripts in songs/): GPL-3.0-or-later (LICENSE, LICENSES/GPL-3.0-or-later.txt);
+  - songs, backtracks and the docs: CC BY-SA 4.0 (LICENSES/CC-BY-SA-4.0.txt). The songs' tunes are public domain or the
+    project's own (each song.yaml says which); the arrangements are the project's;
+  - the KickSide name, logo and mascot (firmware/assets/): not licensed, all rights reserved by the author
+    (LICENSES/LicenseRef-KickSide-Trademark.txt).
 
 What follows is the third-party code that is copied into this repository (firmware/vendor/) and ends up in the firmware
 package. Each folder keeps its own licence files; the paths below are from the repository root. Read from those files,

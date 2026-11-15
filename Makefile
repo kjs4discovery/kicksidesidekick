@@ -1,4 +1,4 @@
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Everything here runs on the laptop and in the emulator only; nothing writes to the FM-1.
 .PHONY: firmware emu shot patches m2-test store-test fuzz hello songs song-test m51-test upreset-test
 

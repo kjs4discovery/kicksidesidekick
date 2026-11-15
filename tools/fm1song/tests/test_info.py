@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # M10 Part 5 (D062): the optional INFO chunk (the song info line): u8 length, that many printable ASCII bytes; 2.x only.
 import shutil
 import struct

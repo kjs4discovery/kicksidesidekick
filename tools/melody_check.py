@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # melody_check.py -- M2 part 2 item 7 ("crackle in Four Chords"): the melody of a song alone, on several GM
 # instruments, in the emulator; for each the peak, how much of the sound is above 8 kHz (harsh, aliasing on EAS's
-# 22.05 kHz synth) and above 11 kHz. Emulator only. Licence: TBD (see D017)
+# 22.05 kHz synth) and above 11 kHz. Emulator only.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   melody_check.py SONG_DIR PROGRAM...       GM programs counted from 1 (81 = Lead 1, square)
 import sys

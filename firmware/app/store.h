@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The song store (M2 part 1; M5 part 2: blocks): compiled songs (.fm1s) in the flash data area, sent from the laptop
  * (tools/fm1song send). docs/song-format.md section 4 is the layout.
  *

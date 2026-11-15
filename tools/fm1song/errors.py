@@ -1,4 +1,5 @@
-# fm1song: diagnostics. Licence: TBD (see D017)
+# fm1song: diagnostics.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Core code never prints or exits: it records problems in a Diagnostics object (errors and warnings, each
 # with the file and, where it applies, the place in the song as bar:beat) and raises SongError when the song

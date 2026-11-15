@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # m2_host.py -- a test-only USB host for tools/m2_test.py: run by fm1-live's FM1_USB_HOST (stdin / stdout = the
-# emulated FM-1's USB-MIDI). Never used with a real FM-1. Licence: TBD (see D017)
+# emulated FM-1's USB-MIDI). Never used with a real FM-1.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   m2_host.py stall FILE.fm1s N     start a send, answer the FM-1's first N read requests, then go quiet
 #                                    (a cable pulled half way): the FM-1 must give up and store nothing

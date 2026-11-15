@@ -1,7 +1,7 @@
 #!/bin/sh
 # store_test.sh: build tools/store_test.c with firmware/app/store.c and song.c under ASan + UBSan (host gcc) and run it
 # on the starter songs: the song store on a simulated flash, with a power cut at every operation. Laptop only.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/build/store"

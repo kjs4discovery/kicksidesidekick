@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # m101_flash_test.py -- M10.1 Part 3: FACTORY RESET on the TIMED emulator (tools/m51_test.py's runner: erases 8 ms, page programs 2 ms,
 # a read of the XIP window while a flash command has it off stalls until the watchdog resets, as on the chip). Laptop and emulator
-# only: never touches the FM-1. Licence: TBD (see D017)
+# only: never touches the FM-1.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m101_flash_test.py [--pkg PKG] [--out DIR] [--jobs 3]     -> <out>/report.md
 #

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # m10_test.py -- Milestone M10: headless emulator tests (built on tools/m9_test.py's runner and stats; same structure).
 # Never touches the FM-1.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   .venv/bin/python -I tools/m10_test.py [--only m10p1,m10p2,..] [--pkg PKG] [--out DIR]   -> build/emu/m10/report.md
 import argparse

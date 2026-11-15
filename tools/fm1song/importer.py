@@ -1,4 +1,5 @@
-# fm1song: the MIDI import tool's core (M4 part 5, D004 hybrid, D026). Licence: TBD (see D017)
+# fm1song: the MIDI import tool's core (M4 part 5, D004 hybrid, D026).
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # A Standard MIDI File -> a song folder (song.mid + song.yaml) with the full level set:
 #   melody   L1 only: the file's melody (merged tracks, quantized, doubled notes removed, one note at a time)

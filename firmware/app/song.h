@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The compiled song file (.fm1s, versions 1.0 to 1.3 and 2.0; docs/song-format.md section 2): the device's parser.
  * Standalone C (no platform calls), so it is fuzzed on the laptop under ASan/UBSan (tools/song_fuzz.c).
  * song_open checks everything before anything else reads the file: every count, offset, tick and value has a bound,

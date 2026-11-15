@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* SYNTH mode's sound (vsynth.h). Ours: the host around the engines (voice allocation, the envelopes, an LFO for the
  * pulse width), the parameter table, the presets, the effects and the arpeggiator. From Felucca-Engines (MIT,
  * firmware/vendor/felucca-engines, unchanged): felucca_engine.h, dsp.c, eng_analog.c and the tables. Nothing else

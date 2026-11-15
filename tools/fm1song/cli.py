@@ -1,4 +1,5 @@
-# fm1song command line. Licence: TBD (see D017)
+# fm1song command line.
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   fm1song validate SONG_DIR...             check; errors and warnings with bar:beat; exit 1 on errors
 #   fm1song compile SONG_DIR [-o OUT.fm1s] [--format 1.0]   default OUT: build/songs/<slug>.fm1s

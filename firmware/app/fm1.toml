@@ -1,5 +1,5 @@
 # fm1-accompaniment firmware: the build's settings for fm1-base's tools/build.py (firmware/build.sh runs it).
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 name = "fm1acc"                # the build's files: build/fm1acc.fwsc
 id_prefix = "FM-1_46"          # package identity: dev builds FM-1_4600. FM-1_71 was taken (Bunker Evolved FM-1_7100002, Skiff
                                # FM-1_712); FM-1_46 is free in awesome-fm-1 mooring/catalog.json c7cc615 (2026-11-01)

@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The song player (player.h). Written for this project (D017): nothing here comes from another sequencer.
  *
  * Each layer plays one variant's stream; idx[l] is the next event to send. A block sends every event whose tick is

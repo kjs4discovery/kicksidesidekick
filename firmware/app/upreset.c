@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The user presets (upreset.h). The container functions are pure; the device functions use plat_store_* (the host test
  * replaces them: tools/upreset_test.c). */
 #include "upreset.h"

@@ -1,7 +1,7 @@
 #!/bin/sh
 # upreset_test.sh: tools/upreset_test.c with firmware/app/upreset.c and fm1-base's storage.c, under ASan + UBSan (host gcc).
 # The user presets' object on a simulated flash, a power cut at every operation of a save. Laptop only.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/build/upreset"

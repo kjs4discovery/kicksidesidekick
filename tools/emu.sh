@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # emu.sh -- build the firmware and run it in fm1-emu. Never touches the FM-1.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 #   tools/emu.sh                         build, then play it in the emulator window (keys A W S E D F ... = C4..)
 #   tools/emu.sh --shot [MS] [KEYS]      build, run MS ms headless (default 2500, C4 held from 1500 ms),

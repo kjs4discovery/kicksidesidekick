@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The host layer Sonivox EAS asks of its platform (host_src/eas_host.h), for the FM-1: memory from a fixed pool,
  * files that are buffers (a MIDI file in the flash, read through its EAS_FILE locator), no debug output. Written for
  * this project; upstream's host_src/eas_hostmm.c (a desktop host with malloc and stdio) was the reference for what

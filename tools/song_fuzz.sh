@@ -2,7 +2,7 @@
 # song_fuzz.sh [SECONDS]: build tools/song_fuzz.c with firmware/app/song.c under ASan + UBSan (host gcc) and fuzz the
 # device's song parser (and the 2.0 generators, firmware/app/gen.c) with the compiled starter songs as seeds, in formats
 # 2.0, 2.1 (M7), 2.2 (M8), 1.3, 1.1 and 1.0 (default 600 s). Laptop only.
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/build/fuzz"

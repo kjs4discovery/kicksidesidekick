@@ -1,4 +1,4 @@
-/* Licence: TBD (see D017) */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* The song player (step 1.5): our own scheduler, driving EAS from a compiled song's event streams (song.h).
  * The main loop asks (player_*) and reads; the audio interrupt does the work before each EAS render (synth.c calls
  * player_block), so only the interrupt talks to EAS once audio runs.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build.sh -- build the firmware: firmware/app/build/fm1acc.fwsc (and its app and update loader).
 #   firmware/build.sh [build.py options, e.g. --host]
-# Licence: TBD (see D017)
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Uses fm1-base's tools/build.py (firmware/vendor/fm1-base), the JieLi toolchain and AC79 SDK fetched in Step 0.5
 # (third_party/jieli), and the repo's Python venv (Pillow, fontTools). Builds only; installs nothing.
 set -eu
