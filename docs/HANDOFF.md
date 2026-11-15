@@ -153,3 +153,34 @@ LEARN first); the tagline is "KickSide - Your Musical SideKick"; new: SYNTH's ed
 Correction 2 (the user, 2026-11-14 17:04; docs/plan-M10.1.md is updated): NO preset read-out in M10.1. ZUNJET replaces
 HAZE PAD in this build, from the values the user read off the unit (the exact table row is in the plan, Part 4).
 Part 3 is now the factory reset only; the clean-install script warns before erasing presets instead of saving them.
+
+---
+
+## 2026-11-14 (late) — from the planning chat — Milestone M10.2 planned: docs/plan-M10.2.md
+
+The user installed 0.10.2-m10.1 and used it; their notes are in the vault. M10.2, mostly text and controls:
+"Complexity" in SONG LEARN's level pop-ups; "Track Selected" + "(press again to control volume level)"; the stopped
+play screen without the song title, a more readable start line; the "THE LAYER BUTTONS" screen removed; ALGO alone
+sets the start (the pop-up names the section), PRESETS = the key (the SAVE/SELECT key mode goes); a paused start
+change resumes from the new start; help screen and legends; a Pop-ups ON/OFF setting in the old "Controls hint"
+slot, set ON again after every firmware update (the user's wish); the mode screen drains the knobs (K3 changed SYNTH's reverb); PLAY lit on BACKTRACK's SETUP; EDS and NIGHT
+DRIVE swap their sounds; Oh! Susanna's chorus bars 2 and 6 become "D A7". Optional Part 6 (**): the count-in shows
+the beat in the bar instead of the beats left. **No test cycle (the user's choice):** build, pytest and the
+make_songs diff only; update stale test strings without running the tests. Coder Sonnet; judgment calls in
+docs/decisions-M10.2.md. Never run a device command.
+
+---
+
+## 2026-11-15 — from the planning chat — Milestone M10.3 planned: docs/plan-M10.3.md (revised the same day)
+
+The user installed 0.10.3-m10.2 and used it; their notes are in the vault. M10.3: BACKTRACK's indicator leaves LOOP
+as soon as ALGO picks another structure; HOME from playing or paused goes straight to SETUP; SEQ steps the band kit
+while playing (bass and harmony programs re-sent by the player); the kit pop-up keeps "Band Kit". SONG LEARN: a footer
+at the end of the song list; the empty song / backtrack screens point to the website; the keys play the melody's
+sound; the Start pop-up's section name bigger. POTATO's CRUSH 127. The new splash logo (no name line, the version
+lower right) and mode-screen mascot; "Kick" bold in the mode screen's title. Open source (vault D071): LICENSE,
+LICENSES/, SPDX lines, REUSE.toml, NOTICE, one contact comment (no joke comment). **The built-in starter library**
+(songs/library.txt inside the firmware, compressed, the store wins on the same slug; USB commands and store code
+unchanged). Docs: docs/reference.md (current controls, from the code) and a staleness check. **Testing: one trimmed
+run at the end** (Part 9: pytest, host tools, a new builtin_test and m103_test, trimmed m5/m10/m101; no m51, no
+every-song play-through). Coder Sonnet; judgment calls in docs/decisions-M10.3.md. Never run a device command.
