@@ -1221,3 +1221,11 @@ Learned / measured: 57 files 73,336 B raw -> 22,162 B packed + 3,712 B dictionar
 Hardware touched: none
 Questions for the planning chat: M10.4-03 (the dictionary rule; no built-ins when the store's flash is unusable)
 Next: Part 3 (docs).
+
+2026-11-15 17:30 — Step M10.4 Part 3 (docs) —
+Status: done
+Did:
+- docs/reference.md: version line "for firmware 0.10.5", a "Built-in songs" section (what a new FM-1 has; sending, deleting, wipe and factory reset; `fm1song list` shows only the store), the empty screens' note, the clean-install note. docs/controls.md: "M10.4" section. No NOTICE / REUSE.toml change (the decoder is ours, no third-party code).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 4 (version bump, release build).

@@ -1210,3 +1210,16 @@ Text only (no screenshots: the user chose no test cycle; the build, pytest and t
 - **POTATO**: CRUSH 0 -> 127 (nothing else). A user preset saved from POTATO earlier is a copy and does not change.
 - **The splash** is the new logo (it has the name in it) with the firmware version small at the lower right; **the mode screen** has the mascot (1 : 1) and the title "KickSide - Your Musical SideKick" with "Kick" bold in both words.
 - **Open source**: LICENSE (GPL-3.0), LICENSES/, an SPDX line in every file of ours, REUSE.toml, NOTICE; the name, logo and mascot are not licensed.
+
+## M10.4 (0.10.5-m10.4: the built-in starter library; docs/plan-M10.4.md; decisions docs/decisions-M10.4.md)
+
+M10.3 was built but never installed: M10.4 installs over M10.2 and carries all of M10.3's changes (above) plus these. The current description of every control is docs/reference.md.
+
+- **Built-in songs.** The 15 songs and 42 backtracks of `songs/library.txt` are inside the firmware, packed (about 26 KB: an LZ77 with a shared dictionary, tools/builtin_pack.py at every build,
+  firmware/app/builtin.c to unpack). A new FM-1 or one after a factory reset has them at once. SONG LEARN (one file open at a time) and BACKTRACK (the playing band and the next version
+  open together) unpack the file they open into a small buffer; folders, categories and the backtrack list work as for sent songs.
+- **The store wins**: a sent song replaces the built-in copy of the same slug in the lists; deleting it brings the built-in back at the next scan.
+- **USB unchanged**: `fm1song list` / send / delete / wipe / factory-reset see only the store (so `list` does not show the built-ins). The wipe screen says "Only the built-in songs now."
+- **"Band Kit"** is the kit pop-up's title again (M10.3's "Band Drum Kit" is undone: a kit changes the bass and harmony sounds too). SEQ while playing and the help rows of M10.3 stay.
+- **The knock-knock comment** in firmware/app/app.h is gone; the contact paragraph stays.
+- No song, preset or setting changed.

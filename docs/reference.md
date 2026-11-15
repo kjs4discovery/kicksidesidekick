@@ -2,7 +2,7 @@
 <!-- Copyright: The KickSide author -->
 # KickSide - Your Musical SideKick: controls reference
 
-**For firmware 0.10.4 (0.10.4-m10.3). controls.md is the history.** Written from the firmware's code (the help tables,
+**For firmware 0.10.5 (0.10.5-m10.4). controls.md is the history.** Written from the firmware's code (the help tables,
 `learn_jobs`, the legends, the settings rows, the pop-up texts), not from controls.md. Every control is named as printed on the
 panel. No screenshots.
 
@@ -219,7 +219,25 @@ The setting **Pop-ups** (GLO twice): ON or OFF. OFF silences the value pop-ups, 
 confirmations and errors ("SAVED U05", "NOT SAVED"), questions, warnings, FACTORY RESET and WIPE. SYNTH's bottom row shows the turned value instead.
 **Pop-ups is ON again after every firmware update.**
 
+## Built-in songs
+
+From 0.10.5 the firmware itself holds the starter library, `songs/library.txt`: **15 songs and 42 backtracks**, packed small inside the firmware (about 26 KB). They are
+a second source beside the song store, so a **new FM-1, or one after a factory reset, already has them**: SONG LEARN lists the 15 songs and BACKTRACK the 42 backtracks,
+folders and categories as for any song, and they open and play exactly like a sent song. Private songs are never built in.
+
+- **The store wins.** A song you send with the same slug as a built-in (for example `oh-susanna`) replaces its built-in copy in the lists; **deleting** it brings the built-in back.
+  There is never a duplicate in the list.
+- **Sending** a song that is not built in adds it to the store as before. **Deleting** a song that is only built in does nothing (it is not in the store: `fm1song delete`
+  answers "not found"); a built-in cannot be removed except by a different firmware.
+- **WIPE SONG STORE and the factory reset** erase the store (and the presets and settings, for the reset) but not the built-ins: the screen then says "Only the built-in songs now."
+- **`fm1song list` shows only the store**, never the built-ins: its song count is the store's. A unit with nothing sent lists "0 song(s)" and still plays the 57 built-ins.
+- The built-ins use no song-store space. Each is unpacked into a small buffer when it is opened (SONG LEARN one at a time, BACKTRACK two while it swaps versions);
+  a built-in that failed to unpack or check would show SONG ERROR and the rest would work.
+- If the flash chip is not usable ("NO SONG STORAGE") the lists stay empty, built-ins included.
+
 ## When there is nothing to show
+
+With the built-ins, the two empty screens below appear only if the built-in pack itself is damaged (and the store is empty), or after nothing is left to list.
 
 | Screen | Text |
 |---|---|
@@ -232,4 +250,4 @@ confirmations and errors ("SAVED U05", "NOT SAVED"), questions, warnings, FACTOR
 A **factory reset** (`tools/fm1song.sh factory-reset --yes`, run by you; without `--yes` it only explains) erases the song store, both preset sectors (U01-U30) and puts the
 settings back to their defaults; the unit then shows "FACTORY RESET DONE / SWITCH OFF AND ON" and reads nothing until it is switched off and on. It is refused in SYNTH and
 BACKTRACK. The firmware and the panel calibration stay. `tools/fresh_install.sh PACKAGE` does the install, the reset and the song library in one go. After a reset the unit
-shows the empty screens above until songs are sent.
+shows the built-in songs only (the empty screens appear only if the built-in pack is damaged); the `fresh_install.sh` library send then stores copies of the same 57 files.
