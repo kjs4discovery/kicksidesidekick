@@ -89,11 +89,11 @@ def test_m7p1(all_songs, rep):
     h = m5.run("m7p1-popup-held", 5200, ["0:FX!", "5100:FX^!"])
     check(h["stats"]["popups"] == 0, "FX held since power-on, released on the list: no pop-up")
     # the play screen: every button has a job (a song with every layer) -> no pop-up from any of them
-    jobs = ["FX", "SCL", "ENV", "LFO", "EDIT", "SAVE", "ARP", "SEQ", "REC", "PLAY"]
+    jobs = ["FX", "SCL", "ENV", "LFO", "EDIT", "ARP", "SEQ", "REC", "PLAY"]   # (M10.2: SAVE has no job on the play screen: it opens the controls pop-up)
     ps = m5.run("m7p1-play-jobs", m5.PLAY_MS + 6000, m5.open_song(g) + [x for k, n in enumerate(jobs)
                                                                          for x in m5.press_raw(O + 600 + 300 * k, n)])
     check(ps["stats"]["popups"] == 0 and ps["stats"]["ui_view"] in (V_PLAY, V_HINT),
-          "the play screen (a song with all four layers): every button has a job, no pop-up")
+          "the play screen (a song with all four layers): every button but SAVE has a job, no pop-up")
     # HOME held 2 s works with it open; the keys play with it open; encoders never open it
     hh = m5.run("m7p1-popup-home", 8200, m5.press_raw(4400, "FX") + m6.hold_home(4700))
     check(hh["stats"]["ui_view"] == V_MODE and hh["stats"]["mode_switches"] == 1,

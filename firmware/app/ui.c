@@ -43,7 +43,7 @@ static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 18
 #define FLASH_MS 110u                    /* the beat light's flash on beats 2.. (M3: full brightness, every beat) */
 #define FLASH_BAR_MS 220u                /* and on beat 1: longer */
 #define CUE_MS 140u                      /* the rhythm cue's flash at each attack */
-#define KEYMODE_MS 4000u                 /* the KEY mode ends this long after its last use */
+#define KEYMODE_MS 4000u                 /* the TEMPO mode (REC) ends this long after its last use (M10.2: the KEY mode is gone) */
 #define W_CUE 34                         /* the rhythm cue's part of the chord band, left of the big chord */
 
 /* the bands of the play screen, top to bottom */
@@ -184,7 +184,7 @@ static struct {
     int loop_step;                       /* setting the loop: 1 moving A, 2 moving B (SEQ confirms each); 0 not */
     uint32_t tempo_ms;                   /* the last tempo click (quick turns: bigger steps) */
     int32_t key;                         /* the transposition, -5..+6 semitones (the key: the nearest way there) */
-    uint32_t keymode_until;              /* the KEY mode: SELECT changes the key until then (0: off) */
+    uint8_t paused_start;                /* M10.2: ALGO moved the start while paused: PLAY goes on from the new start */
     int pview;                           /* PV_*: the view now; pv_of[l]: the last one used for each part */
     int32_t sc_x0, sc_span;              /* the scrolling view's now line and ticks ahead (scroll_setup) */
     uint32_t zoom;                       /* M6: ZOOM_Q's index (SELECT in the scrolling and staff views) */
@@ -914,7 +914,6 @@ static void open_play(const struct song *s)
     player_tempo(player_song_bpm(s));    /* every song opens at its own tempo, in its own key */
     ui.key = 0;
     ui.kb_lo = 0;
-    ui.keymode_until = 0;
     ui.tempomode_until = 0;
     ui.zoom = SV(S_ZOOM) ? 4u : 2u;      /* M6: the zoom at start (the setting: 1.5 or 3 bars), SELECT from there */
     player_transpose(0);
@@ -1081,8 +1080,13 @@ static void say_from(void)
 {
     char t[24] = "BAR ";
     num_cat(t, ui.from_bar + ui.s->first_bar_number);
+    uint32_t i;
+    const char *sec = "";
     app_say("START", t);
-    vpop_show("Start", t, "", 0);        /* M10.1: the pop-up "Start" / "BAR 9" */
+    for (i = 0; i < ui.s->nsect; i++)    /* M10.2: a section's first bar: the section's name under it */
+        if (song_section_first(ui.s, i) == ui.from_bar)
+            sec = song_section_name(ui.s, i);
+    vpop_show("Start", t, sec, 0);       /* M10.1: the pop-up "Start" / "BAR 9" */
 }
 
 /* ------------------------------------------------------------------ M10.1: SONG LEARN's melody sound --- */
@@ -1187,8 +1191,13 @@ static void input_play(uint32_t down, uint32_t now)
     uint32_t l;
     int32_t d;
     int st = player_state();
+    if (st != PL_PAUSED)
+        ui.paused_start = 0;             /* (M10.2: set by an ALGO start change while paused; any start or stop clears it) */
     if (down >> B_PLAY & 1u) {
         if (st == PL_STOPPED) {
+            player_start(start_point(), player_count_in_of());
+        } else if (st == PL_PAUSED && ui.paused_start) {   /* M10.2: ALGO moved the start while paused: from the new start */
+            ui.paused_start = 0;
             player_start(start_point(), player_count_in_of());
         } else if (st == PL_PAUSED) {     /* go on: count-in on, from the paused bar's beat 1; off, from right there */
             int32_t p = player_tick(0), bt = (int32_t)bar_ticks();
@@ -1274,24 +1283,12 @@ static void input_play(uint32_t down, uint32_t now)
             }
         }
     }
-    if (ui.keymode_until && now >= ui.keymode_until) {
-        ui.keymode_until = 0;
-        ui.sh_legend = 0;
-        ui.sh_top_key = 0xFFFFFFFFu;
-    }
-    if (down >> B_SAVE & 1u) {           /* the KEY mode on / off */
-        ui.keymode_until = ui.keymode_until ? 0 : now + KEYMODE_MS;
-        ui.tempomode_until = 0;
-        ui.sh_legend = 0;
-        ui.sh_top_key = 0xFFFFFFFFu;
-    }
     if (ui.tempomode_until && now >= ui.tempomode_until) {
         ui.tempomode_until = 0;
         ui.sh_legend = 0;
     }
     if (down >> B_REC & 1u) {            /* M6: the TEMPO mode on / off (in the zooming views SELECT zooms) */
         ui.tempomode_until = ui.tempomode_until ? 0 : now + KEYMODE_MS;
-        ui.keymode_until = 0;
         ui.sh_legend = 0;
         ui.sh_top_key = 0xFFFFFFFFu;
         if (ui.tempomode_until) {
@@ -1321,19 +1318,6 @@ static void input_play(uint32_t down, uint32_t now)
         app_say("VIEW", view_name((uint32_t)ui.pview));
     }
     d = plat_enc(EN_SELECT);
-    if (d && ui.keymode_until) {         /* the key: a semitone a click, all twelve keys, the nearest way (-5..+6) */
-        char t[24] = "";
-        ui.key = ((ui.key + d) % 12 + 12 + 5) % 12 - 5;
-        player_transpose(ui.key);
-        ui.keymode_until = now + KEYMODE_MS;
-        ui.redraw = 1;
-        text_cat(t, spell(ui.s->key));
-        text_cat(t, " (");
-        snum_cat(t, ui.key);
-        text_cat(t, ")");
-        app_say("KEY", t);
-        d = 0;
-    }
     if (d && !ui.tempomode_until && view_zooms(ui.pview)) {   /* M6: the scrolling and staff views: zoom */
         uint32_t z = (uint32_t)clamp((int32_t)ui.zoom + (d > 0 ? 1 : -1), 0,
                                      (int32_t)(view_staff(ui.pview) ? ZOOM_STAFF_MAX : ZOOMS - 1u));
@@ -1394,14 +1378,20 @@ static void input_play(uint32_t down, uint32_t now)
         ui.sh_status = ui.sh_strip = 0xFFFFFFFFu;
         d = 0;
     }
-    if (d && ui.loop != LOOP_BARS) {     /* the start point, by section */
-        int32_t i = clamp((int32_t)section_at(ui.from_tick) + d, 0, (int32_t)ui.s->nsect - 1);
-        set_from_bar(song_section_first(ui.s, (uint32_t)i));
-        app_say("START", song_section_name(ui.s, (uint32_t)i));
-        vpop_show("Start", song_section_name(ui.s, (uint32_t)i), "", 0);   /* M10.1 */
-        ui.sh_status = 0xFFFFFFFFu;
-    } else if (d) {
-        app_say("LOOP ON", "SEQ: OFF FIRST");
+    if (d) {                             /* M10.2: PRESETS is the key (as in BACKTRACK): a semitone a click, all twelve keys, the nearest
+                                          * way (-5..+6); the KEY mode (SAVE, SELECT) is gone */
+        char t[24] = "";
+        ui.key = ((ui.key + d) % 12 + 12 + 5) % 12 - 5;
+        player_transpose(ui.key);
+        ui.redraw = 1;
+        text_cat(t, spell(ui.s->key));
+        text_cat(t, ui.key ? " (" : " (song key)");
+        if (ui.key) {
+            snum_cat(t, ui.key);
+            text_cat(t, ")");
+        }
+        app_say("KEY", t);
+        vpop_show("Key", t, "", 0);
     }
     d = bt.on ? 0 : plat_enc(EN_ALGO);     /* (M9: ALGO is the structure, bt.c's) */
     if (d && ui.loop_step) {             /* setting the loop: A or B, by bar (B at or after A) */
@@ -1414,6 +1404,8 @@ static void input_play(uint32_t down, uint32_t now)
     }
     if (d && ui.loop != LOOP_BARS) {     /* the start point, by bar */
         set_from_bar((uint32_t)clamp((int32_t)ui.from_bar + d, (int32_t)first_bar(), (int32_t)last_bar()));
+        if (st == PL_PAUSED)             /* M10.2: PLAY goes on from the new start, not from where it paused */
+            ui.paused_start = 1;
         say_from();
         ui.sh_status = 0xFFFFFFFFu;
     } else if (d) {
@@ -1477,9 +1469,9 @@ static uint32_t learn_jobs(void)
         j |= 1u << B_HOME;               /* (M10.1: up to the folders; from the folders: the mode screen) */
         return j;
     case V_PLAY:                         /* every button, but the layer buttons of layers the song does not have */
-        j = ALL_BUTTONS;
-        if (bt.on)                       /* M9: BACKTRACK: no loops, no key mode (the knobs and PRESETS do them) */
-            j &= ~(1u << B_SEQ | 1u << B_SAVE);
+        j = ALL_BUTTONS & ~(1u << B_SAVE);   /* (M10.2: SAVE has no job on the play screen: the controls pop-up) */
+        if (bt.on)                       /* M9: BACKTRACK: no loops (the knobs and PRESETS do the rest) */
+            j &= ~(1u << B_SEQ);
         for (l = 0; l < SONG_LAYERS; l++)
             if (!ui.s->layer[l].variants && !(bt.on && l == L_MELODY))   /* (M8: BACKTRACK's melody: yours) */
                 j &= ~(1u << LAYER_BUTTON[l]);
@@ -2023,14 +2015,14 @@ static void draw_list(void)
 static void draw_help(void)
 {
     static const char *const ENC[5][2] = {{"MASTER", "volume"}, {"SELECT", "tempo / zoom"},
-                                          {"PRESETS", "start: section"}, {"ALGORITHM", "start: bar; loop A/B"},
+                                          {"PRESETS", "key"}, {"ALGORITHM", "start: bar; loop A/B"},
                                           {"OCT- OCT+", "keys' octave"}};
     static const char *const ENC_LIST[5][2] = {{"MASTER", "volume"}, {"SELECT", "choose a song"},
                                                {"PRESETS", "-"}, {"ALGORITHM", "-"}, {"OCT- OCT+", "keys' octave"}};
     static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX..LFO", "your part, volume"},
                                           {"PLAY", "play / pause"}, {"HOME", "stop, list"}, {"SEQ", "loop: A, B, off"},
-                                          {"ARP", "count-in"}, {"EDIT", "view"}, {"SAVE", "key (SELECT)"},
-                                          {"HOME", "held: mode"}};   /* (M6; the keys play along: plain) */
+                                          {"ARP", "count-in"}, {"EDIT", "view"}, {"HOME", "held: mode"},
+                                          {"", ""}};   /* (M10.2: SAVE is gone from the list: it has no job here) */   /* (M6; the keys play along: plain) */
     static const char *const BTN_LIST[9][2] = {{"PLAY", "open"}, {"EDIT", "open"},
                                                {"HOME", "folders"}, {"keys", "play along"}, {"", ""},
                                                {"HOME", "held: mode"},
@@ -2262,15 +2254,6 @@ static void draw_top(int32_t bar, int32_t beat, int st)
         cv_rect(4, 15, text_w(&FONT_XS, k) + 8, 16, C_HI);
         cv_text(8, 16, &FONT_XS, k, C_BLACK);
     }
-    if (ui.keymode_until) {              /* the KEY mode: what SELECT does now */
-        char k[32] = "KEY: ";
-        text_cat(k, spell(s->key));
-        text_cat(k, " (");
-        snum_cat(k, ui.key);
-        text_cat(k, ")  SELECT");
-        cv_rect(4, 15, text_w(&FONT_XS, k) + 8, 16, C_HI);
-        cv_text(8, 16, &FONT_XS, k, C_BLACK);
-    }
     cv_rect(lab_x - 6, 0, 240 - lab_x + 6, H_TOP - 1, C_BLACK);   /* (anything longer ends under a clear edge) */
     cv_text(lab_x, 4, &FONT_M, lab, st == PL_PLAYING ? C_WHITE : C_GRAY);
     cv_blit(0, Y_TOP);
@@ -2375,10 +2358,16 @@ static void draw_big(int st, const struct pinfo *pi, int32_t count, int32_t bar,
         num_cat(t, (uint32_t)bar + ui.s->first_bar_number);
         text_cat(t, ":");
         num_cat(t, (uint32_t)beat + 1u);
-        text_cat(u, player_count_in_of() ? " (count-in, bar " : " (from here)");
-        if (player_count_in_of()) {
-            num_cat(u, (uint32_t)bar + ui.s->first_bar_number);
-            text_cat(u, ")");
+        if (ui.paused_start) {           /* M10.2: ALGO moved the start: PLAY goes on from there */
+            u[0] = 0;
+            text_cat(u, "PLAY: from bar ");
+            num_cat(u, ui.from_bar + ui.s->first_bar_number);
+        } else {
+            text_cat(u, player_count_in_of() ? " (count-in, bar " : " (from here)");
+            if (player_count_in_of()) {
+                num_cat(u, (uint32_t)bar + ui.s->first_bar_number);
+                text_cat(u, ")");
+            }
         }
         text_in(0, W_BIG, 8, &FONT_M, t, C_WHITE);
         text_in(0, W_BIG, 38, &FONT_XS, u, C_DIM);
@@ -3868,8 +3857,6 @@ static const char *legend_play(int st)
             return "PLAY go on|HOME stop|GLO help";
         return "PLAY pause|HOME stop|EDIT view|GLO help";
     }
-    if (ui.keymode_until)
-        return "SELECT key|SAVE done";
     if (ui.tempomode_until)              /* M6 */
         return "SELECT tempo|REC done";
     if (view_zooms(ui.pview) && st != PL_STOPPED && (plat_ms() / HINT_PAGE_MS) % 3u == 2u)
@@ -3883,11 +3870,14 @@ static const char *legend_play(int st)
                "PLAY pause|SEQ set A-B|EDIT view|GLO help" : "PLAY pause|EDIT view|SEQ loop|GLO help";
     if (ui.loop == LOOP_BARS && st == PL_STOPPED)
         return "PLAY from A|SEQ loop off|EDIT view|GLO help";
-    if (st == PL_STOPPED && (plat_ms() / HINT_PAGE_MS) & 1u)   /* M5: the layer buttons, in short, every other page (M10.1: D066) */
-        return "FX-LFO: pick part|again: volume";
-    if (st == PL_STOPPED)
-        return ui.loop == LOOP_SONG ? "PLAY|PRESETS/ALGO start|SEQ set A-B|GLO help" :
-               "PLAY|PRESETS/ALGO start|SEQ loop|GLO help";
+    if (st == PL_STOPPED) {              /* M10.2: three pages (the full line does not fit one row at FONT_XS without cutting words) */
+        uint32_t pg = (plat_ms() / HINT_PAGE_MS) % 3u;
+        if (pg == 1u)
+            return "FX-LFO: pick part|again: volume";   /* M5: the layer buttons, in short (M10.1: D066) */
+        if (pg == 2u)
+            return ui.loop == LOOP_SONG ? "SEQ set A-B|SELECT tempo|EDIT view|GLO help" : "SEQ loop|SELECT tempo|EDIT view|GLO help";
+        return "PLAY|ALGO start|PRESETS key|GLO help";
+    }
     if (st == PL_PAUSED)
         return "PLAY go on|HOME stop|GLO help";
     return "PLAY pause|HOME stop|SEQ loop|GLO help";
@@ -4167,7 +4157,7 @@ static void frame_play(uint32_t now)
     }
     top_key = (uint32_t)(bar * 16 + beat) ^ player_tempo_of() << 16 ^ (uint32_t)ui.loop << 25 ^
               (uint32_t)player_count_in_of() << 27 ^ (uint32_t)st << 28 ^ (uint32_t)(ui.key + 8) << 10 ^
-              (ui.keymode_until ? 1u << 31 : 0u) ^ (pi.part + 1u) << 6 ^
+              (uint32_t)ui.paused_start << 31 ^ (pi.part + 1u) << 6 ^
               (uint32_t)ui.loop_step << 29 ^ ui.a_bar * 7u ^ ui.b_bar * 131u ^ ui.from_bar * 8191u;
     if (bt.on)                           /* M10: the section indicator (its name, blinking, phase) */
         top_key ^= bt_ind_update(st) * 2654435761u;

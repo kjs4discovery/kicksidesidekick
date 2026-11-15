@@ -672,18 +672,18 @@ def test_views(all_songs, rep):
     o = open_song(i)
     ms = PLAY_MS + 6000
     plain = run("view-key0", ms, o + press(PLAY_MS, "PLAY"))
-    up2 = run("view-key2", ms, o + press(OPEN_MS + 200, "SAVE") + [f"{OPEN_MS + 400}:e0:2"] + press(PLAY_MS, "PLAY"))
+    up2 = run("view-key2", ms, o + [f"{OPEN_MS + 400}:e6:2"] + press(PLAY_MS, "PLAY"))   # (M10.2: PRESETS is the key)
     a, b = plain["stats"], up2["stats"]
     moved = [(b["note_on_last"][l] - a["note_on_last"][l]) % 12 for l in (1, 2, 3)]
     check(b["transpose"] == 2 and moved == [2, 2, 2] and a["note_on_last"][0] == b["note_on_last"][0],
-          f"SAVE, SELECT +2: the key D (+2): bass, harmony, melody sent 2 semitones up (last notes {a['note_on_last'][1:]} "
+          f"PRESETS +2: the key D (+2): bass, harmony, melody sent 2 semitones up (last notes {a['note_on_last'][1:]} "
           f"-> {b['note_on_last'][1:]}), drums unchanged ({b['note_on_last'][0]}) (view-key2.png: names in D)")
-    nx = run("view-key-next-song", PLAY_MS + 2000, o + press(OPEN_MS + 200, "SAVE") + [f"{OPEN_MS + 400}:e0:2"]
-             + press(OPEN_MS + 900, "SAVE") + press(OPEN_MS + 1000, "HOME") + [f"{OPEN_MS + 1100}:e0:-1"]
+    nx = run("view-key-next-song", PLAY_MS + 2000, o + [f"{OPEN_MS + 400}:e6:2"]
+             + press(OPEN_MS + 1000, "HOME") + [f"{OPEN_MS + 1100}:e0:-1"]
              + press(OPEN_MS + 1200, "PLAY") + press(PLAY_MS, "PLAY"))
     check(nx["stats"]["transpose"] == 0, "another song opened: its own key again (transpose 0)")
-    live = run("view-key-live", PLAY_MS + 10000, o + press(PLAY_MS, "PLAY") + press(PLAY_MS + 3000, "SAVE")
-               + [f"{PLAY_MS + 3200}:e0:-3"] + press(PLAY_MS + 6000, "HOME"))
+    live = run("view-key-live", PLAY_MS + 10000, o + press(PLAY_MS, "PLAY") + 
+               + [f"{PLAY_MS + 3200}:e6:-3"] + press(PLAY_MS + 6000, "HOME"))
     quiet = rms(live["left"][int((PLAY_MS + 9000) / 1000 * RATE):int((PLAY_MS + 9900) / 1000 * RATE)])
     check(live["stats"]["transpose"] == -3 and quiet < 5,
           f"the key changed while playing (-3): the sounding notes ended at once; silent 3 s after HOME (rms "
@@ -1096,8 +1096,8 @@ def test_part6(all_songs, rep):
     harm = open_song(d) + press(OPEN_MS + 200, "ENV") + [x for k in range(3) for x in press(OPEN_MS + 400 + 250 * k,
                                                                                          "EDIT")]
     r1 = run("p6-guitar", PLAY_MS + 9000, harm + press(PLAY_MS, "PLAY"))
-    r2 = run("p6-guitar-key", PLAY_MS + 9000, harm + press(OPEN_MS + 1300, "SAVE") + [f"{OPEN_MS + 1500}:e0:-3"]
-             + press(OPEN_MS + 1900, "SAVE") + press(PLAY_MS, "PLAY"))
+    r2 = run("p6-guitar-key", PLAY_MS + 9000, harm + [f"{OPEN_MS + 1500}:e6:-3"]
+             + press(PLAY_MS, "PLAY"))
     check(r1["stats"]["view"] == 3 and r2["stats"]["view"] == 3 and r2["stats"]["transpose"] == -3,
           "harmony muted, EDIT x3: the guitar view (p6-guitar.png: C/E in Danny Boy, open shapes); in A (-3), barre "
           "shapes follow the key (p6-guitar-key.png)")
@@ -1151,7 +1151,7 @@ def test_part7(all_songs, rep):
           "the setting 'Scrolling views show 3 BARS': the notation at half the scale (p7-notation-zoom.png)")
     gr = slugs.index("greensleeves")
     r = run("p7-notation-flats", PLAY_MS + 9000, open_song(gr) + press(OPEN_MS + 200, "LFO") + edits(4)
-            + press(OPEN_MS + 1500, "SAVE") + [f"{OPEN_MS + 1700}:e0:5"] + press(OPEN_MS + 2100, "SAVE")
+            + [f"{OPEN_MS + 1700}:e6:5"]
             + press(PLAY_MS, "PLAY"))
     check(r["stats"]["view"] == 6 and r["stats"]["transpose"] == 5, "Greensleeves moved to D minor (+5): the key "
           "signature and accidentals follow (p7-notation-flats.png)")
@@ -1609,8 +1609,8 @@ def test_m5p1(all_songs, rep):
           f"{r2['stats']['splash_notes']} notes")
     # (M10.2: the controls hint screen "THE LAYER BUTTONS" is gone: its check m5p1-hint is removed)
     # a fresh start for every song: view, key, tempo
-    r = run("m5p1-fresh", PLAY_MS + 1500, open_song(g) + press_raw(O + 300, "EDIT") + press_raw(O + 500, "SAVE")
-            + [f"{O + 600}:e0:2"] + press_raw(O + 900, "SAVE") + [f"{O + 1100}:e0:-10"] + press_raw(O + 1400, "HOME")
+    r = run("m5p1-fresh", PLAY_MS + 1500, open_song(g) + press_raw(O + 300, "EDIT") + 
+            + [f"{O + 600}:e6:2"] + [f"{O + 1100}:e0:-10"] + press_raw(O + 1400, "HOME")
             + press_raw(O + 1600, "PLAY") + press_raw(O + 1800, "PLAY") + press_raw(PLAY_MS + 600, "PLAY"))
     s = r["stats"]
     check(s["view"] == 0 and s["transpose"] == 0 and s["bpm"] == own_bpm(cg),

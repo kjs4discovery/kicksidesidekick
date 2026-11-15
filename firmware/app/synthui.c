@@ -130,7 +130,6 @@ static void mode_leave(void)
     }
     sy.mode_sel = M_LEARN;               /* (M8: the cursor on SONG LEARN, as at power-on) */
     synth_panic();
-    ui.keymode_until = 0;
     ui.loop_step = 0;
     player_stats.mode = 0;
     player_stats.mode_switches++;

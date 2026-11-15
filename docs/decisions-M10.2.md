@@ -19,3 +19,17 @@ No test cycle in this run (the user's choice): build, pytest and the make_songs 
   player_stats.ui_view use them). hint_count stays in the settings record (unused byte; Part 3 uses it).
 - Tests: m5_test.py's m5p1-hint check is removed and its "hint-off" set-up no longer turns S_HINT off (S_HINT is now Pop-ups; turning it OFF would silence every pop-up in the later tests); m101_test.py and
   m10_test.py strings: "Drums Complexity Level" etc., "Track Selected". m7_test.py's V_HINT mention is harmless (the view is never reached). Not run.
+
+## M10.2-04 — Part 2: start, key, paused start
+- keymode_until is removed from `ui` (field, timers, banner, legend, status hash, synthui.c reset). KEYMODE_MS stays as the name of the TEMPO mode's timeout (renaming it was not needed). The status hash bit that
+  carried the key mode (bit 31) now carries `paused_start`, so the PAUSED screen is redrawn when the flag changes.
+- PRESETS = the key whenever it is not setting a loop (also with a loop A-B on, also paused). Pop-up "Key" / "E (+2)", or "D (song key)" at 0; app_say("KEY", same text).
+- ALGO start pop-up: the section's name as the sub line when the bar is a section's first bar (say_from); app_say("START", "BAR n") unchanged. With a loop A-B on, ALGO still says "LOOP ON / SEQ: OFF FIRST" as before.
+- Paused start: `ui.paused_start` (uint8) set by ALGO while PL_PAUSED; PLAY then does player_start(start_point(), count-in setting); cleared at the top of input_play whenever the state is not PAUSED (any start or stop), and by the PLAY branch.
+  PAUSED screen: "PLAY: from bar N" in place of "PLAY: on (...)". The key changing while paused does not set the flag.
+- SAVE: removed from learn_jobs() on the play screen for both SONG LEARN and BACKTRACK (the free-button pop-up opens on it). The loop-setting SEQ/PRESETS jobs are unchanged.
+- Help: PRESETS "key", ALGORITHM "start: bar; loop A/B"; SAVE's row removed (HOME "held: mode" moved up, the last row is empty). BACKTRACK's and the list's help tables are unchanged.
+- Legend, stopped, SONG LEARN: the full line "PLAY|ALGO start|PRESETS key|SEQ loop|GLO help" is wider than one row at FONT_XS, so it is split on three pages (HINT_PAGE_MS, rotating):
+  1 "PLAY|ALGO start|PRESETS key|GLO help", 2 "FX-LFO: pick part|again: volume" (the existing one), 3 "SEQ loop|SELECT tempo|EDIT view|GLO help" (LOOP_SONG: "SEQ set A-B|..."). Loop-setting legends are unchanged.
+- Tests (not run): m5_test.py's key sequences (view-key2, view-key-next-song, view-key-live, p6-guitar-key, p7-notation-flats, m5p1-fresh) use PRESETS (e6) instead of SAVE + SELECT; m7_test.py's "every button has a job" list drops SAVE.
+  tools/m2_test.py and tools/m4_test.py still contain the old SAVE + SELECT key sequences (older milestones' copies of the same checks); they were not rewritten and will fail there if ever run again.

@@ -1126,3 +1126,11 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 2.
+
+2026-11-14 21:40 — Step M10.2 Part 2 (start point and key) —
+Status: done
+Did:
+- ALGO alone sets the start (pop-up names the section), PRESETS is the key (KEY mode removed), paused start resumes from the new start, help and legends (stopped legend on three pages). Builds, no new warnings. Tests updated, not run (M10.2-04).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 3.
