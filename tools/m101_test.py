@@ -52,6 +52,29 @@ def _margins_clear(img, y0, y1):
     return m10._margins_clear(img, y0, y1)
 
 
+def obj_image(base_flash, recs, tag):
+    """tools/m10_test.py's obj_image (a flash image with a user-preset object in copy A of 0xDE000; recs: [(slot, engine, name, level
+    byte)]), but into its own file: m10's always writes old-presets.bin, and parts running at once would overwrite each other's image"""
+    import zlib
+    flash = bytearray(Path(base_flash).read_bytes())
+    slots = [bytearray(64) for _ in range(30)]
+    for slot, eng, name, level in recs:
+        r = slots[slot - 1]
+        r[0], r[1] = 1, eng
+        r[2:2 + len(name)] = name.encode()
+        for k in range(37):
+            r[14 + k] = 64 if k != 35 else level
+    payload = struct.pack("<IBBH", 0x53525055, 1, 30, 0) + b"".join(bytes(x) for x in slots)
+    hdr = struct.pack("<IHHIII2I", 0x30583058, 2, 0, 1, len(payload), zlib.crc32(payload), 0, 0)
+    hdr += struct.pack("<I", zlib.crc32(hdr))
+    flash[0xDE000:0xE0000] = b"\xff" * 0x2000
+    flash[0xDE000:0xDE000 + len(hdr)] = hdr
+    flash[0xDE000 + 256:0xDE000 + 256 + len(payload)] = payload
+    out = m5.OUT / "flash" / f"m101-presets-{tag}.bin"
+    out.write_bytes(flash)
+    return out
+
+
 def learn_run(name, ms, extra, i=None, **kw):
     """SONG LEARN with a song open (the play screen, stopped); extra: events after the opening"""
     i = SONG_I if i is None else i
@@ -70,7 +93,7 @@ def test_m101p1(all_songs, rep):
     SONG_I = slugs.index("saints")
     sy_pre = ["4050:e0:2", "4200:PLAY", "4260:PLAY^"]
     # a flash with one saved preset in slot 30 with a 12-character name (the longest the editor holds)
-    flash_long = m10.obj_image(m5.FLASH["songs"], [(30, 1, "WWWWWWWWWWWW", 0xFF)])
+    flash_long = obj_image(m5.FLASH["songs"], [(30, 1, "WWWWWWWWWWWW", 0xFF)], "p1")
     jobs = {
         "splash": lambda: m5.run("m101p1-splash", 2500, [], mode=None),
         "mode": lambda: m5.run("m101p1-mode", 4700, [], mode=None),
@@ -350,7 +373,7 @@ def test_m101p2(all_songs, rep):
           f"the melody on vsynth stays under 60 % of a block in every public song at its busiest levels: worst {worst} {cpu[worst] * 100:.0f} %")
     st["cpu_worst"] = (worst, cpu[worst])
     # ---- BACKTRACK's K4 keeps a reference (closes M10-14): a preset saved in a lower slot does not shift it
-    two = m10.obj_image(m5.FLASH["songs"], [(5, 1, "FIVE", 0xFF), (20, 1, "TWENTY", 0xFF)])
+    two = obj_image(m5.FLASH["songs"], [(5, 1, "FIVE", 0xFF), (20, 1, "TWENTY", 0xFF)], "p2")
     fl = m5.OUT / "flash" / "two-presets.bin"
     fl.write_bytes(Path(two).read_bytes())
     n_stock = len(m8.PRESETS)
@@ -440,22 +463,20 @@ def test_m101p5(all_songs, rep):
 BT_PRE = m8.BT
 
 
-def prep_images(rep_lines=None):
-    """a flash with two songs, two saved presets (U05, U20) and a changed setting (ZOOM): -> (path, the settings word of its boot)"""
-    send = m5.run("m101p3-prep-send", 120000, [], flash="empty_quiet",
+def prep_images(tag="p3"):
+    """a flash with two songs, two saved presets (U05, U20) and a changed setting (ZOOM) -> its path (tag: the caller's own files,
+    parts running at once must not share them)"""
+    send = m5.run(f"m101{tag}-prep-send", 120000, [], flash="empty_quiet",
                   host=f"{m5.SEND} send --emu-pipe {ROOT}/songs/saints {ROOT}/songs/camptown-races")
     settings = P(4600, "GLO") + P(4800, "GLO") + ["5000:e0:4", "5300:e1:1"] + P(5800, "GLO")
-    st = m5.run("m101p3-prep-settings", 6600, settings, flash=send["flash"])
-    img = m10.obj_image(st["flash"], [(5, 1, "FIVE", 0xFF), (20, 1, "TWENTY", 0xFF)])
-    out = m5.OUT / "flash" / "factory-before.bin"
-    out.write_bytes(Path(img).read_bytes())
-    return out
+    st = m5.run(f"m101{tag}-prep-settings", 6600, settings, flash=send["flash"])
+    return obj_image(st["flash"], [(5, 1, "FIVE", 0xFF), (20, 1, "TWENTY", 0xFF)], f"before-{tag}")
 
 
 def test_m101p3(all_songs, rep):
     lines, st, check = m5.checker("M10.1 part 3: FACTORY RESET (writes: the user runs it; here the emulator only)")
     from concurrent.futures import ThreadPoolExecutor
-    before = prep_images()
+    before = prep_images("p3")
     boot0 = m5.run("m101p3-boot-before", 5200, [], flash=str(before))
     B0 = boot0["stats"]
     B0["preset_used"] = synth_run("m101p3-boot-before-sy", 5200, [], flash=str(before))["stats"]["preset_used"]   # (counted in SYNTH)
@@ -481,9 +502,9 @@ def test_m101p3(all_songs, rep):
           f"({B['settings']:#x} = {default['settings']:#x}), a normal boot")
     # refused in SYNTH and BACKTRACK (as sends are: result 9); nothing written
     before_bytes = Path(before).read_bytes()
-    hostd = f"sleep 4; {host}"          # (wall-clock seconds: the emulator runs about 1.5 x real time)
-    sy = m5.run("m101p3-refused-synth", 12000, SYNTH_PRE, mode=None, flash=str(before), host=hostd)
-    bt = m5.run("m101p3-refused-bt", 12000, BT_PRE, mode=None, flash=str(before), host=hostd)
+    hostd = f"sleep 10; {host}"          # (wall-clock seconds: long enough for the mode to be entered even when other runs load the machine)
+    sy = m5.run("m101p3-refused-synth", 30000, SYNTH_PRE, mode=None, flash=str(before), host=hostd)
+    bt = m5.run("m101p3-refused-bt", 30000, BT_PRE, mode=None, flash=str(before), host=hostd)
     same = [Path(x["flash"]).read_bytes() == before_bytes for x in (sy, bt)]
     check(all(same) and all("NOT reset" in x["out"] and "SYNTH or BACKTRACK" in x["out"] for x in (sy, bt)) and sy["ops"] == bt["ops"] == 0,
           f"refused in SYNTH and in BACKTRACK (result 9), nothing written ({sy['ops']} / {bt['ops']} flash operations, the flash image "
@@ -596,7 +617,7 @@ def test_m101p6(all_songs, rep):
           f"songs/library.txt: {len(songs)} public songs (every folder of songs/ but private/) and {len(bts)} backtracks, songs first, no private path")
     check((ROOT / "songs/library.txt").read_text().startswith("# the songs and backtracks a new FM-1 gets; the website will use this list too"),
           "its header comment says what it is")
-    before = prep_images()
+    before = prep_images("p6")
     host = f"env FM1_FRESH_EMU=1 {ROOT}/tools/fresh_install.sh"
     r = m5.run("m101p6-fresh", 600000, [], flash=str(before), host=host)
     out = r["out"]

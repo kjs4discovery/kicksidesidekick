@@ -34,7 +34,7 @@ def main():
     m5.OUT.mkdir(parents=True, exist_ok=True)
     m5.prepare_flash()
     lines, st, check = m5.checker("M10.1 Part 3: FACTORY RESET on the timed emulator")
-    before = m101.prep_images()
+    before = m101.prep_images("f")
     host = f"{m5.SEND} factory-reset --emu-pipe --yes"
     default = timed("m101f-default", 5200, [], flash="empty")["stats"]
     b0 = timed("m101f-before", 5200, [], flash=str(before))["stats"]

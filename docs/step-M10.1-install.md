@@ -46,15 +46,34 @@ Prepared 2026-11-14 by Claude Code (the planning chat's plan docs/plan-M10.1.md;
 | | 0.10.0-m10 | 0.10.2-m10.1 |
 |---|---|---|
 | App image (slot 585,728 B) | 516,036 B | **519,092 B: 66,636 B free** (rule: at least 16 KB) |
-| RAM .data+.bss (of 98,304) | 88,928 | see the build line below (the SONG LEARN melody synth, the factory reset and the test texts) |
+| RAM .data+.bss (of 98,304) | 88,928 | **89,088** (+160 B; 9,216 B free) |
 | RAM pool (of 344,064) | 291,464 | 291,464 (the synth's memory is the top of the song buffer, as in BACKTRACK) |
 | CPU, SONG LEARN with the melody on the heaviest preset (MIAMI PAD) at the busiest levels, EAS + synth | — | **35 %** of a block (limit 60 %); a sweep of all 30 presets: 28-34 % |
-| CPU, BACKTRACK (M10's worst case) | STUDIO 44 %, ACOUSTIC 41 %, ELECTRO 57 %, CHIP 47 % | unchanged code: m10p6 re-ran in the fast lane (see results) |
+| CPU, BACKTRACK (M10's worst case) | STUDIO 44 %, ACOUSTIC 41 %, ELECTRO 57 %, CHIP 47 % | m10p6 re-ran in the fast lane: STUDIO 44 %, ACOUSTIC 41 %, ELECTRO 57 %, CHIP 47 % |
 | The song store (552 blocks) | about 304 | the library 15 + 42: about the same (tools/store_blocks.py) |
 
 ## Test results (the fast lane, once, on this package: plan Part 8; the user's choice: no full suite)
 
-(see the end of this file: filled in from build/step-M10.1/times.txt)
+Run once on this package via the test-runner subagent (build/step-M10.1/run_lanes.sh; times in build/step-M10.1/times.txt; reports build/step-M10.1/emu-*/report.md). Lanes: host tools and m10 / m101 at once, the timed emulator after.
+
+| Item | Result |
+|---|---|
+| store test (simulated flash, a cut at every operation), upreset test | rc 0 each |
+| pytest (tools/fm1song) | **298 passed** (657 s, slowed by the other lane) |
+| vsynth LEVELS=1 | ALL PASS; loudness 798,810 .. 1,167,054 around a median of 970,535 (within 3 dB) |
+| m10 (its own suite, the M10 screens as a regression) | **38/0** (844 s); BACKTRACK CPU STUDIO 44 %, ACOUSTIC 41 %, ELECTRO 57 %, CHIP 47 % |
+| m10_flash | **6/0**; longest unfed stretch 34 ms, 0 watchdog resets, 0 XIP reads with a flash command running |
+| m101_flash (FACTORY RESET, a power cut at each of its 5 flash operations) | **3/0** |
+| m51 (the song store on the timed flash; you asked for it) | **17/0** (1,437 s) |
+| m101 (Parts 1-6) | first run 59 PASS / 2 FAIL, see below; re-run after fixing the tests 60 / 1; Part 3 re-run alone 6 / 0 |
+
+**The two m101 failures were test-harness faults, not firmware faults (no check relaxed; the firmware and the package did not change):**
+1. Part 1, "an edit page's title names the preset": the test built its saved-preset image with m10_test's `obj_image`, which always writes the same file (old-presets.bin); parts running at the same time overwrote
+   each other's image (the title showed "U05 FIVE", Part 2's preset, instead of "U30 WWWW..."). The test now writes its own file per part (re-run: PASS).
+2. Part 3, "refused in SYNTH and in BACKTRACK": the test starts the laptop command after a wall-clock `sleep 4`; with other runs loading the machine the emulator had not yet reached SYNTH / BACKTRACK, so the reset ran in
+   SONG LEARN (5 flash operations). The test now waits 10 s (re-run alone: all 6 Part 3 checks PASS, 0 flash operations in SYNTH and BACKTRACK).
+Everything else in m101 passed in both runs (Part 1 pop-ups and hint pages, Part 2 buttons / HOME / K4 / the CPU sweep, Part 4, Part 5, Part 6 including the whole fresh_install.sh on the emulator).
+Not run, by your choice: m5-m9, fuzz, the full suite.
 
 ---
 
