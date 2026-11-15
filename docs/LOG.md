@@ -1118,3 +1118,11 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 1.
+
+2026-11-14 21:00 — Step M10.2 Part 1 (text and screens) —
+Status: done
+Did:
+- Complexity pop-up titles, "Track Selected" + sub line, stopped play screen (no title, FONT_B start line), the "THE LAYER BUTTONS" screen removed. Builds with no new warnings (bt.c:234 warning is old). Stale test strings updated, not run (decisions M10.2-01..03).
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 2.

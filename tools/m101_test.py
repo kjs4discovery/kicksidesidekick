@@ -195,7 +195,7 @@ def test_m101p1(all_songs, rep):
           f"FULL says {S['full']['ind_name']!r}; VERSE/CHORUS says {S['vc']['ind_name']!r} and still blinks ({S['vc']['ind_blink_starts']}) "
           f"(m101p1-loop.png)")
     # ---- 5. the pop-ups
-    want = {"vp-le-K1": ("Drums Level", r"2 of \d"), "vp-le-K2": ("Bass Level", r"2 of \d"), "vp-le-K3": ("Harmony Level", r"2 of \d"),
+    want = {"vp-le-K1": ("Drums Complexity Level", r"2 of \d"), "vp-le-K2": ("Bass Complexity Level", r"2 of \d"), "vp-le-K3": ("Harmony Complexity Level", r"2 of \d"),
             "vp-le-SEL": ("Tempo", r"\d+ BPM"), "vp-le-PRE": ("Start", r".+"), "vp-le-ALG": ("Start", r"BAR \d+"),
             "vp-sy-PRE": ("Preset", r".+"), "vp-sy-SEL": ("Tempo", r"1\d\d BPM"), "vp-sy-K1": ("CUTOFF", r".+"),
             "vp-sy-K2": ("RESONANCE", r".+"), "vp-sy-K3": ("REVERB MIX", r".+"), "vp-sy-K4": ("DELAY MIX", r".+")}
@@ -272,7 +272,7 @@ def test_m101p2(all_songs, rep):
     S = {k: r["stats"] for k, r in R.items()}
     # ---- the layer buttons
     s1, s2, s3, s4 = S["s-fx"], S["s-fx2"], S["s-fx3"], S["s-fx4"]
-    check(s1["part"] == 0 and vols(s1) == [0, 0, 0, 0] and s1["vp_title"] == "Your Part" and s1["vp_value"] == "Drums" and
+    check(s1["part"] == 0 and vols(s1) == [0, 0, 0, 0] and s1["vp_title"] == "Track Selected" and s1["vp_value"] == "Drums" and
           S["s-env"]["part"] == 2 and S["s-env"]["vp_title"] == "Harmony Volume" and vols(S["s-env"])[2] == 1,
           f"the first press on a layer that is not your part selects it (FX: part {s1['part']}, volumes {vols(s1)}, pop-up "
           f"{s1['vp_title']!r} {s1['vp_value']!r}); harmony is your part at the start, so ENV once is its volume "
@@ -282,7 +282,7 @@ def test_m101p2(all_songs, rep):
           f"the second press cycles its volume: QUIET {vols(s2)}, MUTED {vols(s3)}, FULL {vols(s4)} (pop-ups "
           f"{s2['vp_value']}, {s3['vp_value']}, {s4['vp_value']}; m101p2-s-fx2.png)")
     hs, hp = S["hold-sel"], S["hold-then-press"]
-    check(hs["part"] == 1 and vols(hs) == [0, 0, 0, 0] and hs["vp_title"] == "Your Part" and
+    check(hs["part"] == 1 and vols(hs) == [0, 0, 0, 0] and hs["vp_title"] == "Track Selected" and
           hp["part"] == 1 and vols(hp)[1] == 1,
           f"a hold of 1.5 s on a layer that is not your part is ONE select (part {hs['part']}, volumes {vols(hs)}: no volume change at the "
           f"release); a press after it cycles its volume ({vols(hp)})")
@@ -291,7 +291,7 @@ def test_m101p2(all_songs, rep):
           f"volumes are kept when the part moves: harmony QUIET, drums QUIET, back to harmony: {vols(k1)}, part {k1['part']}")
     check(S["s-scl-fx"]["part"] == 0 and S["s-lfo"]["part"] == 3 and S["s-lfo"]["vp_value"] == "Melody" and vols(S["s-lfo"]) == [0, 0, 0, 0],
           f"the melody's button selects it as your part like the others (part {S['s-lfo']['part']}, no volume change)")
-    check(S["bt-lfo"]["part"] == 3 and S["bt-lfo"]["vp_title"] == "Your Part" and S["bt-fx"]["part"] == 0 and
+    check(S["bt-lfo"]["part"] == 3 and S["bt-lfo"]["vp_title"] == "Track Selected" and S["bt-fx"]["part"] == 0 and
           vols(S["bt-fx2"])[0] == 1 and S["bt-fx2"]["vp_title"] == "Drums Volume",
           f"BACKTRACK: the same rule on its layer buttons: LFO selects the melody (part {S['bt-lfo']['part']}), FX selects the drums, again "
           f"{S['bt-fx2']['vp_value']} (m101p2-bt-fx2.png)")

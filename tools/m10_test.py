@@ -30,7 +30,7 @@ P = m5.press_raw
 M10_FIELDS = ("vp_open vp_count vp_close_ms vp_btn_closed ind_section ind_blinking ind_blink_starts ind_blink_tick ind_blink_to "
               "ind_on kit kit_hits kit_bass_prog kit_harm_prog preset_used preset_saves preset_loaded preset_sel save_screen "
               "save_slot preset_junk info_shown pad0 pad1").split()
-M10_STRINGS = (("vp_title", 24), ("vp_value", 40), ("vp_sub", 32), ("next_text", 48), ("ind_name", 16), ("info_text", 40),
+M10_STRINGS = (("vp_title", 32), ("vp_value", 40), ("vp_sub", 40), ("next_text", 48), ("ind_name", 16), ("info_text", 40),
                ("preset_name", 16))
 _stats9 = m5.stats
 

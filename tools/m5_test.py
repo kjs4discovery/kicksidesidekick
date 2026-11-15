@@ -191,8 +191,7 @@ def prepare_flash():
     FLASH["songs_hint"] = d / "songs-hint.bin"     # (M5: the controls hint on, as the FM-1 comes)
     FLASH["songs"] = d / "songs-hint.bin"
     # M5: the controls hint off (settings: the last row) for every other test, so a song opens as before
-    h = run("hint-off", 7500, press(4600, "GLO") + press(4800, "GLO") + ["5000:e0:9"] + ["5600:e1:1"]
-            + press(6200, "GLO"))
+    h = run("hint-off", 7500, press(4600, "GLO") + press(4800, "GLO") + press(6200, "GLO"))   # (M10.2: no longer turns the setting off: S_HINT is Pop-ups, ON)
     shutil.copy(h["flash"], d / "songs.bin")
     FLASH["songs"] = d / "songs.bin"
     f = bytearray((d / "songs.bin").read_bytes())  # M5: an empty song area with the hint off (the settings kept)
@@ -1608,17 +1607,7 @@ def test_m5p1(all_songs, rep):
     check(r1["stats"]["ui_view"] >= 16 and r2["stats"]["ui_view"] < 16 and r2["stats"]["splash_notes"] == 5,
           f"the splash for 4 s (still up at 3.9 s), the list at 4.3 s; the start-up melody: "
           f"{r2['stats']['splash_notes']} notes")
-    # the controls hint: before the play screen, any button closes it; 10 times, then off by itself
-    r = run("m5p1-hint", O + 800, open_song(g), flash="songs_hint")
-    check(r["stats"]["ui_view"] == 5, "opening a song: the controls hint first (m5p1-hint.png)")
-    many = []
-    for k in range(11):
-        t = O + 600 * k
-        many += press_raw(t, "PLAY") + press_raw(t + 200, "PLAY") + press_raw(t + 400, "HOME")
-    r = run("m5p1-hint-11", O + 600 * 11 + 600, many, flash="songs_hint")
-    r2 = run("m5p1-hint-off", O + 900, press_raw(O, "PLAY"), flash=r["flash"])
-    check(r["stats"]["hints"] == 10 and r2["stats"]["ui_view"] == 1 and (r2["stats"]["settings"] >> 28) & 15 == 1,
-          f"shown {r['stats']['hints']} times in 11 openings, then off by itself (the next opening: the play screen)")
+    # (M10.2: the controls hint screen "THE LAYER BUTTONS" is gone: its check m5p1-hint is removed)
     # a fresh start for every song: view, key, tempo
     r = run("m5p1-fresh", PLAY_MS + 1500, open_song(g) + press_raw(O + 300, "EDIT") + press_raw(O + 500, "SAVE")
             + [f"{O + 600}:e0:2"] + press_raw(O + 900, "SAVE") + [f"{O + 1100}:e0:-10"] + press_raw(O + 1400, "HOME")

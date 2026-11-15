@@ -68,7 +68,7 @@ static const uint16_t TUNE[5][3] = {{600, 72, 180}, {780, 76, 180}, {960, 79, 18
 #define BOX_STEP 60
 #define SET_ROW_H 22                     /* the settings' rows (8 above the legend) */
 
-enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT, V_MODE, V_SYNTH,   /* (M5: the mode screen, SYNTH) */
+enum { V_LIST, V_PLAY, V_HELP, V_SETTINGS, V_VIEWSET, V_HINT_UNUSED, V_MODE, V_SYNTH,   /* (M5: the mode screen, SYNTH; M10.2: V_HINT, the layer-buttons screen, is gone: its slot stays so the other values keep their numbers) */
        V_WIPE,                           /* M5.1: WIPE SONG STORE, asked first */
        V_SETUP,                          /* M8: BACKTRACK's setup (bt.c) */
        V_RESET };                        /* M10.1: FACTORY RESET DONE - SWITCH OFF AND ON: nothing more is drawn or read */
@@ -133,7 +133,6 @@ struct settings {
 #define SET_SIZE_M5 36u                  /* M5..M6's: read too, the M7 fields then get their defaults */
 #define SYNTH_SET_DEFAULT {7, 0, 0, 0}   /* drum volume 7 of 10, kit ACOUSTIC */
 #define SV(i) (*((uint32_t)(i) < 8u ? &ui.set.v[(i)] : &ui.set.v2[(uint32_t)(i) - 8u]))
-#define HINT_TIMES 10u                   /* the controls hint shows itself this many times, then stays off */
 static const char *const SET_NAME[S_N] = {"Key lights blink", "Count-in length", "Count-in volume",
                                           "Note names (notation)", "Zoom at start", "Quiet level",
                                           "Key lights", "Views (hide some)", "Bass sound", "Controls hint",
@@ -245,7 +244,7 @@ static struct {
 static struct {
     uint8_t open, dirty, badge;          /* badge: 0 none, 1 MAJOR, 2 MINOR */
     uint32_t until, since;
-    char title[24], value[40], sub[32];
+    char title[32], value[40], sub[40];   /* (M10.2: "Harmony Complexity Level" is 24, the Track Selected hint 38 characters) */
 } vpop;
 static void vpop_show(const char *title, const char *value, const char *sub, uint32_t badge);
 static void bt_vp_select(void);          /* (bt.c) */
@@ -893,14 +892,6 @@ static void open_song(uint32_t i)
         return;
     }
     open_play(s);
-    if (SV(S_HINT) && ui.set.hint_count < HINT_TIMES) {   /* M5: the controls hint first, up to 10 times */
-        ui.view = V_HINT;
-        if (++ui.set.hint_count >= HINT_TIMES)
-            SV(S_HINT) = 0;              /* (then off by itself; the setting turns it on again) */
-        ui.set_dirty = 1;
-        settings_save();
-        player_stats.hints++;
-    }
 }
 
 /* a song opened (lib_open): fresh, its play screen (M8: BACKTRACK's too, bt.c bt_open) */
@@ -1239,8 +1230,8 @@ static void input_play(uint32_t down, uint32_t now)
                 ui.pview = (int)view_ok(l, ui.pv_of[l]);
                 player_stats.view = (uint32_t)ui.pview;
                 ui.redraw = 1;
-                app_say(LAYER_NAME[l], "YOUR PART");
-                vpop_show("Your Part", LT[l], "", 0);
+                app_say(LAYER_NAME[l], "TRACK SELECTED");
+                vpop_show("Track Selected", LT[l], bt.on && l == L_MELODY ? "" : "(press again to control volume level)", 0);   /* M10.2 */
                 player_stats.part = l;   /* (the frame, which sets it, does not run under a pop-up) */
             } else if (ui.s->layer[l].variants) {   /* (BACKTRACK's melody is the keys: no volume) */
                 char tt[24] = "";
@@ -1256,7 +1247,7 @@ static void input_play(uint32_t down, uint32_t now)
                 vpop_show(tt, ui.vol[l] == VOL_FULL ? "FULL" : ui.vol[l] == VOL_QUIET ? "QUIET" : "MUTED", "", 0);
                 player_stats.vols = (uint32_t)ui.vol[0] | (uint32_t)ui.vol[1] << 2 | (uint32_t)ui.vol[2] << 4 | (uint32_t)ui.vol[3] << 6;
             } else {
-                vpop_show("Your Part", LT[l], "", 0);
+                vpop_show("Track Selected", LT[l], bt.on && l == L_MELODY ? "" : "(press again to control volume level)", 0);
                 player_stats.part = l;
             }
         }
@@ -1274,7 +1265,7 @@ static void input_play(uint32_t down, uint32_t now)
             t[7] = 0;
             app_say(LAYER_NAME[l], t);
             {                            /* M10.1: the value pop-up "Drums Level" / "2 of 3" */
-                static const char *const TITLE[SONG_LAYERS] = {"Drums Level", "Bass Level", "Harmony Level", "Melody Level"};
+                static const char *const TITLE[SONG_LAYERS] = {"Drums Complexity Level", "Bass Complexity Level", "Harmony Complexity Level", "Melody Complexity Level"};
                 char pv[16] = "";
                 num_cat(pv, (uint32_t)v);
                 text_cat(pv, " of ");
@@ -1609,7 +1600,8 @@ static void draw_vpop(void)
     int32_t y = 10;
     cv_begin(216, 104, C_BLACK);
     frame_rect(0, 0, 216, 104, C_AMB);
-    text_in(0, 216, y, &FONT_XS, vpop.title, C_GRAY);
+    text_in(0, 216, y + (text_w(&FONT_XS, vpop.title) <= 208 ? 0 : 2), text_w(&FONT_XS, vpop.title) <= 208 ? &FONT_XS : &FONT_T,
+            vpop.title, C_GRAY);   /* (M10.2: a title that does not fit goes one font smaller, never cut) */
     y += 22;
     text_in(0, 216, y, f, vpop.value, C_WHITE);
     y += f->h + 8;
@@ -1620,7 +1612,7 @@ static void draw_vpop(void)
         cv_text((216 - w) / 2 + 4, y + 1, &FONT_XS, t, C_BLACK);
     }
     if (vpop.sub[0])
-        text_in(0, 216, 84, &FONT_XS, vpop.sub, C_DIM);
+        text_in(0, 216, 84, text_w(&FONT_XS, vpop.sub) <= 208 ? &FONT_XS : &FONT_T, vpop.sub, C_DIM);
     cv_blit(12, 68);
 }
 
@@ -1704,7 +1696,7 @@ static void input(void)
     }
     if (vpop.open && (down || (int32_t)(now - vpop.until) >= 0))   /* M10: closed by a press (which then does its job) or by time */
         vpop_close(down != 0);
-    if (ui.view != V_HINT && ui.view != V_WIPE && popup_input(down, ALL_BUTTONS & ~learn_jobs(), now)) {   /* M7 */
+    if (ui.view != V_WIPE && popup_input(down, ALL_BUTTONS & ~learn_jobs(), now)) {   /* M7 */
         lights();
         return;
     }
@@ -1722,15 +1714,6 @@ static void input(void)
         } else if (down & ~(1u << B_OCTDN | 1u << B_OCTUP)) {
             ui.view = ui.back;
             ui.redraw = 1;
-        }
-        lights();
-        return;
-    }
-    if (ui.view == V_HINT) {             /* any button: the play screen */
-        if (down & ~(1u << B_OCTDN | 1u << B_OCTUP)) {
-            ui.view = V_PLAY;
-            ui.redraw = 1;
-            ui.hold_done = 0xFu;         /* (the button that closed it does nothing else when released) */
         }
         lights();
         return;
@@ -2111,7 +2094,6 @@ static void draw_help(void)
 
 /* ---------------------------------------------------------------------- settings --- */
 
-/* the controls hint (M5): before a song's play screen, what a layer button does; up to HINT_TIMES times */
 /* M5.1: the WIPE SONG STORE screen (from the settings, or GLO + HOME held at power-on) */
 static void wipe_open(int back)
 {
@@ -2148,24 +2130,6 @@ static void draw_wipe(uint32_t now)
     }
     cv_blit(0, 40);
     draw_legend(Y_LEGEND, ui.wipe_done ? "any button|back" : "PLAY hold 2 s: wipe|HOME: keep the songs");
-}
-
-static void draw_hint(void)
-{
-    lcd_fill(0, 0, 240, 240, C_BLACK);
-    cv_begin(240, 144, C_BLACK);
-    frame_rect(8, 4, 224, 136, C_HI);
-    text_in(0, 240, 12, &FONT_B, "THE LAYER BUTTONS", C_WHITE);
-    text_in(0, 240, 34, &FONT_XS, "FX drums  SEL bass  ENV harm  LFO melody", C_GRAY);
-    text_in(0, 240, 60, &FONT_B, "PRESS: make it YOUR PART", C_HI);   /* M10.1 (D066): no hold any more */
-    text_in(0, 240, 78, &FONT_XS, "(the keys, views and cue follow it)", C_GRAY);
-    text_in(0, 240, 100, &FONT_B, "PRESS AGAIN: its volume", C_HI);
-    text_in(0, 240, 118, &FONT_XS, "FULL > QUIET > MUTE > FULL", C_GRAY);
-    cv_blit(0, 40);
-    cv_begin(240, 24, C_BLACK);
-    text_in(0, 240, 2, &FONT_XS, "Settings > Controls hint: off", C_DIM);
-    cv_blit(0, 186);
-    draw_legend(Y_LEGEND, "any button|close");
 }
 
 /* the Views screen (M4): every part's views, each SHOWN or HIDDEN from EDIT; 8 rows a page */
@@ -2402,9 +2366,10 @@ static void draw_big(int st, const struct pinfo *pi, int32_t count, int32_t bar,
         text_cat(t, " (");
         text_cat(t, song_section_name(ui.s, section_at(start_point())));
         text_cat(t, ")");
-        text_in(0, W_BIG, 6, &FONT_XS, ui.s->title, C_GRAY);
-        text_in(0, W_BIG, 24, &FONT_M, "PRESS PLAY", C_WHITE);
-        text_in(0, W_BIG, 52, &FONT_XS, t, C_DIM);
+        /* M10.2: no song title (it is at the top of the screen); PRESS PLAY where the title was, the start line 8 px under it
+         * (FONT_M is 24 px high: y 38) in FONT_B and C_GRAY, or FONT_XS (same colour) if it does not fit W_BIG */
+        text_in(0, W_BIG, 6, &FONT_M, "PRESS PLAY", C_WHITE);
+        text_in(0, W_BIG, 38, text_w(&FONT_B, t) <= W_BIG - 4 ? &FONT_B : &FONT_XS, t, C_GRAY);
     } else if (st == PL_PAUSED) {
         char t[24] = "PAUSED ", u[40] = "PLAY: on";
         num_cat(t, (uint32_t)bar + ui.s->first_bar_number);
@@ -4357,12 +4322,6 @@ void app_frame(void)
     if (ui.view == V_MODE || ui.view == V_SYNTH) {
         if (ui.view == V_MODE ? ui.redraw : synth_dirty(now))
             ui.view == V_MODE ? draw_mode() : draw_synth();
-        ui.redraw = 0;
-        return;
-    }
-    if (ui.view == V_HINT) {
-        if (ui.redraw)
-            draw_hint();
         ui.redraw = 0;
         return;
     }
