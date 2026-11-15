@@ -1252,7 +1252,9 @@ static void input_play(uint32_t down, uint32_t now)
         down &= ~(1u << B_HOME);
     }
     if (down >> B_HOME & 1u) {
-        if (st == PL_STOPPED) {
+        if (bt.on && st != PL_STOPPED)   /* M10.3: BACKTRACK, playing / count-in / paused: stop, then SETUP in the same press */
+            player_play(0);
+        if (st == PL_STOPPED || bt.on) {
             ui.view = bt.on ? V_SETUP : V_LIST;   /* (M8: BACKTRACK: back to SETUP) */
             if (bt.on)
                 lib_release();
@@ -1503,8 +1505,7 @@ static uint32_t learn_jobs(void)
         return j;
     case V_PLAY:                         /* every button, but the layer buttons of layers the song does not have */
         j = ALL_BUTTONS & ~(1u << B_SAVE);   /* (M10.2: SAVE has no job on the play screen: the controls pop-up) */
-        if (bt.on)                       /* M9: BACKTRACK: no loops (the knobs and PRESETS do the rest) */
-            j &= ~(1u << B_SEQ);
+        /* (M10.3: BACKTRACK keeps SEQ: it steps the band kit, bt_play_input) */
         for (l = 0; l < SONG_LAYERS; l++)
             if (!ui.s->layer[l].variants && !(bt.on && l == L_MELODY))   /* (M8: BACKTRACK's melody: yours) */
                 j &= ~(1u << LAYER_BUTTON[l]);
@@ -1864,7 +1865,7 @@ static void input(void)
     else {
         if (bt.on) {                     /* M9: BACKTRACK's own knobs (K1-K4, PRESETS, ALGO); SEQ and SAVE: the pop-up */
             bt_play_input(down);
-            down &= ~(1u << B_SEQ | 1u << B_SAVE);
+            down &= ~(1u << B_SEQ | 1u << B_SAVE);   /* (M10.3: SEQ was taken by bt_play_input: the kit) */
         }
         input_play(down, now);
     }
@@ -2060,27 +2061,27 @@ static void draw_help(void)
                                           {"OCT- OCT+", "keys' octave"}};
     static const char *const ENC_LIST[5][2] = {{"MASTER", "volume"}, {"SELECT", "choose a song"},
                                                {"PRESETS", "-"}, {"ALGORITHM", "-"}, {"OCT- OCT+", "keys' octave"}};
-    static const char *const BTN[9][2] = {{"K1-K4", "levels"}, {"FX..LFO", "your part, volume"},
+    static const char *const BTN[10][2] = {{"K1-K4", "levels"}, {"FX..LFO", "your part, volume"},
                                           {"PLAY", "play / pause"}, {"HOME", "stop, list"}, {"SEQ", "loop: A, B, off"},
                                           {"ARP", "count-in"}, {"EDIT", "view"}, {"HOME", "held: mode"},
                                           {"", ""}};   /* (M10.2: SAVE is gone from the list: it has no job here) */   /* (M6; the keys play along: plain) */
-    static const char *const BTN_LIST[9][2] = {{"PLAY", "open"}, {"EDIT", "open"},
+    static const char *const BTN_LIST[10][2] = {{"PLAY", "open"}, {"EDIT", "open"},
                                                {"HOME", "folders"}, {"keys", "play along"}, {"", ""},
                                                {"HOME", "held: mode"},
                                                {"", ""}, {"", ""}, {"", ""}};
     static const char *const ENC_SETUP[5][2] = {{"SELECT", "tempo"}, {"PRESETS", "key"},
                                                 {"ALGORITHM", "structure"}, {"MASTER", "volume"},
                                                 {"OCT- OCT+", "keys' octave"}};   /* M9: BACKTRACK, the one knob map */
-    static const char *const BTN_SETUP[9][2] = {{"K1", "progression"}, {"K2", "style"}, {"K3", "complexity"},
+    static const char *const BTN_SETUP[10][2] = {{"K1", "progression"}, {"K2", "style"}, {"K3", "complexity"},
                                                 {"K4", "melody sound"}, {"PLAY", "start"}, {"HOME", "held: mode"},
                                                 {"keys", "melody sound"}, {"", ""}, {"", ""}};
     static const char *const ENC_BT[5][2] = {{"SELECT", "tempo"}, {"PRESETS", "key (bar)"},
                                              {"ALGORITHM", "structure*"}, {"MASTER", "volume"},
                                              {"OCT- OCT+", "keys' octave"}};
-    static const char *const BTN_BT[9][2] = {{"K1", "progression*"}, {"K2", "style*"}, {"K3", "complexity"},
-                                             {"K4", "melody sound"}, {"PLAY", "play / pause"},
-                                             {"HOME", "stop, setup"}, {"ARP", "count-in"},
-                                             {"EDIT", "view"}, {"LFO", "held: melody"}};
+    static const char *const BTN_BT[10][2] = {{"K1", "progression*"}, {"K2", "style*"}, {"K3", "complexity"},
+                                              {"K4", "melody sound"}, {"PLAY", "play / pause"},
+                                              {"HOME", "stop, setup"}, {"SEQ", "band kit"}, {"ARP", "count-in"},
+                                              {"EDIT", "view"}, {"LFO", "held: melody"}};   /* M10.3: SEQ; ten rows, 15 px apart */
     const char *const (*e)[2] = ui.back == V_PLAY ? (bt.on ? ENC_BT : ENC) : ui.back == V_SETUP ? ENC_SETUP : ENC_LIST;
     const char *const (*b)[2] = ui.back == V_PLAY ? (bt.on ? BTN_BT : BTN) : ui.back == V_SETUP ? BTN_SETUP : BTN_LIST;
     uint32_t r, band;
@@ -2100,8 +2101,8 @@ static void draw_help(void)
             cv_text(6, y, &FONT_XS, e[r][0], C_GRAY);
             cv_text(6, y + 13, &FONT_XS, e[r][1], C_HI);
         }
-        for (r = 0; r < 9u; r++) {       /* the buttons, a line each */
-            int32_t y = 30 + (int32_t)r * 17 - y0;
+        for (r = 0; r < 10u; r++) {      /* the buttons, a line each (M10.3: ten rows, 15 px apart) */
+            int32_t y = 30 + (int32_t)r * 15 - y0;
             cv_text(116, y, &FONT_XS, b[r][0], C_GRAY);
             cv_text(152, y, &FONT_XS, b[r][1], C_HI);
         }
@@ -3895,8 +3896,8 @@ static const char *legend_play(int st)
         if (st == PL_STOPPED)
             return (plat_ms() / HINT_PAGE_MS) & 1u ? "FX-LFO: pick part|again: volume" : "PLAY start|HOME setup|GLO help";
         if (st == PL_PAUSED)
-            return "PLAY go on|HOME stop|GLO help";
-        return "PLAY pause|HOME stop|EDIT view|GLO help";
+            return "PLAY go on|HOME stop|SEQ band kit|GLO help";
+        return "PLAY pause|HOME stop|SEQ band kit|GLO help";   /* M10.3: SEQ steps the band kit (EDIT's view is in the help) */
     }
     if (ui.tempomode_until)              /* M6 */
         return "SELECT tempo|REC done";

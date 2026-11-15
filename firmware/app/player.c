@@ -255,11 +255,13 @@ static uint64_t q_of(int32_t tick) { return mul64((uint32_t)(tick + (int32_t)bia
 
 /* M10: the band kit (player_kit): the drum layer's note-ons to vsynth's drum voices, programs for the bass and harmony */
 static volatile uint8_t kit_dr, kit_bass = 0xFFu, kit_harm = 0xFFu;
+static volatile uint8_t kit_programs_due;   /* M10.3: player_kit changed the programs; dispatch sends them at its next event */
 void player_kit(uint32_t kit_drum, uint32_t bass_prog, uint32_t harm_prog)
 {
     kit_dr = (uint8_t)(kit_drum <= 2u ? kit_drum : 0u);
     kit_bass = (uint8_t)bass_prog;
     kit_harm = (uint8_t)harm_prog;
+    kit_programs_due = 1;
 }
 
 /* a GM drum note as one of vsynth's 8 drum voices (the ride and the crash have none: the closed and open hat) */
@@ -336,10 +338,29 @@ static uint32_t pitch(uint32_t l, uint32_t n)
     return (uint32_t)(t < 0 ? t + 12 * ((11 - t) / 12) : t > 127 ? t - 12 * ((t - 116) / 12) : t);
 }
 
+/* M10.3: SEQ stepped the band kit while a song plays: layers 1 and 2 get the kit's program (the layer's own for 0xFF) */
+static void kit_programs_send(void)
+{
+    uint32_t l;
+    kit_programs_due = 0;
+    for (l = 1u; l <= 2u; l++) {
+        const struct song_layer *ly = &song->layer[l];
+        uint32_t p = l == 1u ? kit_bass : kit_harm;
+        if (!ly->variants)
+            continue;
+        if (p == 0xFFu)
+            p = ly->program;
+        if (p != 0xFFu)
+            send(l, 0xC0u, p, 0);
+    }
+}
+
 static void dispatch(uint32_t l, const struct song_event *e)
 {
     uint32_t n = e->status == 0x90u || e->status == 0x80u ? pitch(l, e->d1) : e->d1;
     uint32_t w = n >> 5, bit = 1u << (n & 31u);
+    if (kit_programs_due)
+        kit_programs_send();
     switch (e->status) {
     case 0x90u: {
         uint32_t vel = e->d2;
@@ -485,6 +506,7 @@ static void set_tempo(uint32_t b)
 static void channel_setup(void)
 {
     uint32_t l;
+    kit_programs_due = 0;                 /* (M10.3: the programs below are the current ones) */
     for (l = 0; l < SONG_LAYERS; l++) {
         const struct song_layer *ly = &song->layer[l];
         if (!ly->variants)

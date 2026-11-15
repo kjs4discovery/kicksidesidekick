@@ -592,7 +592,7 @@ static uint32_t bt_ind_update(int st)
     int blink;
     uint32_t sec = bt_indicator(ui.s, st, &blink), on = 1;
     int32_t tk = player_tick(PL_LEAD_BEAT_MS);
-    bt.ind_loop = (uint8_t)(bt.structure == BS_LOOP);
+    bt.ind_loop = (uint8_t)(bt.structure == BS_LOOP && bt.w_structure == BS_LOOP);   /* M10.3: LOOP only while no other structure is waiting */
     if (bt.ind_loop)
         blink = 0;                       /* M10.1: LOOP structure: the indicator reads LOOP and never blinks (no change is coming) */
     if (blink && (!was_blink || was_to != sec)) {
@@ -621,7 +621,7 @@ static uint32_t bt_ind_update(int st)
             bt_section_name(ui.s, sec, nm, sizeof nm);
         vpop_text(player_stats.ind_name, nm, sizeof player_stats.ind_name);
     }
-    return sec | (uint32_t)blink << 8 | on << 9;
+    return sec | (uint32_t)blink << 8 | on << 9 | (uint32_t)bt.ind_loop << 10;
 }
 
 /* the play screen's top lines (ui.c draw_top): the progression's number and name; the section indicator at the right end
@@ -930,7 +930,7 @@ static void bt_vp(uint32_t k)
         text_cat(v, " BPM");
         break;
     default:
-        title = "Band Kit";
+        title = "Band Drum Kit";
         text_cat(v, BT_KIT_NAME[bt.kit % BT_KITS]);
     }
     vpop_show(title, v, sub, badge);
@@ -988,8 +988,8 @@ static void bt_setup_input(uint32_t down)
         mode_leave();
 }
 
-/* the play screen's own (before input_play, which does not see these): the same knobs as SETUP. K4 and (in input_play)
- * SELECT act at once, the others wait for their boundary (bt_live). SEQ and SAVE have no job here: the pop-up */
+/* the play screen's own (before input_play, which does not see these): the same knobs as SETUP. K4, SEQ (the band kit)
+ * and (in input_play) SELECT act at once, the others wait for their boundary (bt_live). SAVE has no job here: the pop-up */
 static void bt_play_input(uint32_t down)
 {
     int32_t d1 = plat_enc(EN_K1), d2 = plat_enc(EN_K2), d3 = plat_enc(EN_K3), d4 = plat_enc(EN_K4);
@@ -1026,6 +1026,11 @@ static void bt_play_input(uint32_t down)
     }
     if (down >> B_LFO & 1u)
         app_say("MELODY", "you play it");
+    if (down >> B_SEQ & 1u) {              /* M10.3: the next band kit, at once (nothing is rebuilt) */
+        bt.kit = (bt.kit + 1u) % BT_KITS;
+        bt_kit_apply(1);
+        bt_vp(VK_KIT);
+    }
     bt_live();
     bt_stats();
 }
