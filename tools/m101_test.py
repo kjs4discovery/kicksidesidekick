@@ -552,8 +552,8 @@ def test_m101p4(all_songs, rep):
         ro = preset_rows(old)
         same = [n for n in rn if n in ro and rn[n] == ro[n]]
         changed = sorted(n for n in rn if n not in same)
-        check(changed == ["E-GUITAR", "EDS", "ZUNJET"],
-              f"only E-GUITAR, EDS and ZUNJET differ from M10's table (the other 27 rows byte for byte): changed {changed}")
+        check(changed == ["E-GUITAR", "EDS", "NIGHT DRIVE", "ZUNJET"],   # (M10.2: EDS and NIGHT DRIVE swapped their sounds)
+              f"only E-GUITAR, EDS, NIGHT DRIVE and ZUNJET differ from M10's table (the other 26 rows byte for byte): changed {changed}")
         eg_old = [x.strip() for x in ro["E-GUITAR"].split(",")]
         eg_new = [x.strip() for x in rn["E-GUITAR"].split(",")]
         diff = [(a, b) for a, b in zip(eg_old, eg_new) if a != b]

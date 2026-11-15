@@ -1142,3 +1142,11 @@ Did:
 Hardware touched: none
 Questions for the planning chat: none
 Next: Part 4.
+
+2026-11-14 22:20 — Step M10.2 Part 4 (small fixes) —
+Status: done
+Did:
+- Mode screen drops the other encoders (and once more before a mode starts); PLAY lit on BACKTRACK's SETUP with backtracks; EDS and NIGHT DRIVE swapped their sounds (rows before / after in decisions M10.2-06). Builds clean.
+Hardware touched: none
+Questions for the planning chat: none
+Next: Part 5.

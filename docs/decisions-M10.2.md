@@ -47,3 +47,12 @@ No test cycle in this run (the user's choice): build, pytest and the make_songs 
   - kept (vpop_keep): synthui.c "SAVED U05"-style confirmation and "NOT SAVED" (an error).
   - Other confirmations (the factory reset, WIPE, yes/no questions) are screens of their own, not vpop calls: untouched. The v-pop and its "SAVED U05" test are unaffected.
 - SYNTH with OFF: draw_synth_main shows the turned quick knob's "NAME value" in the bottom row for QUICK_MS (the code of M10 before 9fd953a, restored under `!SV(S_HINT)`); synth_hash includes the value so it redraws on each click.
+
+## M10.2-06 — Part 4: small fixes
+- Mode screen: mode_input drops every encoder but SELECT each frame (`for e < NE`, `(void)plat_enc(e)`); mode_choose drops all of them once before the mode starts (so a turn that arrived in the same frame is not applied by SYNTH).
+- SETUP: lights() sets PLAY lit when `ui.view == V_SETUP && bt.n` (the same "lit" as the mode screen's PLAY); with no backtracks PLAY stays dim as before.
+- EDS / NIGHT DRIVE (vsynth.c PRESETS; both ANALOG, so the engine field is unchanged; names and positions stay). Values after the engine, before:
+  - EDS:         1, 60, 90, 14, 40, 50, 70, 0, 6, 12, 110, 0, 30, 20, 0, 0, ARP_UP, RATE_8, 0, 64 | 64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 100, 64, 64, 8, 94, 0
+  - NIGHT DRIVE: 0, 50, 90, 20, 48, 30, 82, 0, 6, 10, 80, 0, 30, 64, 0, 0, ARP_UP, RATE_8, 0, 64 | 64, 0, 0, 0, 0, 0, 0, 0, 3, 64, 0, 0, 64, 64, 6, 100, 0
+  After: the two rows exchanged (EDS has NIGHT DRIVE's values, NIGHT DRIVE has EDS's, LEVEL 100 / 94 included). No loudness run.
+- Test: m101_test.py part 4's "changed vs M10" list is now E-GUITAR, EDS, NIGHT DRIVE, ZUNJET (26 unchanged rows). Not run.

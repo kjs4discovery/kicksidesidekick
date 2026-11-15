@@ -87,6 +87,9 @@ static void draw_mode(void)
 
 static void mode_choose(uint32_t m)
 {
+    uint32_t e;
+    for (e = 0; e < NE; e++)             /* M10.2: the turns the mode screen did not use go before the mode starts (K3 changed SYNTH's reverb) */
+        (void)plat_enc(e);
     ui.redraw = 1;
     if (m == M_LEARN) {                  /* SONG LEARN: the song list, as before */
         player_stats.mode = 1;
@@ -140,7 +143,11 @@ static void mode_leave(void)
 static void mode_input(uint32_t keys, uint32_t btn, uint32_t down)
 {
     int32_t d = plat_enc(EN_SELECT);
+    uint32_t e;
     (void)keys, (void)btn;
+    for (e = 0; e < NE; e++)             /* M10.2: only SELECT is used here: the other encoders' turns are dropped each frame */
+        if (e != EN_SELECT)
+            (void)plat_enc(e);
     if (d) {                             /* (M8: three choices, a step a click) */
         sy.mode_sel = (uint32_t)clamp((int32_t)sy.mode_sel + d, 0, (int32_t)MODES - 1);
         ui.redraw = 1;

@@ -995,6 +995,8 @@ static void lights(void)
         }
     }
     dim |= 1u << B_PLAY | 1u << B_GLO;
+    if (ui.view == V_SETUP && bt.n)      /* M10.2: BACKTRACK's SETUP: PLAY full when there are backtracks to play (as on the mode screen) */
+        lit |= 1u << B_PLAY;
     if (ui.oct < 0)
         lit |= 1u << B_OCTDN;
     if (ui.oct > 0)
