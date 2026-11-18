@@ -163,7 +163,7 @@ def mock_help(path):
 def mock_splash(path):
     s = Screen()
     s.rect(0, 0, 240, 240, CREAM)
-    logo = Image.open(ROOT / "firmware/assets/tmp-logo.jpg").convert("RGB").resize((150 * S, 170 * S))
+    logo = Image.open(ROOT / "firmware/assets/src/kickside-logo.jpg").convert("RGB").resize((150 * S, 100 * S))   # the placeholder tmp-logo.jpg is gone
     s.im.paste(logo, (45 * S, 14 * S))
     s.text(0, 190, "FM-1 Accompaniment", B, (60, 50, 40), center_w=240)
     s.text(0, 212, "v0.3.0-m2", XS, (150, 136, 118), center_w=240)

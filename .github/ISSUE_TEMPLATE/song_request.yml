@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Song request or song to share
+description: Ask for a song, or offer one.
+labels: ["songs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Songs must be public domain or your own work.** We cannot add copyrighted songs, and we cannot take MIDI
+        files of them. If you are not sure, ask here first.
+  - type: input
+    id: title
+    attributes:
+      label: Title and composer or source
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Rights
+      options:
+        - Public domain (the tune is old enough, or traditional)
+        - My own composition, shared under CC BY-SA 4.0
+        - I am not sure
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Details
+      description: Key, tempo, the chords you know, and where you checked the rights.

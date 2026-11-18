@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+blank_issues_enabled: false
+contact_links:
+  - name: Commercial version or licensing
+    url: mailto:websiteInfo@KickSideSideKick.com
+    about: KickSide is GPL-3.0-or-later. For a commercial version on other terms, please write to us.

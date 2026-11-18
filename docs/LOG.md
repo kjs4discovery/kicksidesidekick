@@ -1263,3 +1263,14 @@ Learned / measured: store area 552 blocks, all free after the wipe; `fm1song lis
 Hardware touched: WRITE (by the user): firmware install, one song delete, store wipe. Claude Code: read-only (`list`).
 Questions for the planning chat: none yet; the user's first-use notes on the built-in lists follow tomorrow.
 Next: the user's feedback on the new-user state (SONG LEARN 15 songs, BACKTRACK 42, help screens, playing); then a later milestone.
+
+2026-11-17 19:55 — Publishing prep (A2-A6 of the vault's Publishing Guide; not a milestone step; by the planning chat with the user) —
+Status: partial (the public repo is not created or pushed yet)
+Did:
+- Committed `import/test/` in .gitignore (copyrighted test MIDI), the redaction of the USB serial in docs/device.md and docs/archive/LOG-before-M5.md, and the contact line in firmware/app/app.h (contact: websiteInfo@KickSideSideKick.com).
+- **Rewrote the whole git history** (git filter-branch): author and committer email of all 140 commits is now the GitHub noreply address; the USB serial is replaced by `<redacted>` in every commit (it was also in docs/LOG.md). **Every commit hash changed**: the hashes quoted in this LOG and in docs/decisions-*.md and docs/step-*.md (for example M10.4's `6adc7ee`, now `c0b905f`) are from before the rewrite. A copy of the old history is in `.history-backup-2026-11-17.git` (git-ignored, never to be pushed).
+- Added README.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, TRADEMARKS.md and .github/ISSUE_TEMPLATE/ (bug report, song request, config).
+Learned / measured: the rewritten history is 39 MB; the build does not need to change. Whether a rebuild from the rewritten tree gives the same sha256 as the tested package (769c87bf...cc43) is NOT yet checked (Publishing Guide B6).
+Hardware touched: none
+Questions for the planning chat: none
+Next: the user creates the GitHub repo and pushes; then rebuild, compare the checksum, test the release file on the FM-1, and submit to The Firmware Hub (Publishing Guide, Part B).
