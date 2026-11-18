@@ -1,0 +1,7 @@
+{
+  "what": "Play-along firmware. The band plays drums, bass, harmony and melody; you mute one layer and the screen shows what to play, as chords, keys, ukulele or tab. Built-in songs and backtracks, plus a SYNTH mode with presets. Make your own songs on a laptop and send them over USB.",
+  "kinds": ["chords", "synth"],
+  "image": "docs/card.png",
+  "color": "#FF8A1F",
+  "sounds": "licensed: Sonivox EAS General MIDI wavetable sound set (firmware/vendor/sonivox), Apache-2.0. The song previews in songs/*/previews are rendered from our own arrangements with it."
+}

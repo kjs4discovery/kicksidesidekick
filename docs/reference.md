@@ -2,7 +2,7 @@
 <!-- Copyright: The KickSide author -->
 # KickSide - Your Musical SideKick: controls reference
 
-**For firmware 0.10.5 (0.10.5-m10.4). controls.md is the history.** Written from the firmware's code (the help tables,
+**For firmware 0.10.6 (0.10.6-m10.4). controls.md is the history.** Written from the firmware's code (the help tables,
 `learn_jobs`, the legends, the settings rows, the pop-up texts), not from controls.md. Every control is named as printed on the
 panel. No screenshots.
 

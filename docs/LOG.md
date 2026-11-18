@@ -1274,3 +1274,14 @@ Learned / measured: the rewritten history is 39 MB; the build does not need to c
 Hardware touched: none
 Questions for the planning chat: none
 Next: the user creates the GitHub repo and pushes; then rebuild, compare the checksum, test the release file on the FM-1, and submit to The Firmware Hub (Publishing Guide, Part B).
+
+2026-11-17 21:00 — Publishing prep: identity change FM-1_46 -> FM-1_58 (by the planning chat with the user; not built, not run, not installed) —
+Status: partial (edits made, uncommitted until the user commits; nothing built or tested yet)
+Did:
+- thefirmwarehub.com's "Is my identity free?" check reported FM-1_46001005 as "inside the range of FIZZ" (FIZZ by Quixotic7 is FM-1_46001300 and uses FM-1_46 + its version digits). FM-1_58 + 6 digits was free across the whole range on that day (FM-1_61 is not: MNM-1 uses FM-1_61000100).
+- Changed: firmware/app/fm1.toml id_prefix "FM-1_58"; tools/fm1song/device.py OURS "FM-1_58" (the gate that decides which firmware gets songs: it must never be a prefix another firmware uses); firmware/app/app.h FW_VERSION "0.10.6-m10.4" and a comment; docs/reference.md and the bug report form's examples. The next release is 0.10.6 = FM-1_58001006.
+- The GitHub release v0.10.5 (FM-1_46001005, sha256 769c87bf...cc43) is superseded.
+Learned / measured: identities are FM-1_ + 3 to 8 digits, so with our 6 version digits the prefix can only have 2 digits. The Hub's FAQ allows the same asset name and number every release, or a version-based number, as long as the front part is ours.
+Hardware touched: none
+Questions for the planning chat: none
+Next: build firmware/build.sh --release 0.10.6-m104; run it in the emulator (CLAUDE.md) including m2_test (the song gate) and pytest; then the user tests the release file on the FM-1 and installs it over FM-1_46001005 (the laptop song tool refuses the old identity until then).

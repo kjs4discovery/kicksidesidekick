@@ -12,14 +12,14 @@ body:
     id: version
     attributes:
       label: KickSide version
-      description: The splash screen shows it at the lower right, for example 0.10.5-m10.4.
+      description: The splash screen shows it at the lower right, for example 0.10.6-m10.4.
     validations:
       required: true
   - type: input
     id: identity
     attributes:
       label: Firmware identity
-      description: "From `fm1_install.py --info` or `tools/fm1song.sh list` (both only read). Looks like FM-1_46001005."
+      description: "From `fm1_install.py --info` or `tools/fm1song.sh list` (both only read). Looks like FM-1_58001006."
   - type: input
     id: flash
     attributes:
