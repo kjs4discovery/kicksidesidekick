@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /*
  * KickSide is free software (GPL-3.0-or-later). If you are working on a new version of this tool, or building
- * something on it, I would love to hear what you are doing with it: please reach out through the KickSide website.
+ * something on it, I would love to hear what you are doing with it. Contact: websiteInfo@KickSideSideKick.com,
+ * or through the KickSide website, https://kicksidesidekick.com
  */
 /* fm1-accompaniment: the app's half of the contract with fm1-base (vendor/fm1-base/device/unity.c,
  * host/plat_host.c). */

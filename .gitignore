@@ -28,3 +28,4 @@ firmware/app/web/words/
 # The user's private test songs (M4): copyrighted MIDI files and their conversions; never committed
 import/private/
 songs/private/
+import/test/
