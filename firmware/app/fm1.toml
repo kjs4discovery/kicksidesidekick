@@ -1,9 +1,9 @@
 # fm1-accompaniment firmware: the build's settings for fm1-base's tools/build.py (firmware/build.sh runs it).
 # SPDX-License-Identifier: GPL-3.0-or-later
 name = "fm1acc"                # the build's files: build/fm1acc.fwsc
-id_prefix = "FM-1_58"          # package identity: dev builds FM-1_5800, releases FM-1_58 + XXYYZZ (0.10.6 = FM-1_58001006). Changed from FM-1_46
-                               # on 2026-11-17: FIZZ (Quixotic7) uses FM-1_46 + its version digits, so thefirmwarehub.com reported our
-                               # FM-1_46001005 as "inside the range of FIZZ"; every FM-1_58000100..FM-1_58999999 was free on the Hub that day
+id_prefix = "FM-1_84"          # package identity: dev builds FM-1_8400, releases FM-1_84 + XXYYZZ (0.10.7 = FM-1_84001007).
+                               # History: FM-1_46 until 2026-11-17 (FIZZ uses FM-1_46); FM-1_58 for 0.10.6 (2026-11-18), which clashed with GIO-1
+                               # (it counts 58 + version too: its 0.3.1 is FM-1_58000301); on 2026-11-23 Sven (the Hub) gave us FM-1_84 ("nobody uses it")
 usb_manufacturer = "fm1-accompaniment"
 usb_product = "FM-1 Accompaniment"
 words = "words.tsv"

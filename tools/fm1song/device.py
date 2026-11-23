@@ -3,7 +3,7 @@
 #
 # The FM-1 side is firmware/app/library.c (its comment has the commands). Finding the FM-1 and the SysEx framing come
 # from fm1-base's tools/fm1_install.py (vendored in firmware/vendor/fm1-base, MPL-2.0), as fm1-base's own backup and
-# resource tools use them. Only FM-1 Accompaniment firmware (identity FM-1_58...) is ever sent anything: any other
+# resource tools use them. Only FM-1 Accompaniment firmware (identity FM-1_84..., or the exact 0.10.6 identity FM-1_58001006) is ever sent anything: any other
 # firmware (stock, Felucca, an update loader) is refused before a byte of song goes out.
 #
 # send / delete WRITE to the FM-1's flash (its song area, 0x97000..0xDBFFF only). Per CLAUDE.md the user runs them on
@@ -20,8 +20,14 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "firmware/vendor/fm1-base/tools"))
 import fm1_install as I  # noqa: E402
 
-OURS = "FM-1_58"                       # our firmware's identity prefix (firmware/app/fm1.toml id_prefix). Until 2026-11-17 it was FM-1_46,
-                                       # which FIZZ (another firmware) also uses: never send songs to FM-1_46
+OURS = "FM-1_84"                       # our firmware's identity prefix (firmware/app/fm1.toml id_prefix). History: FM-1_46 until 2026-11-17 (FIZZ also uses
+                                       # FM-1_46: never send songs to FM-1_46); FM-1_58 for 0.10.6 only (GIO-1 counts 58 + version too); FM-1_84 from 0.10.7
+LEGACY = ("FM-1_58001006",)            # 0.10.6 units already out there: matched in FULL, never by the FM-1_58 prefix (that is GIO-1's range)
+
+
+def is_ours(identity):
+    return identity.startswith(OURS) or identity in LEGACY
+
 SC_LIST, SC_ENTRY, SC_END, SC_SEND, SC_DELETE, SC_RESULT = 0x70, 0x71, 0x72, 0x73, 0x74, 0x7F
 SC_WIPE = 0x75                         # M5.1: every song erased (the whole song store)
 SC_FACTORY = 0x78                      # M10.1: FACTORY RESET: the song store, the saved presets and the settings, all erased / defaults
@@ -128,9 +134,9 @@ def connect(backend, port=None, tries=10):
         time.sleep(0.5)
     if not dev:
         raise DeviceError(3, "no FM-1 found on USB (is it on, and running FM-1 Accompaniment?)")
-    if not dev.id.text.startswith(OURS):
+    if not is_ours(dev.id.text):
         dev.link.close()
-        raise DeviceError(6, f"the FM-1 runs {dev.id.text}, not FM-1 Accompaniment ({OURS}...): nothing was sent")
+        raise DeviceError(6, f"the FM-1 runs {dev.id.text}, not FM-1 Accompaniment ({OURS}... or {LEGACY[0]}): nothing was sent")
     return dev
 
 
